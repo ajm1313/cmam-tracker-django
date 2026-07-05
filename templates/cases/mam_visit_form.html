@@ -1,0 +1,221 @@
+{% extends 'base.html' %}
+
+{% block title %}Record MAM Visit - {{ case.child_name }} | CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold text-yellow-700">{% if edit_mode %}Edit MAM Visit{% else %}MAM Visit Form{% endif %}</h1>
+                <p class="text-yellow-600">Visit #{{ next_visit_number }} for {{ case.child_name }}</p>
+            </div>
+            <a href="{% url 'cases:due_visits' %}?type=MAM" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg">
+                Back to Due Visits
+            </a>
+        </div>
+    </div>
+
+    <!-- Child Information Card (Enrolment Details) -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Enrolment Information</h2>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+            <div>
+                <span class="text-gray-500">Name:</span>
+                <span class="font-medium ml-2">{{ case.child_name }}</span>
+            </div>
+            <div>
+                <span class="text-gray-500">Age:</span>
+                <span class="font-medium ml-2">{{ case.age_months }} months</span>
+            </div>
+            <div>
+                <span class="text-gray-500">Sex:</span>
+                <span class="font-medium ml-2">{{ case.child_gender }}</span>
+            </div>
+            <div>
+                <span class="text-gray-500">Outpatient Care Site:</span>
+                <span class="font-medium ml-2">{{ case.facility.name }}</span>
+            </div>
+            <div>
+                <span class="text-gray-500">Date of Enrolment:</span>
+                <span class="font-medium ml-2">{{ case.registration_date|date:"M j, Y" }}</span>
+            </div>
+            <div>
+                <span class="text-gray-500">Enrolment Weight:</span>
+                <span class="font-medium ml-2">{{ reference_weight }} kg</span>
+            </div>
+            <div>
+                <span class="text-gray-500">Previous Visits:</span>
+                <span class="font-medium ml-2">{% if last_visit %}{{ last_visit.visit_number }}{% else %}0{% endif %}</span>
+            </div>
+            <div>
+                <span class="text-gray-500">Weeks in Program:</span>
+                <span class="font-medium ml-2 {% if weeks_since_enrollment >= 10 %}text-red-600{% elif weeks_since_enrollment >= 8 %}text-yellow-600{% endif %}">{{ weeks_since_enrollment }} / 10</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Visit Form -->
+    <form method="post" class="space-y-6">
+        {% csrf_token %}
+        
+        <!-- Visit Details -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Visit Details</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Visit Date *</label>
+                    <input type="date" name="visit_date" required value="{% if visit %}{{ visit.visit_date|date:'Y-m-d' }}{% else %}{% now 'Y-m-d' %}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Visit Type</label>
+                    <select name="visit_type" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                        <option value="Follow-up" {% if visit and visit.visit_type == 'Follow-up' %}selected{% endif %}>Follow-up</option>
+                        <option value="Routine" {% if visit and visit.visit_type == 'Routine' %}selected{% endif %}>Routine</option>
+                        <option value="Unscheduled" {% if visit and visit.visit_type == 'Unscheduled' %}selected{% endif %}>Unscheduled</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Visit Number</label>
+                    <input type="text" readonly value="{{ next_visit_number }}" class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50">
+                </div>
+            </div>
+        </div>
+
+        <!-- Anthropometric Measurements -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Anthropometric Measurements</h2>
+
+            {% if is_anthropometry_visit %}
+            <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md flex items-center gap-2">
+                <svg class="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                <p class="text-sm text-blue-700"><strong>W/H Anthropometry Visit (Visit {{ next_visit_number }})</strong> — Length/Height measurement, Z-Score recording, and nutritional status categorization are required at this visit.</p>
+            </div>
+
+            <!-- Prior trajectory data for chart -->
+            <input type="hidden" id="mam_visit_prior" value='[{% if case.weight_kg and case.height_cm %}{"h":{{ case.height_cm }},"w":{{ case.weight_kg }},"l":"Adm"}{% endif %}{% for v in previous_visits %}{% if v.weight_kg and v.height_cm %},{"h":{{ v.height_cm }},"w":{{ v.weight_kg }},"l":"V{{ v.visit_number }}"}{% endif %}{% endfor %}]'>
+            {% include 'cases/partials/inline_growth_chart.html' with chart_id="mam_visit" gender=case.child_gender color="yellow" %}
+            {% endif %}
+
+            <div class="grid grid-cols-1 md:grid-cols-{{ is_anthropometry_visit|yesno:'4,2' }} gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Weight (kg) *</label>
+                    <input type="number" step="0.1" name="weight_kg" id="mam_visit_weight" required value="{% if visit %}{{ visit.weight_kg }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">MUAC (cm) *</label>
+                    <input type="number" step="0.1" name="muac_cm" required value="{% if visit %}{{ visit.muac_cm|default:'' }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                </div>
+                {% if is_anthropometry_visit %}
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Height (cm) *</label>
+                    <input type="number" step="0.1" name="height_cm" id="mam_visit_height" required value="{% if visit %}{{ visit.height_cm|default:'' }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">W/H Z-Score *</label>
+                    <select name="z_score_wfh_category" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                        <option value="">Select</option>
+                        <option value="N">Normal (≥ -1 SD)</option>
+                        <option value="MAM">MAM (≥ -3 and &lt; -2 SD)</option>
+                        <option value="SAM">SAM (&lt; -3 SD)</option>
+                    </select>
+                </div>
+                {% endif %}
+            </div>
+            {% if is_anthropometry_visit %}
+            <p class="mt-2 text-xs text-gray-500">* This is an anthropometry visit — Height and Z-Score are required. Z-Score categories: Normal (≥ -1 SD), MAM (≥ -3 and < -2 SD), SAM (< -3 SD)</p>
+            {% else %}
+            <p class="mt-2 text-xs text-gray-500">* Height and W/H Z-Score are measured at visits 4, 8, 12, and 16.</p>
+            {% endif %}
+        </div>
+
+        <!-- Appetite Test -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Appetite Test</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Appetite Test Result *</label>
+                    <select name="appetite_test" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                        <option value="">Select</option>
+                        <option value="Pass" {% if visit and visit.appetite == 'Pass' %}selected{% endif %}>Pass</option>
+                        <option value="Fail" {% if visit and visit.appetite == 'Fail' %}selected{% endif %}>Fail</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Food Product Received -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Food Product Received</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Type of Food Product</label>
+                    <select name="food_product_type" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                        <option value="">Select</option>
+                        <option value="RUSF" {% if visit and visit.food_product_type == 'RUSF' %}selected{% endif %}>RUSF (Ready-to-Use Supplementary Food)</option>
+                        <option value="CSB++" {% if visit and visit.food_product_type == 'CSB++' %}selected{% endif %}>CSB++ (Corn Soy Blend Plus Plus)</option>
+                        <option value="CSB+" {% if visit and visit.food_product_type == 'CSB+' %}selected{% endif %}>CSB+ (Corn Soy Blend Plus)</option>
+                        <option value="Fortified Oil" {% if visit and visit.food_product_type == 'Fortified Oil' %}selected{% endif %}>Fortified Oil</option>
+                        <option value="Other" {% if visit and visit.food_product_type == 'Other' %}selected{% endif %}>Other</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                    <input type="text" name="food_product_quantity" value="{% if visit %}{{ visit.food_product_quantity|default:'' }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" placeholder="e.g., 3kg, 14 sachets">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Name of Staff</label>
+                    <input type="text" name="staff_name" value="{% if visit %}{{ visit.staff_name|default:'' }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" placeholder="Staff who issued food">
+                </div>
+            </div>
+        </div>
+
+        <!-- Remarks -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Remarks</h2>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Visit Remarks</label>
+                <textarea name="remarks" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" placeholder="Any observations or notes about this visit">{% if visit %}{{ visit.medical_notes|default:'' }}{% endif %}</textarea>
+            </div>
+        </div>
+
+        <!-- Visit Outcome -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Visit Outcome</h2>
+            {% if weeks_since_enrollment >= 10 %}
+            <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+                <p class="text-sm text-yellow-700">
+                    <strong>Note:</strong> This case has reached {{ weeks_since_enrollment }} weeks since enrollment. 
+                    MAM cases are automatically discharged after 10 weeks. Please select an appropriate discharge outcome.
+                </p>
+            </div>
+            {% endif %}
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Outcome *</label>
+                    <select name="visit_outcome" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                        <option value="Continue" {% if visit and visit.visit_outcome == 'Continue' %}selected{% endif %}>Continue Treatment</option>
+                        <option value="Cured" {% if visit and visit.visit_outcome == 'Cured' %}selected{% endif %}>1. Cured</option>
+                        <option value="Died" {% if visit and visit.visit_outcome == 'Died' %}selected{% endif %}>2. Died</option>
+                        <option value="Defaulted" {% if visit and visit.visit_outcome == 'Defaulted' %}selected{% endif %}>3. Defaulted</option>
+                        <option value="Non-recovered" {% if visit and visit.visit_outcome == 'Non-recovered' %}selected{% endif %}>4. Non-recovered</option>
+                        <option value="Referral" {% if visit and visit.visit_outcome == 'Referral' %}selected{% endif %}>5. Referral</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Outcome Notes</label>
+                    <textarea name="outcome_notes" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">{% if visit %}{{ visit.outcome_notes|default:'' }}{% endif %}</textarea>
+                </div>
+            </div>
+            <p class="mt-2 text-xs text-gray-500">Discharge outcomes: 1=Cured; 2=Died; 3=Defaulted; 4=Non-recovered; 5=Referral</p>
+        </div>
+
+        <!-- Form Actions -->
+        <div class="flex justify-between items-center">
+            <a href="{% if edit_mode %}{% url 'cases:case_detail' case.pk %}{% else %}{% url 'cases:due_visits' %}?type=MAM{% endif %}" class="bg-gray-500 text-white px-6 py-3 rounded-lg hover:bg-gray-600">Cancel</a>
+            <button type="submit" class="bg-yellow-600 text-white px-8 py-3 rounded-lg hover:bg-yellow-700">{% if edit_mode %}Update Visit{% else %}Record Visit{% endif %}</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

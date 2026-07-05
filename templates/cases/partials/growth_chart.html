@@ -1,0 +1,205 @@
+<!-- WHO Growth Chart Overlay - Weight-for-Length/Height -->
+<!-- Expects context: chart_gender ('Male'/'Female'), chart_points (list of {height, weight, label, is_admission}) -->
+
+<div class="bg-white shadow rounded-lg overflow-hidden">
+    <div class="px-6 py-4 bg-gray-50 border-b flex justify-between items-center">
+        <div>
+            <h2 class="text-lg font-medium text-gray-900">WHO Growth Chart — Weight-for-Length/Height</h2>
+            <p class="text-xs text-gray-500 mt-0.5">
+                {% if chart_gender == 'Male' %}Boys{% else %}Girls{% endif %} · Birth to 5 years (z-scores)
+            </p>
+        </div>
+        <div class="flex items-center gap-4 text-xs">
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-blue-600 border border-white shadow-sm"></span> <span class="text-gray-600 font-medium">Admission</span></span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white shadow-sm"></span> <span class="text-gray-600 font-medium">Visit</span></span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-blue-500 inline-block rounded-full"></span> <span class="text-gray-600 font-medium">Trajectory</span></span>
+        </div>
+    </div>
+    <div class="p-4">
+        <div id="growthChartContainer" style="position:relative; display:inline-block; width:100%;">
+            <img id="growthChartImg"
+                 src="{% if chart_gender == 'Male' %}/media/cht-wflh-boys-z-0-5.jpg{% else %}/media/cht-wflh-girls-z-0-5.jpg{% endif %}"
+                 alt="WHO Growth Chart"
+                 style="width:100%; display:block;"
+                 onload="drawGrowthChart()">
+            <canvas id="growthChartCanvas" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></canvas>
+        </div>
+
+        <!-- Data points legend table -->
+        {% if chart_points %}
+        <div class="mt-4 overflow-x-auto">
+            <table class="min-w-full text-xs">
+                <thead>
+                    <tr class="border-b border-gray-200">
+                        <th class="px-3 py-2 text-left font-semibold text-gray-600">#</th>
+                        <th class="px-3 py-2 text-left font-semibold text-gray-600">Date</th>
+                        <th class="px-3 py-2 text-left font-semibold text-gray-600">Height (cm)</th>
+                        <th class="px-3 py-2 text-left font-semibold text-gray-600">Weight (kg)</th>
+                        <th class="px-3 py-2 text-left font-semibold text-gray-600">Type</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for pt in chart_points %}
+                    <tr>
+                        <td class="px-3 py-1.5 text-gray-500">{{ forloop.counter }}</td>
+                        <td class="px-3 py-1.5 text-gray-700 font-medium">{{ pt.date }}</td>
+                        <td class="px-3 py-1.5 text-gray-700">{{ pt.height }}</td>
+                        <td class="px-3 py-1.5 text-gray-700">{{ pt.weight }}</td>
+                        <td class="px-3 py-1.5">
+                            {% if pt.is_admission %}
+                            <span class="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-semibold">Admission</span>
+                            {% else %}
+                            <span class="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded font-semibold">Visit {{ pt.visit_num }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+// Chart data points passed from Django
+var CHART_POINTS = [
+    {% for pt in chart_points %}
+    { height: {{ pt.height }}, weight: {{ pt.weight }}, label: "{{ pt.label }}", isAdmission: {{ pt.is_admission|yesno:"true,false" }} }{% if not forloop.last %},{% endif %}
+    {% endfor %}
+];
+
+// Calibration: pixel coordinates of known axis points on the ORIGINAL image
+// These map data coordinates to percentage positions within the image
+// Measured from the WHO chart images (both boys and girls share the same layout)
+var CHART_CAL = {
+    // Data range
+    xMin: 45,   // cm  (left axis)
+    xMax: 120,  // cm  (right axis)
+    yMin: 2,    // kg  (bottom axis)
+    yMax: 34,   // kg  (top axis)
+    // Percentage positions within the image (0-100%)
+    // These are calibrated from the chart grid boundaries
+    pxLeft:   8.05,   // % from left where x=45cm gridline sits
+    pxRight: 91.50,   // % from left where x=120cm gridline sits
+    pyTop:    9.80,   // % from top where y=34kg gridline sits
+    pyBottom: 82.80   // % from top where y=2kg gridline sits
+};
+
+function dataToPercent(height_cm, weight_kg) {
+    var cal = CHART_CAL;
+    var xPct = cal.pxLeft + (height_cm - cal.xMin) / (cal.xMax - cal.xMin) * (cal.pxRight - cal.pxLeft);
+    var yPct = cal.pyBottom - (weight_kg - cal.yMin) / (cal.yMax - cal.yMin) * (cal.pyBottom - cal.pyTop);
+    return { x: xPct, y: yPct };
+}
+
+function drawGrowthChart() {
+    var img = document.getElementById('growthChartImg');
+    var canvas = document.getElementById('growthChartCanvas');
+    if (!img || !canvas || CHART_POINTS.length === 0) return;
+
+    // Match canvas pixel resolution to displayed image size
+    var rect = img.getBoundingClientRect();
+    canvas.width = rect.width * (window.devicePixelRatio || 1);
+    canvas.height = rect.height * (window.devicePixelRatio || 1);
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = rect.height + 'px';
+
+    var ctx = canvas.getContext('2d');
+    ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+
+    var w = rect.width;
+    var h = rect.height;
+
+    // Convert data points to pixel coordinates
+    var pixelPoints = CHART_POINTS.map(function(pt) {
+        var pct = dataToPercent(pt.height, pt.weight);
+        return {
+            x: pct.x / 100 * w,
+            y: pct.y / 100 * h,
+            label: pt.label,
+            isAdmission: pt.isAdmission,
+            height: pt.height,
+            weight: pt.weight
+        };
+    });
+
+    // Draw trajectory line (connecting all points in order)
+    if (pixelPoints.length > 1) {
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(59, 130, 246, 0.6)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 2]);
+        ctx.moveTo(pixelPoints[0].x, pixelPoints[0].y);
+        for (var i = 1; i < pixelPoints.length; i++) {
+            ctx.lineTo(pixelPoints[i].x, pixelPoints[i].y);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    // Draw data points
+    pixelPoints.forEach(function(pt, idx) {
+        var radius = pt.isAdmission ? 4.5 : 3.5;
+
+        // Subtle outer glow
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, radius + 2, 0, 2 * Math.PI);
+        ctx.fillStyle = pt.isAdmission ? 'rgba(37, 99, 235, 0.12)' : 'rgba(16, 185, 129, 0.12)';
+        ctx.fill();
+
+        // White border (thinner)
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, radius + 1, 0, 2 * Math.PI);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+
+        // Filled dot
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, radius, 0, 2 * Math.PI);
+        ctx.fillStyle = pt.isAdmission ? '#2563eb' : '#10b981';
+        ctx.fill();
+
+        // Subtle inner highlight
+        ctx.beginPath();
+        ctx.arc(pt.x - radius * 0.3, pt.y - radius * 0.3, radius * 0.4, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.fill();
+
+        // Label (smaller, cleaner)
+        ctx.font = '600 9px system-ui, -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        var labelY = pt.y - radius - 5;
+        // If too close to top, put label below
+        if (labelY < 12) labelY = pt.y + radius + 12;
+
+        // Label background (more subtle)
+        var text = pt.label;
+        var tm = ctx.measureText(text);
+        var padding = 2.5;
+        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+        ctx.shadowColor = 'rgba(0,0,0,0.08)';
+        ctx.shadowBlur = 3;
+        ctx.shadowOffsetY = 1;
+        ctx.fillRect(pt.x - tm.width / 2 - padding, labelY - 7, tm.width + padding * 2, 11);
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = 0;
+        
+        // Subtle border
+        ctx.strokeStyle = pt.isAdmission ? 'rgba(37,99,235,0.2)' : 'rgba(16,185,129,0.2)';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(pt.x - tm.width / 2 - padding, labelY - 7, tm.width + padding * 2, 11);
+
+        // Label text
+        ctx.fillStyle = pt.isAdmission ? '#1e40af' : '#047857';
+        ctx.fillText(text, pt.x, labelY);
+    });
+}
+
+// Redraw on window resize
+window.addEventListener('resize', function() {
+    clearTimeout(window._growthChartResizeTimer);
+    window._growthChartResizeTimer = setTimeout(drawGrowthChart, 150);
+});
+</script>

@@ -1,0 +1,296 @@
+{% extends 'base.html' %}
+
+{% block title %}Weekly MAM Report - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Report Header -->
+    <div class="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded print:border-none">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold text-yellow-700">Health Facility Tally Sheet for Management of MAM</h1>
+                <p class="text-yellow-600">Weekly Outpatient Report (High-risk MAM)</p>
+            </div>
+            <div class="flex space-x-2 print:hidden">
+                <button onclick="window.print()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a2 2 0 002 2h6a2 2 0 002-2v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clip-rule="evenodd"/>
+                    </svg>
+                    Print Report
+                </button>
+                <a href="{% url 'users:reports' %}" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg">
+                    Back to Reports
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter Form with Cascading Filters -->
+    {% with theme_color='yellow' %}
+    {% include 'reports/includes/cascading_filter.html' %}
+    {% endwith %}
+
+    <!-- Report Info -->
+    <div class="bg-white rounded-lg shadow print:shadow-none overflow-hidden">
+        <div class="overflow-x-auto">
+            <div class="flex divide-x divide-gray-200 min-w-max">
+                <div class="px-4 py-3">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest leading-none">Region</p>
+                    <p class="text-xs font-semibold text-gray-700 mt-1 whitespace-nowrap">{{ region_name|default:"—" }}</p>
+                </div>
+                <div class="px-4 py-3">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest leading-none">District</p>
+                    <p class="text-xs font-semibold text-gray-700 mt-1 whitespace-nowrap">{{ district_name|default:"—" }}</p>
+                </div>
+                <div class="px-4 py-3">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest leading-none">Sub-District</p>
+                    <p class="text-xs font-semibold text-gray-700 mt-1 whitespace-nowrap">{{ sub_district_name|default:"—" }}</p>
+                </div>
+                <div class="px-4 py-3">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest leading-none">Health Facility</p>
+                    <p class="text-xs font-semibold text-gray-700 mt-1 whitespace-nowrap">{{ facility_name }}</p>
+                </div>
+                <div class="px-4 py-3 bg-yellow-50">
+                    <p class="text-xs font-bold text-yellow-600 uppercase tracking-widest leading-none">Month / Year</p>
+                    <p class="text-xs font-bold text-yellow-700 mt-1 whitespace-nowrap">{{ month_name }} {{ selected_year }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Weekly Tally Sheet -->
+    <div class="bg-white rounded-lg shadow overflow-x-auto print:shadow-none">
+        <table class="min-w-full divide-y divide-gray-200 text-xs">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-3 py-2 text-left font-medium text-gray-700 border-r" style="min-width: 400px;"></th>
+                    <th class="px-2 py-2 text-center font-medium text-gray-700 border-r bg-yellow-50">Week</th>
+                    <th class="px-2 py-2 text-center font-medium text-gray-700 border-r">1</th>
+                    <th class="px-2 py-2 text-center font-medium text-gray-700 border-r">2</th>
+                    <th class="px-2 py-2 text-center font-medium text-gray-700 border-r">3</th>
+                    <th class="px-2 py-2 text-center font-medium text-gray-700 border-r">4</th>
+                    <th class="px-2 py-2 text-center font-medium text-gray-700 border-r">5</th>
+                    <th class="px-2 py-2 text-center font-medium text-gray-700 bg-yellow-50">TOTAL</th>
+                </tr>
+                <tr>
+                    <th class="px-3 py-1 text-left font-medium text-gray-500 border-r"></th>
+                    <th class="px-2 py-1 text-center font-medium text-gray-500 border-r bg-yellow-50">Date</th>
+                    <th class="px-2 py-1 text-center font-medium text-gray-500 border-r">{{ week_dates.0 }}</th>
+                    <th class="px-2 py-1 text-center font-medium text-gray-500 border-r">{{ week_dates.1 }}</th>
+                    <th class="px-2 py-1 text-center font-medium text-gray-500 border-r">{{ week_dates.2 }}</th>
+                    <th class="px-2 py-1 text-center font-medium text-gray-500 border-r">{{ week_dates.3 }}</th>
+                    <th class="px-2 py-1 text-center font-medium text-gray-500 border-r">{{ week_dates.4 }}</th>
+                    <th class="px-2 py-1 text-center font-medium text-gray-500 bg-yellow-50"></th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                <!-- Total start of week (A) -->
+                <tr class="bg-gray-100 font-medium">
+                    <td class="px-3 py-2 border-r">Total start of week (A)</td>
+                    <td class="px-2 py-2 border-r bg-yellow-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.start_of_week.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.start_of_week.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.start_of_week.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.start_of_week.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.start_of_week.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-yellow-50 font-bold"></td>
+                </tr>
+
+                <!-- New cases, MAM (MUAC: 12.0 - 12.4 cm) (B) -->
+                <tr class="bg-yellow-50">
+                    <td class="px-3 py-2 border-r">New cases, MAM (MUAC: 12.0 - 12.4 cm) (B)</td>
+                    <td class="px-2 py-2 border-r bg-yellow-100"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_mam.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_mam.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_mam.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_mam.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_mam.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-yellow-100 font-bold">{{ data.new_cases_mam_total }}</td>
+                </tr>
+
+                <!-- New cases, high risk (C) -->
+                <tr class="bg-yellow-50">
+                    <td class="px-3 py-2 border-r">New cases, high risk (MUAC: 11.5 -11.9 cm, MUAC 12.0 – 12.4cm/WFL/H&lt;-2sd with aggravating factors) (C)</td>
+                    <td class="px-2 py-2 border-r bg-yellow-100"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_high_risk.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_high_risk.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_high_risk.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_high_risk.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_high_risk.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-yellow-100 font-bold">{{ data.new_cases_high_risk_total }}</td>
+                </tr>
+
+                <!-- Old cases (D) -->
+                <tr>
+                    <td class="px-3 py-2 border-r">Old cases: Referred from other MAM-OPC or returned defaulter (D)</td>
+                    <td class="px-2 py-2 border-r bg-yellow-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.old_cases.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.old_cases.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.old_cases.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.old_cases.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.old_cases.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-yellow-50 font-bold">{{ data.old_cases_total }}</td>
+                </tr>
+
+                <!-- TOTAL ENROLMENT (E) -->
+                <tr class="bg-gray-200 font-bold">
+                    <td class="px-3 py-2 border-r">TOTAL ENROLMENT (E=C+D)</td>
+                    <td class="px-2 py-2 border-r bg-yellow-100"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_enrolment.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_enrolment.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_enrolment.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_enrolment.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_enrolment.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-yellow-100">{{ data.total_enrolment_total }}</td>
+                </tr>
+
+                <!-- Cured (F1) -->
+                <tr>
+                    <td class="px-3 py-2 border-r">Cured (F1)</td>
+                    <td class="px-2 py-2 border-r bg-yellow-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.cured.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.cured.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.cured.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.cured.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.cured.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-yellow-50 font-bold">{{ data.cured_total }}</td>
+                </tr>
+
+                <!-- Died (F2) -->
+                <tr>
+                    <td class="px-3 py-2 border-r">Died (F2)</td>
+                    <td class="px-2 py-2 border-r bg-yellow-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.died.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.died.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.died.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.died.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.died.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-yellow-50 font-bold">{{ data.died_total }}</td>
+                </tr>
+
+                <!-- Defaulted (F3) -->
+                <tr>
+                    <td class="px-3 py-2 border-r">Defaulted (F3)</td>
+                    <td class="px-2 py-2 border-r bg-yellow-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.defaulted.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.defaulted.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.defaulted.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.defaulted.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.defaulted.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-yellow-50 font-bold">{{ data.defaulted_total }}</td>
+                </tr>
+
+                <!-- Total Discharges (F) -->
+                <tr class="bg-gray-200 font-bold">
+                    <td class="px-3 py-2 border-r">Total Discharges (F=F1+F2+F3)</td>
+                    <td class="px-2 py-2 border-r bg-yellow-100"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_discharges.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_discharges.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_discharges.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_discharges.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_discharges.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-yellow-100">{{ data.total_discharges_total }}</td>
+                </tr>
+
+                <!-- Referrals (G) -->
+                <tr>
+                    <td class="px-3 py-2 border-r">Referrals to other outpatient care or inpatient care for SAM (G)</td>
+                    <td class="px-2 py-2 border-r bg-yellow-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.referrals.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.referrals.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.referrals.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.referrals.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.referrals.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-yellow-50 font-bold">{{ data.referrals_total }}</td>
+                </tr>
+
+                <!-- TOTAL EXITS (H) -->
+                <tr class="bg-gray-200 font-bold">
+                    <td class="px-3 py-2 border-r">TOTAL EXITS (H= F+G)</td>
+                    <td class="px-2 py-2 border-r bg-yellow-100"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_exits.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_exits.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_exits.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_exits.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_exits.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-yellow-100">{{ data.total_exits_total }}</td>
+                </tr>
+
+                <!-- Total end of week (I) -->
+                <tr class="bg-gray-300 font-bold">
+                    <td class="px-3 py-2 border-r">Total end of week (I= A+E-H)</td>
+                    <td class="px-2 py-2 border-r bg-yellow-200"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.end_of_week.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.end_of_week.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.end_of_week.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.end_of_week.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.end_of_week.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-yellow-200">{{ data.end_of_week_total }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Additional Information -->
+    <div class="bg-white rounded-lg shadow overflow-x-auto print:shadow-none">
+        <div class="px-4 py-3 bg-gray-100 border-b">
+            <h3 class="font-bold text-gray-700">ADDITIONAL INFORMATION</h3>
+        </div>
+        <table class="min-w-full divide-y divide-gray-200 text-xs">
+            <tbody class="bg-white divide-y divide-gray-200">
+                <tr>
+                    <td class="px-3 py-2 border-r" style="min-width: 400px;">Number of Males (C)</td>
+                    <td class="px-2 py-2 border-r bg-yellow-50 w-16"></td>
+                    <td class="px-2 py-2 text-center border-r w-16">{{ data.new_males.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r w-16">{{ data.new_males.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r w-16">{{ data.new_males.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r w-16">{{ data.new_males.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r w-16">{{ data.new_males.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-yellow-50 font-bold w-16">{{ data.new_males_total }}</td>
+                </tr>
+                <tr>
+                    <td class="px-3 py-2 border-r">Number of Females (C)</td>
+                    <td class="px-2 py-2 border-r bg-yellow-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_females.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_females.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_females.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_females.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_females.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-yellow-50 font-bold">{{ data.new_females_total }}</td>
+                </tr>
+                <tr>
+                    <td class="px-3 py-2 border-r">RUTF Quantities (Issued during the week for MAM) - <em>In packets</em></td>
+                    <td class="px-2 py-2 border-r bg-yellow-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_issued_mam.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_issued_mam.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_issued_mam.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_issued_mam.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_issued_mam.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-yellow-50 font-bold">{{ data.rutf_issued_mam_total }}</td>
+                </tr>
+                <tr>
+                    <td class="px-3 py-2 border-r">Other commodities Quantities (Issued during the week) - <em>In packets</em></td>
+                    <td class="px-2 py-2 border-r bg-yellow-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.other_commodities.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.other_commodities.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.other_commodities.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.other_commodities.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.other_commodities.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-yellow-50 font-bold">{{ data.other_commodities_total }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+@media print {
+    body { font-size: 10px; }
+    .print\\:hidden { display: none !important; }
+    .print\\:shadow-none { box-shadow: none !important; }
+    .print\\:border-none { border: none !important; }
+    .print\\:p-2 { padding: 0.5rem !important; }
+    table { page-break-inside: avoid; }
+}
+</style>
+{% endblock %}

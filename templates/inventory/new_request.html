@@ -1,0 +1,205 @@
+{% extends 'base.html' %}
+
+{% block title %}New Stock Request - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Page Header -->
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Stock Requests</h1>
+            <p class="text-gray-600">Manage hierarchical stock requests with automated approval routing</p>
+        </div>
+        <a href="{% url 'inventory:stock_requests' %}" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+            </svg>
+            Back to Requests
+        </a>
+    </div>
+
+    <!-- Modal Form -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-6">New Stock Request</h3>
+        <form method="post" id="stockRequestForm">
+            {% csrf_token %}
+            
+            <!-- Requesting Location -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Region</label>
+                    <select name="requesting_region" id="requestingRegion" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                        <option value="">Select Region</option>
+                        {% for region in regions %}
+                        <option value="{{ region.id }}">{{ region.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">District</label>
+                    <select name="requesting_district" id="requestingDistrict" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                        <option value="">Select District</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Facility *</label>
+                    <select name="requesting_facility" id="requestingFacility" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                        <option value="">Select Facility</option>
+                        {% for facility in facilities %}
+                        <option value="{{ facility.id }}">{{ facility.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                    <select name="priority" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                        {% for priority in priority_choices %}
+                        <option value="{{ priority.0 }}" {% if priority.0 == 'normal' %}selected{% endif %}>{{ priority.1 }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- Required Date and Supplier Location -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Required Date</label>
+                    <input type="date" name="required_date" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Supplier Region</label>
+                    <select name="supplier_region" id="supplierRegion" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                        <option value="">Select Region</option>
+                        {% for region in regions %}
+                        <option value="{{ region.id }}">{{ region.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Supplier District</label>
+                    <select name="supplier_district" id="supplierDistrict" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                        <option value="">Select District</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Supplier Facility</label>
+                    <select name="supplier_facility" id="supplierFacility" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                        <option value="">Select Supplier</option>
+                        {% for facility in facilities %}
+                        <option value="{{ facility.id }}">{{ facility.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- Justification -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Justification</label>
+                <textarea name="justification" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" placeholder="Explain why this request is needed..."></textarea>
+            </div>
+
+            <!-- Request Items -->
+            <div class="mb-6">
+                <div class="flex justify-between items-center mb-2">
+                    <label class="block text-sm font-medium text-gray-700">Request Items</label>
+                    <button type="button" onclick="addItem()" class="text-blue-600 hover:text-blue-800 text-sm font-medium">+ Add Item</button>
+                </div>
+                <div id="itemsContainer">
+                    <div class="grid grid-cols-12 gap-2 mb-2 items-center request-item">
+                        <div class="col-span-5">
+                            <select name="item_id[]" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                                <option value="">Select Item</option>
+                                {% for item in items %}
+                                <option value="{{ item.id }}">{{ item.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-span-3">
+                            <input type="number" name="quantity[]" required min="1" placeholder="Quantity" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        <div class="col-span-3">
+                            <input type="number" name="unit_cost[]" step="0.01" placeholder="Unit Cost" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        <div class="col-span-1">
+                            <button type="button" onclick="removeItem(this)" class="text-red-500 hover:text-red-700">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Additional Notes -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Additional Notes</label>
+                <textarea name="notes" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" placeholder="Any additional information..."></textarea>
+            </div>
+
+            <!-- Submit -->
+            <div class="flex justify-end space-x-4 border-t pt-6">
+                <a href="{% url 'inventory:stock_requests' %}" class="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</a>
+                <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Submit Request</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function addItem() {
+    const container = document.getElementById('itemsContainer');
+    const template = container.querySelector('.request-item').cloneNode(true);
+    template.querySelectorAll('input').forEach(input => input.value = '');
+    template.querySelector('select').selectedIndex = 0;
+    container.appendChild(template);
+}
+
+function removeItem(btn) {
+    const container = document.getElementById('itemsContainer');
+    if (container.querySelectorAll('.request-item').length > 1) {
+        btn.closest('.request-item').remove();
+    }
+}
+
+// Cascading dropdowns for requesting location
+document.getElementById('requestingRegion').addEventListener('change', function() {
+    const regionId = this.value;
+    const districtSelect = document.getElementById('requestingDistrict');
+    districtSelect.innerHTML = '<option value="">Select District</option>';
+    
+    if (regionId) {
+        fetch(`/api/inventory/districts/?region_id=${regionId}`)
+            .then(response => response.json())
+            .then(data => {
+                data.districts.forEach(district => {
+                    const option = document.createElement('option');
+                    option.value = district.id;
+                    option.textContent = district.name;
+                    districtSelect.appendChild(option);
+                });
+            });
+    }
+});
+
+// Cascading dropdowns for supplier location
+document.getElementById('supplierRegion').addEventListener('change', function() {
+    const regionId = this.value;
+    const districtSelect = document.getElementById('supplierDistrict');
+    districtSelect.innerHTML = '<option value="">Select District</option>';
+    
+    if (regionId) {
+        fetch(`/api/inventory/districts/?region_id=${regionId}`)
+            .then(response => response.json())
+            .then(data => {
+                data.districts.forEach(district => {
+                    const option = document.createElement('option');
+                    option.value = district.id;
+                    option.textContent = district.name;
+                    districtSelect.appendChild(option);
+                });
+            });
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,239 @@
+{% comment %}
+  Inline WHO Growth Chart - drops into any form Anthropometry section.
+  Shows/hides automatically when weight + height are both entered.
+  Include with: chart_id, color, and optionally gender.
+  Weight input id: <chart_id>_weight, Height input id: <chart_id>_height
+  Gender select id: <chart_id>_gender OR pass gender="Male"/"Female"
+  For visit forms, add hidden input id="<chart_id>_prior" with JSON array.
+{% endcomment %}
+
+<div id="{{ chart_id }}_chart_wrapper" class="mb-4 hidden transition-all duration-300">
+    <div class="border rounded-lg overflow-hidden shadow-sm bg-white">
+        <div class="px-4 py-2 bg-gray-50 border-b flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-{{ color }}-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+                <span class="text-xs font-bold text-gray-700 uppercase tracking-wider">WHO Growth Chart</span>
+            </div>
+            <span id="{{ chart_id }}_chart_badge" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600"></span>
+        </div>
+        <div style="position:relative; display:inline-block; width:100%;">
+            <img id="{{ chart_id }}_chart_img"
+                 src="/media/cht-wflh-boys-z-0-5.jpg"
+                 alt="WHO Growth Chart"
+                 style="width:100%; display:block;">
+            <canvas id="{{ chart_id }}_chart_canvas"
+                    style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var CID = '{{ chart_id }}';
+    var FIXED_GENDER = '{{ gender|default:"" }}';
+
+    // Calibration (same for boys & girls charts)
+    var CAL = {
+        xMin: 45, xMax: 120, yMin: 2, yMax: 34,
+        pxL: 8.05, pxR: 91.50, pyT: 9.80, pyB: 82.80
+    };
+
+    function toPixel(h, w, imgW, imgH) {
+        var xPct = CAL.pxL + (h - CAL.xMin) / (CAL.xMax - CAL.xMin) * (CAL.pxR - CAL.pxL);
+        var yPct = CAL.pyB - (w - CAL.yMin) / (CAL.yMax - CAL.yMin) * (CAL.pyB - CAL.pyT);
+        return { x: xPct / 100 * imgW, y: yPct / 100 * imgH };
+    }
+
+    function getGender() {
+        if (FIXED_GENDER) return FIXED_GENDER;
+        var el = document.getElementById(CID + '_gender');
+        return el ? el.value : 'Male';
+    }
+
+    function getPriorPoints() {
+        var el = document.getElementById(CID + '_prior');
+        if (!el || !el.value) return [];
+        try { return JSON.parse(el.value); } catch(e) { return []; }
+    }
+
+    function updateChart() {
+        var weightEl = document.getElementById(CID + '_weight');
+        var heightEl = document.getElementById(CID + '_height');
+        var wrapper = document.getElementById(CID + '_chart_wrapper');
+        var img = document.getElementById(CID + '_chart_img');
+        var canvas = document.getElementById(CID + '_chart_canvas');
+        var badge = document.getElementById(CID + '_chart_badge');
+
+        var weight = parseFloat(weightEl ? weightEl.value : '');
+        var height = parseFloat(heightEl ? heightEl.value : '');
+
+        // Show chart only when both weight and height are entered
+        if (isNaN(weight) || isNaN(height) || weight <= 0 || height <= 0) {
+            wrapper.classList.add('hidden');
+            return;
+        }
+
+        // Clamp to chart range
+        if (height < 45 || height > 120 || weight < 1 || weight > 35) {
+            wrapper.classList.add('hidden');
+            return;
+        }
+
+        wrapper.classList.remove('hidden');
+
+        // Pick correct chart image based on gender
+        var gender = getGender();
+        var imgSrc = gender === 'Female'
+            ? '/media/cht-wflh-girls-z-0-5.jpg'
+            : '/media/cht-wflh-boys-z-0-5.jpg';
+        if (img.src.indexOf(imgSrc.split('/').pop()) === -1) {
+            img.src = imgSrc;
+        }
+
+        // Wait for image to load before drawing
+        if (!img.complete || img.naturalWidth === 0) {
+            img.onload = function() { drawOnCanvas(canvas, img, height, weight, badge); };
+            return;
+        }
+        drawOnCanvas(canvas, img, height, weight, badge);
+    }
+
+    function drawOnCanvas(canvas, img, height, weight, badge) {
+        var rect = img.getBoundingClientRect();
+        var dpr = window.devicePixelRatio || 1;
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        canvas.style.width = rect.width + 'px';
+        canvas.style.height = rect.height + 'px';
+
+        var ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+
+        var w = rect.width;
+        var h = rect.height;
+
+        // Get prior points (for visit forms)
+        var priors = getPriorPoints();
+        var allPoints = [];
+
+        // Add prior trajectory points
+        for (var i = 0; i < priors.length; i++) {
+            var pp = toPixel(priors[i].h, priors[i].w, w, h);
+            allPoints.push({ x: pp.x, y: pp.y, label: priors[i].l, isPrior: true });
+        }
+
+        // Add current point
+        var cp = toPixel(height, weight, w, h);
+        allPoints.push({ x: cp.x, y: cp.y, label: height + 'cm / ' + weight + 'kg', isPrior: false });
+
+        // Draw trajectory line if multiple points
+        if (allPoints.length > 1) {
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(59, 130, 246, 0.7)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 3]);
+            ctx.moveTo(allPoints[0].x, allPoints[0].y);
+            for (var j = 1; j < allPoints.length; j++) {
+                ctx.lineTo(allPoints[j].x, allPoints[j].y);
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // Draw prior points (smaller, semi-transparent)
+        for (var k = 0; k < allPoints.length; k++) {
+            var pt = allPoints[k];
+            if (pt.isPrior) {
+                // Prior: smaller gray-blue dot
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, 5, 0, 2 * Math.PI);
+                ctx.fillStyle = '#ffffff';
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, 3.5, 0, 2 * Math.PI);
+                ctx.fillStyle = 'rgba(99, 102, 241, 0.7)';
+                ctx.fill();
+
+                // Tiny label
+                ctx.font = 'bold 8px system-ui, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = 'rgba(255,255,255,0.85)';
+                var tm = ctx.measureText(pt.label);
+                ctx.fillRect(pt.x - tm.width/2 - 2, pt.y - 14, tm.width + 4, 10);
+                ctx.fillStyle = '#4338ca';
+                ctx.fillText(pt.label, pt.x, pt.y - 6);
+            }
+        }
+
+        // Draw CURRENT point (big, prominent)
+        // Outer pulse glow
+        ctx.beginPath();
+        ctx.arc(cp.x, cp.y, 14, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.12)';
+        ctx.fill();
+
+        // White border
+        ctx.beginPath();
+        ctx.arc(cp.x, cp.y, 9, 0, 2 * Math.PI);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+
+        // Red dot
+        ctx.beginPath();
+        ctx.arc(cp.x, cp.y, 7, 0, 2 * Math.PI);
+        ctx.fillStyle = '#ef4444';
+        ctx.fill();
+
+        // Inner shine
+        ctx.beginPath();
+        ctx.arc(cp.x - 2, cp.y - 2, 2.5, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(255,255,255,0.45)';
+        ctx.fill();
+
+        // Current label
+        ctx.font = 'bold 11px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        var labelText = height + ' cm / ' + weight + ' kg';
+        var lm = ctx.measureText(labelText);
+        var ly = cp.y - 16;
+        if (ly < 18) ly = cp.y + 22;
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.fillRect(cp.x - lm.width/2 - 4, ly - 10, lm.width + 8, 15);
+        ctx.strokeStyle = 'rgba(239,68,68,0.4)';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(cp.x - lm.width/2 - 4, ly - 10, lm.width + 8, 15);
+        ctx.fillStyle = '#b91c1c';
+        ctx.fillText(labelText, cp.x, ly + 2);
+
+        // Update badge
+        if (badge) {
+            badge.textContent = height + ' cm / ' + weight + ' kg';
+            badge.className = 'text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700';
+        }
+    }
+
+    // Attach event listeners once DOM is ready
+    function attach() {
+        var weightEl = document.getElementById(CID + '_weight');
+        var heightEl = document.getElementById(CID + '_height');
+        if (weightEl) { weightEl.addEventListener('input', updateChart); }
+        if (heightEl) { heightEl.addEventListener('input', updateChart); }
+        // Also listen to gender changes
+        var genderEl = document.getElementById(CID + '_gender');
+        if (genderEl) { genderEl.addEventListener('change', updateChart); }
+        // Handle resize
+        window.addEventListener('resize', function() {
+            clearTimeout(window['_gc_resize_' + CID]);
+            window['_gc_resize_' + CID] = setTimeout(updateChart, 150);
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', attach);
+    } else {
+        attach();
+    }
+})();
+</script>

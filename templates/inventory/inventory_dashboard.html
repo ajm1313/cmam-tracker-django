@@ -1,0 +1,339 @@
+{% extends 'base.html' %}
+
+{% block title %}Inventory Management - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Page Header -->
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Inventory Management Modules</h1>
+            <p class="text-gray-600">Comprehensive multi-level stock management</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Main Modules Section -->
+        <div class="lg:col-span-2 space-y-6">
+            <!-- Module Cards Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Stock Levels -->
+                <div class="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow">
+                    <div class="flex items-start space-x-3">
+                        <div class="p-2 bg-blue-100 rounded-lg">
+                            <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="font-semibold text-gray-900">Stock Levels</h3>
+                            <p class="text-sm text-gray-500 mt-1">Monitor current stock levels across all hierarchy levels</p>
+                            <div class="mt-3 flex space-x-2">
+                                <a href="{% url 'inventory:stock_levels' %}" class="text-xs bg-blue-50 text-blue-700 px-3 py-1 rounded-full hover:bg-blue-100">View Levels</a>
+                                <a href="{% url 'inventory:update_stock' %}" class="text-xs bg-gray-50 text-gray-700 px-3 py-1 rounded-full hover:bg-gray-100">Update Stock</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stock Movements -->
+                <div class="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow">
+                    <div class="flex items-start space-x-3">
+                        <div class="p-2 bg-green-100 rounded-lg">
+                            <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="font-semibold text-gray-900">Stock Movements</h3>
+                            <p class="text-sm text-gray-500 mt-1">Track receipts, issues, transfers, and adjustments</p>
+                            <div class="mt-3 flex space-x-2">
+                                <a href="{% url 'inventory:new_movement' %}" class="text-xs bg-green-50 text-green-700 px-3 py-1 rounded-full hover:bg-green-100">New Movement</a>
+                                <a href="{% url 'inventory:stock_movements' %}" class="text-xs bg-gray-50 text-gray-700 px-3 py-1 rounded-full hover:bg-gray-100">View History</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Receive Stock -->
+                <div class="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow border-l-4 border-green-500">
+                    <div class="flex items-start space-x-3">
+                        <div class="p-2 bg-green-100 rounded-lg">
+                            <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="font-semibold text-gray-900">Receive Stock</h3>
+                            <p class="text-sm text-gray-500 mt-1">Record new stock received from suppliers or upper-level warehouses</p>
+                            <div class="mt-3">
+                                <a href="{% url 'inventory:receive_stock' %}" class="text-xs bg-green-50 text-green-700 px-3 py-1 rounded-full hover:bg-green-100">Receive New Stock</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Distribute Stock -->
+                <div class="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow border-l-4 border-blue-500">
+                    <div class="flex items-start space-x-3">
+                        <div class="p-2 bg-blue-100 rounded-lg">
+                            <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="font-semibold text-gray-900">Distribute Stock</h3>
+                            <p class="text-sm text-gray-500 mt-1">Transfer stock to regions, districts, or facilities</p>
+                            <div class="mt-3">
+                                <a href="{% url 'inventory:distribute_stock' %}" class="text-xs bg-blue-50 text-blue-700 px-3 py-1 rounded-full hover:bg-blue-100">Distribute Now</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stock Requests -->
+                <div class="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow">
+                    <div class="flex items-start space-x-3">
+                        <div class="p-2 bg-purple-100 rounded-lg">
+                            <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="font-semibold text-gray-900">Stock Requests</h3>
+                            <p class="text-sm text-gray-500 mt-1">Submit hierarchical stock requests with automated approval routing</p>
+                            <div class="mt-3 flex space-x-2">
+                                <a href="{% url 'inventory:new_request' %}" class="text-xs bg-purple-50 text-purple-700 px-3 py-1 rounded-full hover:bg-purple-100">New Request</a>
+                                <a href="{% url 'inventory:stock_requests' %}" class="text-xs bg-gray-50 text-gray-700 px-3 py-1 rounded-full hover:bg-gray-100">Pending Requests</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Reports & Analytics -->
+                <div class="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow">
+                    <div class="flex items-start space-x-3">
+                        <div class="p-2 bg-indigo-100 rounded-lg">
+                            <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="font-semibold text-gray-900">Reports & Analytics</h3>
+                            <p class="text-sm text-gray-500 mt-1">Track synchronized stock movements across all facilities</p>
+                            <div class="mt-3 flex space-x-2">
+                                <a href="{% url 'inventory:inventory_reports' %}?report_type=stock" class="text-xs bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full hover:bg-indigo-100">Stock Report</a>
+                                <a href="{% url 'inventory:inventory_reports' %}?report_type=movement" class="text-xs bg-gray-50 text-gray-700 px-3 py-1 rounded-full hover:bg-gray-100">Movement Report</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Item Management -->
+                <div class="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow">
+                    <div class="flex items-start space-x-3">
+                        <div class="p-2 bg-gray-100 rounded-lg">
+                            <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="font-semibold text-gray-900">Item Management</h3>
+                            <p class="text-sm text-gray-500 mt-1">Manage inventory items and specifications</p>
+                            <div class="mt-3 flex space-x-2">
+                                <a href="{% url 'inventory:add_item' %}" class="text-xs bg-gray-50 text-gray-700 px-3 py-1 rounded-full hover:bg-gray-100">Add Item</a>
+                                <a href="{% url 'inventory:item_management' %}" class="text-xs bg-gray-50 text-gray-700 px-3 py-1 rounded-full hover:bg-gray-100">Edit Items</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Expiry Management -->
+                <div class="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow">
+                    <div class="flex items-start space-x-3">
+                        <div class="p-2 bg-red-100 rounded-lg">
+                            <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="font-semibold text-gray-900">Expiry Management</h3>
+                            <p class="text-sm text-gray-500 mt-1">Monitor expiring items with facility-level filtering</p>
+                            <div class="mt-3 flex space-x-2">
+                                <a href="{% url 'inventory:expiry_management' %}" class="text-xs bg-red-50 text-red-700 px-3 py-1 rounded-full hover:bg-red-100">Expiring Soon</a>
+                                <a href="{% url 'inventory:expiry_management' %}?tab=expired" class="text-xs bg-gray-50 text-gray-700 px-3 py-1 rounded-full hover:bg-gray-100">Expired Items</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Inventory Items Overview -->
+            <div class="bg-white rounded-lg shadow">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-lg font-semibold text-gray-900">Inventory Items Overview</h3>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Stock</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Available</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            {% for item in items %}
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm font-medium text-gray-900">{{ item.name }}</div>
+                                    <div class="text-xs text-gray-500">{{ item.code }}</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ item.category }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ item.initial_stock }} {{ item.unit_of_measure }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ item.initial_stock }} {{ item.unit_of_measure }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    {% if item.initial_stock <= item.min_stock_level %}
+                                    <span class="px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">Out of Stock</span>
+                                    {% elif item.initial_stock <= item.reorder_level %}
+                                    <span class="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">Low Stock</span>
+                                    {% else %}
+                                    <span class="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">Normal</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                    <a href="{% url 'inventory:inventory_detail' item.id %}" class="text-blue-600 hover:text-blue-800 mr-2">
+                                        <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                                        </svg>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="px-6 py-12 text-center">
+                                    <div class="text-gray-500">
+                                        <svg class="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                                        </svg>
+                                        <p class="text-lg font-medium">No inventory items yet</p>
+                                        <p class="mt-1">Get started by adding your first inventory item</p>
+                                        <a href="{% url 'inventory:add_item' %}" class="mt-4 inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                                            </svg>
+                                            Add First Item
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- System Status -->
+            <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                <div class="flex items-start">
+                    <div class="flex-shrink-0">
+                        <svg class="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <h4 class="text-sm font-medium text-green-800">Inventory Tracking System Ready</h4>
+                        <p class="text-sm text-green-700 mt-1">The CMAM TRACKER inventory tracking system is fully operational with comprehensive multi-level stock management capabilities.</p>
+                        <div class="mt-2 flex flex-wrap gap-2 text-xs text-green-700">
+                            <span class="flex items-center"><svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Database schema created</span>
+                            <span class="flex items-center"><svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Multi-level hierarchy support</span>
+                            <span class="flex items-center"><svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Stock movement tracking</span>
+                            <span class="flex items-center"><svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg> Request workflow system</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Sidebar - Recent Movements -->
+        <div class="space-y-6">
+            <div class="bg-white rounded-lg shadow">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-lg font-semibold text-gray-900">Recent Movements</h3>
+                </div>
+                <div class="p-6">
+                    {% if recent_movements %}
+                    <div class="space-y-4">
+                        {% for movement in recent_movements %}
+                        <div class="flex items-start space-x-3">
+                            <div class="flex-shrink-0">
+                                {% if movement.movement_type == 'IN' %}
+                                <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                                    <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/>
+                                    </svg>
+                                </div>
+                                {% elif movement.movement_type == 'OUT' %}
+                                <div class="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                                    <svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+                                    </svg>
+                                </div>
+                                {% else %}
+                                <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                    <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                                    </svg>
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-gray-900 truncate">{{ movement.inventory_item.name }}</p>
+                                <p class="text-xs text-gray-500">{{ movement.quantity }} {{ movement.inventory_item.unit_of_measure }} • {{ movement.get_movement_type_display }}</p>
+                                <p class="text-xs text-gray-400">{{ movement.movement_date|date:"M d, Y H:i" }}</p>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="text-center py-8">
+                        <a href="#" class="text-blue-600 hover:text-blue-800 text-sm font-medium">No recent movements found</a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Quick Stats -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Quick Stats</h3>
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-600">Total Items</span>
+                        <span class="text-lg font-semibold text-gray-900">{{ total_items }}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-600">Critical Stock</span>
+                        <span class="text-lg font-semibold text-red-600">{{ critical_count }}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-600">Low Stock</span>
+                        <span class="text-lg font-semibold text-yellow-600">{{ low_count }}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-600">Normal Stock</span>
+                        <span class="text-lg font-semibold text-green-600">{{ normal_count }}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-600">Facilities</span>
+                        <span class="text-lg font-semibold text-gray-900">{{ facilities_count }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ action }} Region - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-bold text-gray-900">{{ action }} Region</h1>
+        <a href="{% url 'locations:location_dashboard' %}" class="text-gray-600 hover:text-gray-900">← Back to Locations</a>
+    </div>
+
+    <div class="bg-white shadow rounded-lg p-6">
+        <form method="post" class="space-y-6">
+            {% csrf_token %}
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Region Name <span class="text-red-500">*</span></label>
+                    <input type="text" name="name" value="{{ region.name|default:'' }}" required 
+                           class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                           placeholder="e.g., Greater Accra Region">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Region Code <span class="text-red-500">*</span></label>
+                    <input type="text" name="code" value="{{ region.code|default:'' }}" required 
+                           class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 uppercase"
+                           placeholder="e.g., GAR">
+                    <p class="mt-1 text-sm text-gray-500">Unique code for the region (will be converted to uppercase)</p>
+                </div>
+            </div>
+            <div class="flex justify-end space-x-3">
+                <a href="{% url 'locations:location_dashboard' %}" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded">Cancel</a>
+                <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">{{ action }} Region</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

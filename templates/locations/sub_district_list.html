@@ -1,0 +1,98 @@
+{% extends 'base.html' %}
+
+{% block title %}Sub Districts - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Sub Districts</h1>
+            <p class="text-sm text-gray-500 mt-1">{{ sub_districts|length }} sub-district{{ sub_districts|length|pluralize }} found</p>
+        </div>
+        <div class="flex gap-3">
+            <a href="{% url 'locations:location_dashboard' %}" class="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                ← Back to Locations
+            </a>
+            <a href="{% url 'locations:sub_district_create' %}" class="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                Add Sub District
+            </a>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+        <form method="get" class="flex flex-wrap items-center gap-3">
+            <label class="text-sm font-medium text-gray-700 whitespace-nowrap">Filter:</label>
+            <select name="region" id="regionFilter" onchange="this.form.submit()" class="block border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                <option value="">All Regions</option>
+                {% for region in regions %}
+                <option value="{{ region.id }}" {% if selected_region == region.id|stringformat:"s" %}selected{% endif %}>{{ region.name }}</option>
+                {% endfor %}
+            </select>
+            <select name="district" onchange="this.form.submit()" class="block border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                <option value="">All Districts</option>
+                {% for district in districts %}
+                <option value="{{ district.id }}" {% if selected_district == district.id|stringformat:"s" %}selected{% endif %}>{{ district.name }}</option>
+                {% endfor %}
+            </select>
+            {% if selected_region or selected_district %}
+            <a href="{% url 'locations:sub_district_list' %}" class="text-sm text-gray-500 hover:text-gray-700">Clear</a>
+            {% endif %}
+        </form>
+    </div>
+
+    <div class="bg-white shadow-sm rounded-2xl border border-gray-100 overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Sub District</th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Code</th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">District</th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Region</th>
+                    <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-100">
+                {% for sub_district in sub_districts %}
+                <tr class="hover:bg-gray-50 transition-colors">
+                    <td class="px-6 py-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
+                                <svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                            </div>
+                            <span class="text-sm font-semibold text-gray-900">{{ sub_district.name }}</span>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800">{{ sub_district.code }}</span>
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="text-sm text-gray-600">{{ sub_district.district.name }}</span>
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="text-sm text-gray-500">{{ sub_district.district.region.name }}</span>
+                    </td>
+                    <td class="px-6 py-4 text-right">
+                        <div class="flex items-center justify-end gap-3">
+                            <a href="{% url 'locations:sub_district_edit' sub_district.pk %}" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">Edit</a>
+                            <a href="{% url 'locations:sub_district_delete' sub_district.pk %}" class="text-xs font-medium text-red-600 hover:text-red-800">Delete</a>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="px-6 py-12 text-center">
+                        <svg class="w-10 h-10 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5"/></svg>
+                        <p class="text-gray-500 text-sm">No sub districts found.</p>
+                        <a href="{% url 'locations:sub_district_create' %}" class="mt-3 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700">
+                            Create First Sub District
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

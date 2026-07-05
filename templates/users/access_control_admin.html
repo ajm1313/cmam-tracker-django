@@ -1,0 +1,186 @@
+{% extends 'base.html' %}
+
+{% block title %}Access Control - CMAM Tracker{% endblock %}
+
+{% block extra_css %}
+<style>
+    .role-card { transition: transform 0.15s, box-shadow 0.15s; }
+    .role-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.08); }
+    .role-card.active { box-shadow: 0 0 0 2px #3b82f6, 0 6px 20px rgba(59,130,246,0.15); }
+    .perm-row { transition: background 0.15s; }
+    .perm-row:hover { background: #f8faff; }
+    .toggle-switch { position: relative; width: 40px; height: 22px; }
+    .toggle-switch input { display: none; }
+    .toggle-track { position: absolute; inset: 0; background: #d1d5db; border-radius: 999px; transition: background 0.2s; cursor: pointer; }
+    .toggle-switch input:checked ~ .toggle-track { background: #3b82f6; }
+    .toggle-thumb { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; background: white; border-radius: 50%; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.3); pointer-events: none; }
+    .toggle-switch input:checked ~ .toggle-track .toggle-thumb { transform: translateX(18px); }
+    .toggle-switch input:disabled ~ .toggle-track { opacity: 0.5; cursor: not-allowed; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Page Header -->
+    <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl px-7 py-5 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+            <div class="w-11 h-11 bg-white/15 rounded-xl flex items-center justify-center border border-white/20">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold text-white tracking-tight">Access Control Administration</h1>
+                <p class="text-indigo-300 text-xs mt-0.5">Manage feature permissions for each user level</p>
+            </div>
+        </div>
+        {% if selected_role %}
+        <span class="bg-indigo-500/30 text-indigo-200 text-xs font-semibold px-3 py-1.5 rounded-full border border-indigo-400/30">
+            Editing: {{ selected_role_info.display_name }}
+        </span>
+        {% endif %}
+    </div>
+
+    <!-- Flash Messages -->
+    {% if messages %}
+    {% for message in messages %}
+    <div class="flex items-center gap-3 bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-xl shadow-sm">
+        <svg class="w-5 h-5 text-emerald-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+        </svg>
+        <span class="text-sm font-medium">{{ message }}</span>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <!-- Role Selection Cards -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <h2 class="text-base font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            Select User Level to Configure
+        </h2>
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {% for role in roles %}
+            <a href="?role={{ role.level }}"
+               class="role-card block p-4 rounded-xl border text-center transition-colors
+                      {% if selected_role == role.level %}active border-blue-400 bg-blue-50{% else %}border-gray-100 bg-gray-50 hover:bg-blue-50 hover:border-blue-200{% endif %}">
+                <div class="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2
+                            {% if selected_role == role.level %}bg-blue-500{% else %}bg-white border border-gray-200{% endif %}">
+                    <span class="text-sm font-bold {% if selected_role == role.level %}text-white{% else %}text-blue-600{% endif %}">{{ role.level }}</span>
+                </div>
+                <h3 class="text-xs font-semibold text-gray-800 leading-snug">{{ role.display_name }}</h3>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Permissions Form -->
+    {% if selected_role_info %}
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-indigo-50 flex items-center justify-between">
+            <div>
+                <h2 class="text-base font-bold text-gray-900">Permissions for <span class="text-indigo-600">{{ selected_role_info.display_name }}</span></h2>
+                <p class="text-xs text-gray-500 mt-0.5">Toggle features on/off and set access level. Core features cannot be modified.</p>
+            </div>
+        </div>
+
+        <form method="POST" class="p-6 space-y-8">
+            {% csrf_token %}
+            <input type="hidden" name="role_level" value="{{ selected_role }}">
+
+            {% for category, perms in permissions_by_category.items %}
+            <div>
+                <div class="flex items-center gap-2 mb-3">
+                    <div class="w-1 h-5 bg-indigo-500 rounded-full"></div>
+                    <h3 class="text-sm font-bold text-gray-800 uppercase tracking-wider">{{ category }}</h3>
+                </div>
+                <div class="space-y-2">
+                    {% for perm in perms %}
+                    <div class="perm-row flex items-center justify-between px-4 py-3 rounded-xl border
+                                {% if perm.feature.is_core_feature %}bg-amber-50 border-amber-100{% else %}bg-gray-50 border-gray-100{% endif %}">
+                        <div class="flex-1 min-w-0 mr-6">
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm font-semibold text-gray-900">{{ perm.feature.feature_name }}</span>
+                                {% if perm.feature.is_core_feature %}
+                                <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-700 border border-amber-200">Core</span>
+                                {% endif %}
+                            </div>
+                            <p class="text-xs text-gray-500 mt-0.5 truncate">{{ perm.feature.description|default:"No description available" }}</p>
+                        </div>
+                        <div class="flex items-center gap-4 flex-shrink-0">
+                            <!-- Toggle -->
+                            <label class="toggle-switch">
+                                <input type="checkbox"
+                                       name="perm_{{ perm.feature.feature_key }}_enabled"
+                                       {% if perm.is_enabled %}checked{% endif %}
+                                       {% if perm.feature.is_core_feature %}disabled{% endif %}>
+                                <span class="toggle-track">
+                                    <span class="toggle-thumb"></span>
+                                </span>
+                            </label>
+                            <!-- Access Level -->
+                            <select name="perm_{{ perm.feature.feature_key }}_level"
+                                    class="text-xs font-medium border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none"
+                                    {% if perm.feature.is_core_feature %}disabled{% endif %}>
+                                <option value="none"    {% if perm.access_level == 'none'    %}selected{% endif %}>No Access</option>
+                                <option value="read"    {% if perm.access_level == 'read'    %}selected{% endif %}>Read Only</option>
+                                <option value="limited" {% if perm.access_level == 'limited' %}selected{% endif %}>Limited</option>
+                                <option value="full"    {% if perm.access_level == 'full'    %}selected{% endif %}>Full Access</option>
+                            </select>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+
+            <div class="flex justify-end pt-2">
+                <button type="submit" name="update_permissions"
+                        class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-6 py-2.5 rounded-xl shadow-md transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    Save Permissions
+                </button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+
+    <!-- Recent Changes Log -->
+    {% if logs %}
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-gray-50">
+            <h2 class="text-base font-bold text-gray-800 flex items-center gap-2">
+                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Recent Changes
+            </h2>
+        </div>
+        <table class="min-w-full">
+            <thead>
+                <tr class="border-b border-gray-50">
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Admin</th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Action</th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Target Role</th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
+                {% for log in logs %}
+                <tr class="hover:bg-gray-50 transition-colors">
+                    <td class="px-6 py-3 text-sm font-medium text-gray-900">{{ log.admin_user.name|default:"Unknown" }}</td>
+                    <td class="px-6 py-3 text-sm text-gray-600">{{ log.action }}</td>
+                    <td class="px-6 py-3">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                            Level {{ log.target_role_level }}
+                        </span>
+                    </td>
+                    <td class="px-6 py-3 text-xs text-gray-400">{{ log.created_at|date:"M j, Y g:i A" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

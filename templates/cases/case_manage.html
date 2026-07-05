@@ -1,0 +1,196 @@
+{% extends 'base.html' %}
+
+{% block title %}Case Management - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-bold text-gray-900">Case Management Dashboard</h1>
+        <a href="{% url 'cases:case_create' %}" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+            New Registration
+        </a>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <!-- SAM Cases -->
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-12 h-12 bg-red-500 rounded-md flex items-center justify-center">
+                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">SAM Cases</dt>
+                            <dd class="flex items-baseline">
+                                <div class="text-2xl font-semibold text-gray-900">{{ stats.total_sam_cases }}</div>
+                                <div class="ml-2 flex items-baseline text-sm font-semibold text-green-600">
+                                    {{ stats.active_sam_cases }} active
+                                </div>
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-gray-50 px-5 py-3">
+                <div class="text-sm">
+                    <a href="{% url 'cases:case_list' %}" class="font-medium text-red-700 hover:text-red-900">View SAM cases →</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- MAM Cases -->
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-12 h-12 bg-yellow-500 rounded-md flex items-center justify-center">
+                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">MAM Cases</dt>
+                            <dd class="flex items-baseline">
+                                <div class="text-2xl font-semibold text-gray-900">{{ stats.total_mam_cases }}</div>
+                                <div class="ml-2 flex items-baseline text-sm font-semibold text-green-600">
+                                    {{ stats.active_mam_cases }} active
+                                </div>
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-gray-50 px-5 py-3">
+                <div class="text-sm">
+                    <a href="{% url 'cases:case_list' %}" class="font-medium text-yellow-700 hover:text-yellow-900">View MAM cases →</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- IPC Cases -->
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-12 h-12 bg-purple-500 rounded-md flex items-center justify-center">
+                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">IPC Cases</dt>
+                            <dd class="flex items-baseline">
+                                <div class="text-2xl font-semibold text-gray-900">{{ stats.total_ipc_cases }}</div>
+                                <div class="ml-2 flex items-baseline text-sm font-semibold text-green-600">
+                                    {{ stats.active_ipc_cases }} active
+                                </div>
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-gray-50 px-5 py-3">
+                <div class="text-sm">
+                    <a href="{% url 'cases:case_list' %}" class="font-medium text-purple-700 hover:text-purple-900">View IPC cases →</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Discharged -->
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-12 h-12 bg-green-500 rounded-md flex items-center justify-center">
+                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Discharged</dt>
+                            <dd class="text-2xl font-semibold text-gray-900">{{ stats.discharged_cases }}</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-gray-50 px-5 py-3">
+                <div class="text-sm">
+                    <a href="{% url 'cases:discharge_management' %}" class="font-medium text-green-700 hover:text-green-900">Discharge management →</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Defaulted -->
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="p-5">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <div class="w-12 h-12 bg-orange-500 rounded-md flex items-center justify-center">
+                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">Defaulted</dt>
+                            <dd class="text-2xl font-semibold text-gray-900">{{ stats.defaulted_cases }}</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-gray-50 px-5 py-3">
+                <div class="text-sm">
+                    <a href="{% url 'cases:due_visits' %}" class="font-medium text-orange-700 hover:text-orange-900">View due visits →</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="bg-white shadow rounded-lg p-6">
+        <h2 class="text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <a href="{% url 'cases:case_create' %}" class="block p-4 border-2 border-blue-200 rounded-lg hover:bg-blue-50 text-center">
+                <div class="text-blue-600 mb-2">
+                    <svg class="w-8 h-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                    </svg>
+                </div>
+                <h3 class="font-medium text-gray-900">New SAM Registration</h3>
+                <p class="text-sm text-gray-500">Register a new SAM case</p>
+            </a>
+            <a href="{% url 'cases:case_create' %}" class="block p-4 border-2 border-yellow-200 rounded-lg hover:bg-yellow-50 text-center">
+                <div class="text-yellow-600 mb-2">
+                    <svg class="w-8 h-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                    </svg>
+                </div>
+                <h3 class="font-medium text-gray-900">New MAM Registration</h3>
+                <p class="text-sm text-gray-500">Register a new MAM case</p>
+            </a>
+            <a href="{% url 'cases:case_list' %}" class="block p-4 border-2 border-gray-200 rounded-lg hover:bg-gray-50 text-center">
+                <div class="text-gray-600 mb-2">
+                    <svg class="w-8 h-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+                    </svg>
+                </div>
+                <h3 class="font-medium text-gray-900">View All Cases</h3>
+                <p class="text-sm text-gray-500">Browse all registered cases</p>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,478 @@
+<form method="post" enctype="multipart/form-data" class="space-y-8">
+    {% csrf_token %}
+    <input type="hidden" name="malnutrition_type" value="MAM">
+    
+    <!-- MAM Header -->
+    <div class="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
+        <h2 class="text-xl font-bold text-yellow-700">Treatment Card for the Management of Moderate Acute Malnutrition (MAM)</h2>
+        <p class="text-yellow-600">Supplementary Feeding Program</p>
+    </div>
+
+    <!-- Child Information -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Child Information</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Name of Outpatient Care Site *</label>
+                <select name="facility_id" id="mam_facility_select" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" onchange="fetchMamRegNumber()">
+                    <option value="">Select Facility</option>
+                    {% for facility in opc_facilities %}
+                    <option value="{{ facility.id }}" data-code="{{ facility.code }}" data-type="{{ facility.type }}" {% if case and case.facility_id == facility.id %}selected{% endif %}>{{ facility.name }} ({{ facility.code }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Registration No. <span class="text-xs text-gray-400">(auto-generated)</span></label>
+                <input type="text" name="registration_number" id="mam_reg_number" readonly value="{% if case %}{{ case.registration_number }}{% endif %}" class="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-700 font-mono font-bold cursor-not-allowed" placeholder="Select facility to generate">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Date of Enrolment *</label>
+                <input type="date" name="admission_date" required value="{% if case %}{{ case.admission_date|date:'Y-m-d' }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Type of MAM Treatment</label>
+                <select name="mam_type" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                    <option value="">Select Type</option>
+                    <option value="High-risk MAM" {% if case and case.mam_type == 'High-risk MAM' %}selected{% endif %}>High-risk MAM</option>
+                    <option value="Other MAM" {% if case and case.mam_type == 'Other MAM' %}selected{% endif %}>Other MAM</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Name of Child *</label>
+                <input type="text" name="child_name" required value="{% if case %}{{ case.child_name }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Date of Birth *</label>
+                <input type="date" name="date_of_birth" id="mam_dob" required value="{% if case %}{{ case.date_of_birth|date:'Y-m-d' }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" onchange="mamDobToAge()">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Age (months) *</label>
+                <input type="number" name="age_months" id="mam_age_months" min="6" max="59" required value="{% if case %}{{ case.age_months }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" onchange="mamAgeToDob()">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Sex *</label>
+                <select name="child_gender" id="mam_reg_gender" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                    <option value="">Select Sex</option>
+                    <option value="Male" {% if case and case.child_gender == 'Male' %}selected{% endif %}>M</option>
+                    <option value="Female" {% if case and case.child_gender == 'Female' %}selected{% endif %}>F</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Caregiver's Name *</label>
+                <input type="text" name="caregiver_name" required value="{% if case %}{{ case.caregiver_name }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Community *</label>
+                <input type="text" name="community" required value="{% if case %}{{ case.address }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+            </div>
+        </div>
+    </div>
+
+    <!-- Child Photo and Registration Location -->
+    <div class="border-b pb-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Child Photo -->
+            <div>
+                <label class="block text-sm font-medium text-yellow-600 mb-2">
+                    <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    Child Photo
+                </label>
+                <input type="file" name="child_photo" accept="image/jpeg,image/png,image/gif" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-yellow-50 file:text-yellow-700 hover:file:bg-yellow-100">
+                <p class="text-xs text-gray-500 mt-1">Upload a clear photo of the child (JPG, PNG, GIF)</p>
+                {% if case and case.child_photo %}
+                <div class="mt-2 flex items-center gap-3">
+                    <img src="{{ case.child_photo.url }}" alt="Current photo" class="h-16 w-16 object-cover rounded-md border">
+                    <span class="text-xs text-gray-500">Current photo — upload new to replace</span>
+                </div>
+                {% endif %}
+            </div>
+            
+            <!-- Registration Location -->
+            <div>
+                <label class="block text-sm font-medium text-yellow-600 mb-2">
+                    <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    Registration Location
+                </label>
+                <div class="grid grid-cols-2 gap-2 mb-2">
+                    <input type="text" name="registration_latitude" id="mam_latitude" placeholder="Latitude" value="{% if case and case.registration_latitude %}{{ case.registration_latitude }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                    <input type="text" name="registration_longitude" id="mam_longitude" placeholder="Longitude" value="{% if case and case.registration_longitude %}{{ case.registration_longitude }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                </div>
+                <button type="button" onclick="getMamLocation()" class="inline-flex items-center px-3 py-2 bg-green-100 text-green-700 rounded-md hover:bg-green-200 text-sm font-medium">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                    </svg>
+                    Get Current Location
+                </button>
+                <p class="text-xs text-gray-500 mt-1">Click button to auto-detect or enter coordinates manually</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Entry Criteria -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Entry Criteria</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="flex items-center">
+                <input type="radio" name="entry_criteria" value="direct_new" id="entry_direct" class="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300">
+                <label for="entry_direct" class="ml-2 text-sm text-gray-700">Direct New Enrolment at Facility/Community</label>
+            </div>
+            <div class="flex items-center">
+                <input type="radio" name="entry_criteria" value="referred" id="entry_referred" class="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300">
+                <label for="entry_referred" class="ml-2 text-sm text-gray-700">Referred from other MAM-OPC</label>
+            </div>
+            <div class="flex items-center">
+                <input type="radio" name="entry_criteria" value="re_enrolment" id="entry_reenrol" class="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300">
+                <label for="entry_reenrol" class="ml-2 text-sm text-gray-700">Re-enrolment after defaulting</label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Anthropometric Measurements -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Anthropometric Measurements</h3>
+
+        {% include 'cases/partials/inline_growth_chart.html' with chart_id="mam_reg" color="yellow" %}
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Weight (kg) *</label>
+                <input type="number" step="0.1" name="weight_kg" id="mam_reg_weight" required value="{% if case %}{{ case.weight_kg }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Height (cm) *</label>
+                <input type="number" step="0.1" name="height_cm" id="mam_reg_height" required value="{% if case %}{{ case.height_cm }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">WFL/H Z-Score</label>
+                <select name="z_score_value" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                    <option value="">Select Z-Score</option>
+                    <option value="< -3 SD">&lt; -3 SD</option>
+                    <option value=">= -3 SD and < -2 SD">&ge; -3 SD and &lt; -2 SD</option>
+                    <option value=">= -2 SD and <= +1 SD">&ge; -2 SD and &le; +1 SD</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">MUAC (cm) *</label>
+                <input type="number" step="0.1" name="muac_cm" required value="{% if case %}{{ case.muac_cm }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                <p class="text-xs text-gray-500 mt-1">11.5 - 12.4 cm for MAM</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Infant Under 6 Months Exclusion Warning -->
+    <div id="mam-infant-exclusion-warning" style="display: none;" class="border-b pb-6">
+        <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                    </svg>
+                </div>
+                <div class="ml-3">
+                    <h3 class="text-sm font-medium text-red-800">🚨 MAM Exclusion: Infant Under 6 Months</h3>
+                    <div class="mt-2 text-sm text-red-700">
+                        <p><strong>Infants less than 6 months are NOT admitted for MAM management.</strong></p>
+                        <ul class="list-disc list-inside mt-2 space-y-1">
+                            <li>If complications or poor suckling → <strong>Refer to Hospital/IPC</strong></li>
+                            <li>If no complications, breastfeeding possible → <strong>Manage via SAM OPC infant-at-risk pathway</strong></li>
+                        </ul>
+                        <p class="mt-2 font-semibold">Please do not proceed with MAM registration for this infant.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Aggravating Factors Assessment (for High-risk MAM classification) -->
+    <div id="mam-aggravating-factors-section" style="display: none;" class="border-b pb-6">
+        <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4 rounded">
+            <h3 class="text-lg font-semibold text-blue-800 mb-2">📋 Aggravating Factors Assessment</h3>
+            <p class="text-sm text-blue-700">The following factors determine if child should be classified as <strong>High-risk MAM</strong> vs <strong>Other MAM</strong>. Check all that apply.</p>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div class="lg:col-span-3">
+                <div class="flex items-center p-3 bg-gray-50 rounded">
+                    <input type="checkbox" id="age_under_24" disabled class="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 rounded">
+                    <label for="age_under_24" class="ml-2 text-sm text-gray-700">
+                        <strong>Age under 24 months</strong> <span class="text-xs text-gray-500">(auto-calculated)</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Previous SAM Episode</label>
+                <select name="previous_sam_episode" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                    <option value="">Select</option>
+                    <option value="False" {% if case and not case.previous_sam_episode %}selected{% endif %}>No</option>
+                    <option value="True" {% if case and case.previous_sam_episode %}selected{% endif %}>Yes</option>
+                </select>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Failed to Recover with Counselling Only</label>
+                <select name="failed_counselling_only" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                    <option value="">Select</option>
+                    <option value="False" {% if case and not case.failed_counselling_only %}selected{% endif %}>No</option>
+                    <option value="True" {% if case and case.failed_counselling_only %}selected{% endif %}>Yes</option>
+                </select>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">HIV/TB Status</label>
+                <select name="hiv_tb_status" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                    <option value="None" {% if case and case.hiv_tb_status == 'None' %}selected{% endif %}>None</option>
+                    <option value="HIV Positive" {% if case and case.hiv_tb_status == 'HIV Positive' %}selected{% endif %}>HIV Positive</option>
+                    <option value="TB Positive" {% if case and case.hiv_tb_status == 'TB Positive' %}selected{% endif %}>TB Positive</option>
+                    <option value="HIV+TB" {% if case and case.hiv_tb_status == 'HIV+TB' %}selected{% endif %}>HIV and TB Positive</option>
+                    <option value="Suspected" {% if case and case.hiv_tb_status == 'Suspected' %}selected{% endif %}>Suspected HIV/TB</option>
+                </select>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Poor Maternal Health</label>
+                <select name="poor_maternal_health" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                    <option value="">Select</option>
+                    <option value="False" {% if case and not case.poor_maternal_health %}selected{% endif %}>No</option>
+                    <option value="True" {% if case and case.poor_maternal_health %}selected{% endif %}>Yes</option>
+                </select>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Mother Deceased</label>
+                <select name="mother_deceased" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                    <option value="">Select</option>
+                    <option value="False" {% if case and not case.mother_deceased %}selected{% endif %}>No</option>
+                    <option value="True" {% if case and case.mother_deceased %}selected{% endif %}>Yes</option>
+                </select>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Household Vulnerability Level</label>
+                <select name="household_vulnerability" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                    <option value="None" {% if case and case.household_vulnerability == 'None' %}selected{% endif %}>None</option>
+                    <option value="Low" {% if case and case.household_vulnerability == 'Low' %}selected{% endif %}>Low</option>
+                    <option value="Moderate" {% if case and case.household_vulnerability == 'Moderate' %}selected{% endif %}>Moderate</option>
+                    <option value="High" {% if case and case.household_vulnerability == 'High' %}selected{% endif %}>High</option>
+                    <option value="Severe" {% if case and case.household_vulnerability == 'Severe' %}selected{% endif %}>Severe</option>
+                </select>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Disability</label>
+                <select name="disability" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                    <option value="">Select</option>
+                    <option value="No" {% if case and case.disability == 'No' %}selected{% endif %}>No</option>
+                    <option value="Yes" {% if case and case.disability == 'Yes' %}selected{% endif %}>Yes</option>
+                </select>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">If Yes, Specify Disability</label>
+                <input type="text" name="disability_details" value="{% if case %}{{ case.disability_details }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" placeholder="Type of disability">
+            </div>
+        </div>
+        
+        <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+            <p class="text-sm text-yellow-800">
+                <strong>Note:</strong> If ANY of the above factors are present (along with MUAC 12.0-12.4 cm), the child will be classified as <strong>High-risk MAM</strong>.
+            </p>
+        </div>
+    </div>
+
+    <!-- Medical Assessment -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Medical Assessment</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Immunization Status</label>
+                <select name="immunization_status" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                    <option value="">Select</option>
+                    <option value="1">1. Complete for Age</option>
+                    <option value="2">2. Not Complete for Age</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Action Taken if Not Complete</label>
+                <input type="text" name="immunization_action" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" placeholder="Describe action taken">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Appetite Test</label>
+                <select name="appetite_test" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                    <option value="">Select</option>
+                    <option value="Pass" {% if case and case.appetite_test == 'Pass' %}selected{% endif %}>Pass</option>
+                    <option value="Fail" {% if case and case.appetite_test == 'Fail' %}selected{% endif %}>Fail</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Routine Medicines -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Routine Medicines</h3>
+        <p class="text-sm text-gray-500 mb-4">Record date when each medicine is given</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Vitamin A</label>
+                <p class="text-xs text-gray-500 mb-1">(on admission, dosage per national guidelines)</p>
+                <input type="date" name="vitamin_a_date" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Mebendazole</label>
+                <p class="text-xs text-gray-500 mb-1">(on indication, children &gt;2 years only)</p>
+                <input type="date" name="mebendazole_date" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Measles Vaccination</label>
+                <p class="text-xs text-gray-500 mb-1">(from 6 months, after 4 weeks in treatment)</p>
+                <input type="date" name="measles_vaccination_date" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+            </div>
+        </div>
+        <div class="mt-4">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Other Medicines</label>
+            <textarea name="other_medicines" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" placeholder="Record any other medicines given"></textarea>
+        </div>
+    </div>
+
+    <!-- Therapeutic Feeding -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Therapeutic Feeding / Counselling</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Food Product Type</label>
+                <select name="food_product_type" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                    <option value="">Select</option>
+                    <option value="RUSF">RUSF (Ready-to-Use Supplementary Food)</option>
+                    <option value="CSB">CSB (Corn Soy Blend)</option>
+                    <option value="Fortified Oil">Fortified Oil</option>
+                    <option value="Micronutrient Powder">Micronutrient Powder</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                <input type="text" name="food_product_quantity" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" placeholder="e.g., 500g, 2 sachets">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Counselling</label>
+                <input type="text" name="counselling" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" placeholder="e.g., Feeding practices">
+            </div>
+        </div>
+    </div>
+
+    <!-- Form Actions -->
+    <div class="flex justify-between items-center pt-4">
+        <a href="{% if edit_mode %}{% url 'cases:case_detail' case.pk %}{% else %}{% url 'cases:case_list' %}{% endif %}" class="bg-gray-500 text-white px-6 py-3 rounded-lg hover:bg-gray-600">Cancel</a>
+        <button type="submit" class="bg-yellow-600 text-white px-8 py-3 rounded-lg hover:bg-yellow-700">{% if edit_mode %}Update MAM Case{% else %}Register MAM Case{% endif %}</button>
+    </div>
+</form>
+
+<script>
+function mamDobToAge() {
+    const dob = document.getElementById('mam_dob').value;
+    const ageField = document.getElementById('mam_age_months');
+    if (!dob) return;
+    const birthDate = new Date(dob);
+    const today = new Date();
+    let months = (today.getFullYear() - birthDate.getFullYear()) * 12 + (today.getMonth() - birthDate.getMonth());
+    if (today.getDate() < birthDate.getDate()) months--;
+    if (months < 0) months = 0;
+    ageField.value = months;
+}
+
+function mamAgeToDob() {
+    const months = parseInt(document.getElementById('mam_age_months').value);
+    const dobField = document.getElementById('mam_dob');
+    if (isNaN(months) || months < 0) return;
+    const today = new Date();
+    const dob = new Date(today.getFullYear(), today.getMonth() - months, today.getDate());
+    dobField.value = dob.toISOString().split('T')[0];
+}
+
+function fetchMamRegNumber() {
+    const sel = document.getElementById('mam_facility_select');
+    const regField = document.getElementById('mam_reg_number');
+    const facilityId = sel.value;
+    if (!facilityId) { regField.value = ''; return; }
+    regField.value = 'Loading...';
+    const url = '/api/next-registration-number/?facility_id=' + facilityId + '&type=MAM';
+    console.log('MAM fetch:', url);
+    fetch(url)
+        .then(r => { console.log('MAM response status:', r.status); return r.json(); })
+        .then(data => {
+            console.log('MAM data:', data);
+            regField.value = data.registration_number || '';
+        })
+        .catch(err => { console.error('MAM fetch error:', err); regField.value = 'Error'; });
+}
+
+function getMamLocation() {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            function(position) {
+                document.getElementById('mam_latitude').value = position.coords.latitude.toFixed(6);
+                document.getElementById('mam_longitude').value = position.coords.longitude.toFixed(6);
+            },
+            function(error) {
+                alert('Unable to get location: ' + error.message);
+            }
+        );
+    } else {
+        alert('Geolocation is not supported by this browser.');
+    }
+}
+
+// Toggle infant exclusion warning and aggravating factors based on age
+function toggleMamSections() {
+    const ageMonths = parseInt(document.getElementById('mam_age_months')?.value) || 0;
+    const infantWarning = document.getElementById('mam-infant-exclusion-warning');
+    const aggravatingSection = document.getElementById('mam-aggravating-factors-section');
+    const ageUnder24Checkbox = document.getElementById('age_under_24');
+    
+    // Show infant exclusion warning if age < 6 months
+    if (infantWarning) {
+        if (ageMonths < 6) {
+            infantWarning.style.display = 'block';
+            if (aggravatingSection) aggravatingSection.style.display = 'none';
+        } else {
+            infantWarning.style.display = 'none';
+            if (aggravatingSection) aggravatingSection.style.display = 'block';
+        }
+    }
+    
+    // Auto-check age under 24 months
+    if (ageUnder24Checkbox) {
+        ageUnder24Checkbox.checked = ageMonths < 24;
+    }
+}
+
+// Add event listener to age field
+const mamAgeField = document.getElementById('mam_age_months');
+if (mamAgeField) {
+    mamAgeField.addEventListener('input', toggleMamSections);
+    mamAgeField.addEventListener('change', toggleMamSections);
+    // Check on page load
+    toggleMamSections();
+}
+
+// Add form submission validation for MAM infant exclusion
+const mamForm = document.querySelector('form');
+if (mamForm && mamForm.querySelector('input[name="malnutrition_type"][value="MAM"]')) {
+    mamForm.addEventListener('submit', function(e) {
+        const ageMonths = parseInt(document.getElementById('mam_age_months')?.value) || 0;
+        if (ageMonths < 6) {
+            e.preventDefault();
+            alert('⚠️ MAM Exclusion: Infants under 6 months cannot be admitted for MAM management.\n\n' +
+                  'Please refer to:\n' +
+                  '• Hospital/IPC if complications or poor suckling\n' +
+                  '• SAM OPC infant-at-risk pathway if no complications and breastfeeding possible');
+            return false;
+        }
+    });
+}
+</script>

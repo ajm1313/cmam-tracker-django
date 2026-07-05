@@ -1,0 +1,144 @@
+{% extends 'base.html' %}
+
+{% block title %}Inventory Reports - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Page Header -->
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Inventory Reports & Analytics</h1>
+            <p class="text-gray-600">Generate comprehensive inventory reports</p>
+        </div>
+        <a href="{% url 'inventory:inventory_dashboard' %}" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+            </svg>
+            Back to Inventory
+        </a>
+    </div>
+
+    <!-- Tabs -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="border-b border-gray-200">
+            <nav class="flex -mb-px">
+                <a href="?report_type=stock" class="px-6 py-3 border-b-2 {% if report_type == 'stock' %}border-blue-500 text-blue-600{% else %}border-transparent text-gray-500 hover:text-gray-700{% endif %} font-medium text-sm flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                    </svg>
+                    Stock Report
+                </a>
+                <a href="?report_type=movement" class="px-6 py-3 border-b-2 {% if report_type == 'movement' %}border-blue-500 text-blue-600{% else %}border-transparent text-gray-500 hover:text-gray-700{% endif %} font-medium text-sm flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                    </svg>
+                    Movement Report
+                </a>
+            </nav>
+        </div>
+
+        <!-- Generate Button -->
+        <div class="p-4 border-b border-gray-200">
+            <button onclick="window.print()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                Generate
+            </button>
+        </div>
+
+        <!-- Summary -->
+        <div class="p-4 border-b border-gray-200">
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center">
+                    <div class="p-2 bg-blue-100 rounded-lg mr-3">
+                        <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500">Total Records</p>
+                        <p class="text-xl font-bold text-gray-900">{{ total_records }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Report Content -->
+        <div class="p-6">
+            <div class="mb-4">
+                <h3 class="text-lg font-semibold text-gray-900">{% if report_type == 'stock' %}Stock Level Report{% else %}Movement Report{% endif %}</h3>
+                <p class="text-sm text-gray-500">Generated on {% now "F d, Y" %} at {% now "g:i A" %}</p>
+            </div>
+
+            {% if data %}
+            <div class="overflow-x-auto">
+                {% if report_type == 'stock' %}
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Stock</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reserved</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Available</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for sl in data %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4">
+                                <div class="text-sm font-medium text-gray-900">{{ sl.inventory_item.name }}</div>
+                                <div class="text-xs text-gray-500">{{ sl.inventory_item.code }}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {% if sl.facility %}{{ sl.facility.name }}{% else %}{{ sl.location_type|title }}{% endif %}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ sl.current_stock }} {{ sl.inventory_item.unit_of_measure }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ sl.reserved_stock }} {{ sl.inventory_item.unit_of_measure }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ sl.available_stock }} {{ sl.inventory_item.unit_of_measure }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">By</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for movement in data %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ movement.movement_date|date:"M d, Y" }}</td>
+                            <td class="px-6 py-4">
+                                <div class="text-sm font-medium text-gray-900">{{ movement.inventory_item.name }}</div>
+                                <div class="text-xs text-gray-500">{{ movement.inventory_item.code }}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ movement.get_movement_type_display }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ movement.quantity }} {{ movement.inventory_item.unit_of_measure }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ movement.created_by.get_full_name|default:movement.created_by.email }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% endif %}
+            </div>
+            {% else %}
+            <div class="text-center py-16">
+                <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+                <h3 class="text-lg font-medium text-gray-900 mb-2">No data found</h3>
+                <p class="text-gray-500">No data matches your current report criteria.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

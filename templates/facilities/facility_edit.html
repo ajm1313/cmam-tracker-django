@@ -1,0 +1,125 @@
+{% extends 'base.html' %}
+
+{% block title %}Edit {{ facility.name }} - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-bold text-gray-900">Edit Facility</h1>
+        <a href="{% url 'facilities:facility_detail' facility.pk %}" class="text-gray-600 hover:text-gray-900">← Back</a>
+    </div>
+
+    <div class="bg-white shadow rounded-lg p-6">
+        <form method="post" class="space-y-6">
+            {% csrf_token %}
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Facility Name</label>
+                    <input type="text" name="name" value="{{ facility.name }}" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Facility Code</label>
+                    <input type="text" name="code" value="{{ facility.code }}" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Type</label>
+                    <select name="type" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <option value="OPC" {% if facility.type == 'OPC' %}selected{% endif %}>OPC (Outpatient Care)</option>
+                        <option value="IPC" {% if facility.type == 'IPC' %}selected{% endif %}>IPC (Inpatient Care)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Contact Person</label>
+                    <input type="text" name="contact_person" value="{{ facility.contact_person|default:'' }}" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Phone</label>
+                    <input type="text" name="phone" value="{{ facility.phone|default:'' }}" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Status</label>
+                    <select name="is_active" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <option value="1" {% if facility.is_active %}selected{% endif %}>Active</option>
+                        <option value="0" {% if not facility.is_active %}selected{% endif %}>Inactive</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700">Address</label>
+                    <textarea name="address" rows="2" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">{{ facility.address|default:'' }}</textarea>
+                </div>
+            </div>
+
+            <!-- SAM Burden Estimation Section -->
+            <div class="border-t border-gray-200 pt-6">
+                <div class="flex items-center gap-2 mb-4">
+                    <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                    <h3 class="text-lg font-semibold text-gray-800">SAM Burden Estimation</h3>
+                    <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">UNICEF Methodology</span>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Catchment Population</label>
+                        <input type="number" name="population" id="id_population" min="0" value="{{ facility.population|default:'' }}"
+                               class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <p class="mt-1 text-xs text-gray-400">Total population served by this facility</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">SAM Prevalence (%)</label>
+                        <input type="number" name="sam_prevalence" id="id_sam_prevalence" min="0" max="100" step="0.01" value="{{ facility.sam_prevalence|default:'' }}"
+                               class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <p class="mt-1 text-xs text-gray-400">Regional SAM prevalence rate from nutrition surveys</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">SAM Burden Cases <span class="text-xs text-gray-400">(auto-calculated)</span></label>
+                        <input type="text" id="id_expected_sam" readonly
+                               class="mt-1 block w-full border border-gray-200 rounded-md shadow-sm py-2 px-3 bg-gray-50 text-gray-700 font-semibold cursor-not-allowed"
+                               placeholder="—">
+                        <p class="mt-1 text-xs text-gray-400">Population × 17% (U5) × Prevalence × 2.6 (incidence factor)</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">SAM Target <span class="text-xs text-gray-400">(80% coverage)</span></label>
+                        <input type="text" id="id_sam_target" readonly
+                               class="mt-1 block w-full border border-gray-200 rounded-md shadow-sm py-2 px-3 bg-amber-50 text-amber-700 font-bold cursor-not-allowed"
+                               placeholder="—">
+                        <p class="mt-1 text-xs text-gray-400">80% programme coverage target of expected SAM cases</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-end space-x-3">
+                <a href="{% url 'facilities:facility_detail' facility.pk %}" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded">Cancel</a>
+                <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Update Facility</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const UNDER5 = 0.17, ICF = 2.6, COVERAGE = 0.80;
+    const popInput = document.getElementById('id_population');
+    const prevInput = document.getElementById('id_sam_prevalence');
+    const expectedField = document.getElementById('id_expected_sam');
+    const targetField = document.getElementById('id_sam_target');
+
+    function calcSAM() {
+        const pop = parseFloat(popInput.value);
+        const prev = parseFloat(prevInput.value);
+        if (pop > 0 && prev > 0) {
+            const expected = Math.ceil(pop * UNDER5 * (prev / 100) * ICF);
+            const target = Math.ceil(expected * COVERAGE);
+            expectedField.value = expected.toLocaleString() + ' cases/year';
+            targetField.value = target.toLocaleString() + ' cases/year';
+        } else {
+            expectedField.value = '';
+            targetField.value = '';
+        }
+    }
+    popInput.addEventListener('input', calcSAM);
+    prevInput.addEventListener('input', calcSAM);
+    calcSAM(); // Calculate on page load if values exist
+});
+</script>
+{% endblock %}

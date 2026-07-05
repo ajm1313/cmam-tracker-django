@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+
+{% block title %}New Case Registration - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">New Case Registration</h1>
+            <p class="text-gray-600">Select case type to show the appropriate registration form</p>
+        </div>
+        <a href="{% url 'cases:case_list' %}" class="text-gray-600 hover:text-gray-900">← Back to List</a>
+    </div>
+
+    <!-- Case Type Selection Tabs -->
+    <div class="bg-white shadow rounded-lg overflow-hidden">
+        <div class="border-b border-gray-200">
+            <nav class="flex -mb-px" id="caseTabs">
+                <button type="button" onclick="showForm('SAM')" id="tab-SAM" 
+                    class="case-tab w-1/3 py-4 px-1 text-center border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-red-700 hover:border-red-300">
+                    <span class="block text-lg font-bold">SAM</span>
+                    <span class="text-xs">Severe Acute Malnutrition</span>
+                </button>
+                <button type="button" onclick="showForm('MAM')" id="tab-MAM"
+                    class="case-tab w-1/3 py-4 px-1 text-center border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-yellow-700 hover:border-yellow-300">
+                    <span class="block text-lg font-bold">MAM</span>
+                    <span class="text-xs">Moderate Acute Malnutrition</span>
+                </button>
+                <button type="button" onclick="showForm('IPC')" id="tab-IPC"
+                    class="case-tab w-1/3 py-4 px-1 text-center border-b-2 font-medium text-sm border-transparent text-gray-500 hover:text-purple-700 hover:border-purple-300">
+                    <span class="block text-lg font-bold">IPC</span>
+                    <span class="text-xs">Inpatient Care</span>
+                </button>
+            </nav>
+        </div>
+
+        <!-- Placeholder -->
+        <div id="form-placeholder" class="p-12 text-center">
+            <svg class="mx-auto h-16 w-16 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <h3 class="mt-4 text-lg font-medium text-gray-900">Select a Case Type</h3>
+            <p class="mt-2 text-sm text-gray-500">Click on SAM, MAM, or IPC above to load the appropriate registration form.</p>
+        </div>
+
+        <!-- SAM Form -->
+        <div id="form-SAM" class="hidden p-6">
+            {% include 'cases/partials/sam_form.html' %}
+        </div>
+
+        <!-- MAM Form -->
+        <div id="form-MAM" class="hidden p-6">
+            {% include 'cases/partials/mam_form.html' %}
+        </div>
+
+        <!-- IPC Form -->
+        <div id="form-IPC" class="hidden p-6">
+            {% include 'cases/partials/ipc_form.html' %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function showForm(type) {
+    document.getElementById('form-placeholder').classList.add('hidden');
+    document.getElementById('form-SAM').classList.add('hidden');
+    document.getElementById('form-MAM').classList.add('hidden');
+    document.getElementById('form-IPC').classList.add('hidden');
+    
+    document.querySelectorAll('.case-tab').forEach(tab => {
+        tab.classList.remove('border-red-500', 'text-red-700', 'border-yellow-500', 'text-yellow-700', 'border-purple-500', 'text-purple-700');
+        tab.classList.add('border-transparent', 'text-gray-500');
+    });
+    
+    document.getElementById('form-' + type).classList.remove('hidden');
+    const activeTab = document.getElementById('tab-' + type);
+    activeTab.classList.remove('border-transparent', 'text-gray-500');
+    
+    if (type === 'SAM') {
+        activeTab.classList.add('border-red-500', 'text-red-700');
+    } else if (type === 'MAM') {
+        activeTab.classList.add('border-yellow-500', 'text-yellow-700');
+    } else if (type === 'IPC') {
+        activeTab.classList.add('border-purple-500', 'text-purple-700');
+    }
+}
+</script>
+{% endblock %}

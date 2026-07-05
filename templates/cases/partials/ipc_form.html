@@ -1,0 +1,214 @@
+<form method="post" enctype="multipart/form-data" class="space-y-8">
+    {% csrf_token %}
+    <input type="hidden" name="malnutrition_type" value="IPC">
+    
+    <!-- IPC Header -->
+    <div class="bg-purple-50 border-l-4 border-purple-500 p-4 rounded">
+        <h2 class="text-xl font-bold text-purple-700">IPC Registration Form</h2>
+        <p class="text-purple-600">Inpatient Care - Stabilization Center Registration</p>
+    </div>
+
+    <!-- Facility and Registration Info -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Facility and Registration Information</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">IPC Facility *</label>
+                <select name="facility_id" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+                    <option value="">Select IPC Facility</option>
+                    {% for facility in ipc_facilities %}
+                    <option value="{{ facility.id }}">{{ facility.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Registration Number</label>
+                <input type="text" readonly class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50" placeholder="Auto-generated: XXX/001/IPC">
+            </div>
+        </div>
+    </div>
+
+    <!-- Child Information -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Child Information</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Child Name *</label>
+                <input type="text" name="child_name" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Date of Birth *</label>
+                <input type="date" name="date_of_birth" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Age (months) *</label>
+                <input type="number" name="age_months" min="6" max="59" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Gender *</label>
+                <select name="child_gender" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+                    <option value="">Select Gender</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Caregiver Name *</label>
+                <input type="text" name="caregiver_name" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Caregiver Phone</label>
+                <input type="tel" name="caregiver_phone" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">House Location</label>
+                <input type="text" name="house_location" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Time to Travel (minutes)</label>
+                <input type="number" name="time_to_travel_minutes" min="0" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+            </div>
+        </div>
+    </div>
+
+    <!-- Admission Information -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Admission Information</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Admission Date *</label>
+                <input type="date" name="admission_date" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Admission Time</label>
+                <input type="time" name="admission_time" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Referral Source *</label>
+                <select name="referral_source" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+                    <option value="">Select Source</option>
+                    <option value="Direct from community">Direct from community</option>
+                    <option value="Referred from health facility">Referred from health facility</option>
+                    <option value="Referred from OPC">Referred from OPC</option>
+                    <option value="Transfer from other IPC">Transfer from other IPC</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Referring Facility</label>
+                <input type="text" name="referring_facility" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500" placeholder="Type facility name...">
+            </div>
+        </div>
+    </div>
+
+    <!-- Anthropometric Measurements -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Anthropometric Measurements</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Weight (kg) *</label>
+                <input type="number" step="0.1" name="weight_kg" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Height (cm) *</label>
+                <input type="number" step="0.1" name="height_cm" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">MUAC (cm)</label>
+                <input type="number" step="0.1" name="muac_cm" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">W/H Z-Score</label>
+                <input type="number" step="0.1" name="wfh_zscore" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Bilateral Pitting Oedema *</label>
+                <select name="bilateral_pitting_oedema" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+                    <option value="">Select</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Oedema Grade</label>
+                <select name="oedema_grade" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+                    <option value="None">None</option>
+                    <option value="+">+ (mild)</option>
+                    <option value="++">++ (moderate)</option>
+                    <option value="+++">+++ (severe)</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Clinical Assessment -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Clinical Assessment</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Appetite Test</label>
+                <select name="appetite_test" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+                    <option value="">Select</option>
+                    <option value="Pass">Pass</option>
+                    <option value="Fail">Fail</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Medical Complications *</label>
+                <select name="medical_complications" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500">
+                    <option value="">Select</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                </select>
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Complications Details</label>
+                <textarea name="complications_details" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-purple-500 focus:border-purple-500" placeholder="Describe any medical complications..."></textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- Danger Signs -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4 text-red-600">Danger Signs (Check all that apply)</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <label class="flex items-center">
+                <input type="checkbox" name="danger_signs[]" value="Convulsions" class="mr-2 text-purple-600">
+                <span class="text-sm">Convulsions</span>
+            </label>
+            <label class="flex items-center">
+                <input type="checkbox" name="danger_signs[]" value="Unconscious" class="mr-2 text-purple-600">
+                <span class="text-sm">Unconscious</span>
+            </label>
+            <label class="flex items-center">
+                <input type="checkbox" name="danger_signs[]" value="Severe dehydration" class="mr-2 text-purple-600">
+                <span class="text-sm">Severe dehydration</span>
+            </label>
+            <label class="flex items-center">
+                <input type="checkbox" name="danger_signs[]" value="Very high fever" class="mr-2 text-purple-600">
+                <span class="text-sm">Very high fever</span>
+            </label>
+            <label class="flex items-center">
+                <input type="checkbox" name="danger_signs[]" value="Severe pneumonia" class="mr-2 text-purple-600">
+                <span class="text-sm">Severe pneumonia</span>
+            </label>
+            <label class="flex items-center">
+                <input type="checkbox" name="danger_signs[]" value="Severe anemia" class="mr-2 text-purple-600">
+                <span class="text-sm">Severe anemia</span>
+            </label>
+            <label class="flex items-center">
+                <input type="checkbox" name="danger_signs[]" value="Hypothermia" class="mr-2 text-purple-600">
+                <span class="text-sm">Hypothermia</span>
+            </label>
+            <label class="flex items-center">
+                <input type="checkbox" name="danger_signs[]" value="Hypoglycemia" class="mr-2 text-purple-600">
+                <span class="text-sm">Hypoglycemia</span>
+            </label>
+        </div>
+    </div>
+
+    <!-- Form Actions -->
+    <div class="flex justify-between items-center pt-4">
+        <a href="{% url 'cases:case_list' %}" class="bg-gray-500 text-white px-6 py-3 rounded-lg hover:bg-gray-600">Cancel</a>
+        <button type="submit" class="bg-purple-600 text-white px-8 py-3 rounded-lg hover:bg-purple-700">Register IPC Case</button>
+    </div>
+</form>

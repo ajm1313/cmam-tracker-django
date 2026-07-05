@@ -1,0 +1,975 @@
+<form method="post" enctype="multipart/form-data" class="space-y-8">
+    {% csrf_token %}
+    <input type="hidden" name="malnutrition_type" value="SAM">
+    
+    <!-- SAM Header -->
+    <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded">
+        <h2 class="text-xl font-bold text-red-700">SAM Registration Form</h2>
+        <p class="text-red-600">Severe Acute Malnutrition - Outpatient Care (OPC) Enrolment Details</p>
+    </div>
+
+    <!-- IPC Referral Alert (ponytail: auto-shown when criteria met) -->
+    <div id="ipcReferralAlert" class="hidden bg-red-100 border-l-4 border-red-600 p-4 rounded-lg">
+        <div class="flex items-start gap-3">
+            <svg class="w-6 h-6 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            <div class="flex-1">
+                <h3 class="font-bold text-red-800">⚠️ IPC Referral Required</h3>
+                <p class="text-red-700 text-sm mt-1">This child should not be admitted to SAM OPC. The child meets criteria for inpatient care.</p>
+                <ul id="ipcReferralReasons" class="list-disc ml-5 mt-2 text-red-700 text-sm"></ul>
+                <p class="text-red-800 font-semibold mt-2 text-sm">Complete referral actions now before proceeding.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 1: Child's Information -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4 bg-gray-100 p-2 rounded">1. Child's Information</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Facility *</label>
+                <select name="facility_id" id="sam_facility_select" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500" onchange="fetchSamRegNumber()">
+                    <option value="">Select Facility</option>
+                    {% for facility in opc_facilities %}
+                    <option value="{{ facility.id }}" data-code="{{ facility.code }}" data-type="{{ facility.type }}" {% if case and case.facility_id == facility.id %}selected{% endif %}>{{ facility.name }} ({{ facility.code }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Registration Number <span class="text-xs text-gray-400">(auto-generated)</span></label>
+                <input type="text" name="registration_number" id="sam_reg_number" readonly value="{% if case %}{{ case.registration_number }}{% endif %}" class="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-50 text-gray-700 font-mono font-bold cursor-not-allowed" placeholder="Select facility to generate">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Date of Enrolment *</label>
+                <input type="date" name="admission_date" required value="{% if case %}{{ case.admission_date|date:'Y-m-d' }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Child Name *</label>
+                <input type="text" name="child_name" required value="{% if case %}{{ case.child_name }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Date of Birth *</label>
+                <input type="date" name="date_of_birth" id="sam_dob" required value="{% if case %}{{ case.date_of_birth|date:'Y-m-d' }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500" onchange="samDobToAge()">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Age (months) *</label>
+                <input type="number" name="age_months" id="sam_age_months" min="0" max="59" required value="{% if case %}{{ case.age_months }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500" onchange="samAgeToDob()">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Sex *</label>
+                <select name="child_gender" id="sam_reg_gender" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select Sex</option>
+                    <option value="Male" {% if case and case.child_gender == 'Male' %}selected{% endif %}>Male</option>
+                    <option value="Female" {% if case and case.child_gender == 'Female' %}selected{% endif %}>Female</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Community/Locality *</label>
+                <input type="text" name="community" required value="{% if case %}{{ case.address }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">House Location</label>
+                <input type="text" name="house_location" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Time to Travel to Site</label>
+                <input type="text" name="travel_time" placeholder="e.g., 30 mins" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Father Alive</label>
+                <select name="father_alive" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                    <option value="Unknown">Unknown</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Mother Alive</label>
+                <select name="mother_alive" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                    <option value="Unknown">Unknown</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Caregiver Name *</label>
+                <input type="text" name="caregiver_name" required value="{% if case %}{{ case.caregiver_name }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Caregiver Phone</label>
+                <input type="tel" name="caregiver_phone" value="{% if case %}{{ case.caregiver_phone|default:'' }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Caregiver Relationship</label>
+                <select name="caregiver_relationship" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="Mother" {% if case and case.caregiver_relationship == 'Mother' %}selected{% endif %}>Mother</option>
+                    <option value="Father" {% if case and case.caregiver_relationship == 'Father' %}selected{% endif %}>Father</option>
+                    <option value="Grandmother" {% if case and case.caregiver_relationship == 'Grandmother' %}selected{% endif %}>Grandmother</option>
+                    <option value="Grandfather" {% if case and case.caregiver_relationship == 'Grandfather' %}selected{% endif %}>Grandfather</option>
+                    <option value="Aunt" {% if case and case.caregiver_relationship == 'Aunt' %}selected{% endif %}>Aunt</option>
+                    <option value="Uncle" {% if case and case.caregiver_relationship == 'Uncle' %}selected{% endif %}>Uncle</option>
+                    <option value="Sibling" {% if case and case.caregiver_relationship == 'Sibling' %}selected{% endif %}>Sibling</option>
+                    <option value="Other" {% if case and case.caregiver_relationship == 'Other' %}selected{% endif %}>Other</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Enrolment Type *</label>
+                <select name="referral_source" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="Direct from community">Direct from community</option>
+                    <option value="Referred from health facility">Referred from health facility</option>
+                    <option value="Referred from IPC">Referred from Inpatient Care (IPC)</option>
+                    <option value="Re-enrolment/relapse">Re-enrolment/Relapse</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Child Photo and Registration Location -->
+    <div class="border-b pb-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Child Photo -->
+            <div>
+                <label class="block text-sm font-medium text-red-600 mb-2">
+                    <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    Child Photo
+                </label>
+                <input type="file" name="child_photo" accept="image/jpeg,image/png,image/gif" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-red-50 file:text-red-700 hover:file:bg-red-100">
+                <p class="text-xs text-gray-500 mt-1">Upload a clear photo of the child (JPG, PNG, GIF)</p>
+                {% if case and case.child_photo %}
+                <div class="mt-2 flex items-center gap-3">
+                    <img src="{{ case.child_photo.url }}" alt="Current photo" class="h-16 w-16 object-cover rounded-md border">
+                    <span class="text-xs text-gray-500">Current photo — upload new to replace</span>
+                </div>
+                {% endif %}
+            </div>
+            
+            <!-- Registration Location -->
+            <div>
+                <label class="block text-sm font-medium text-red-600 mb-2">
+                    <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    Registration Location
+                </label>
+                <div class="grid grid-cols-2 gap-2 mb-2">
+                    <input type="text" name="registration_latitude" id="sam_latitude" placeholder="Latitude" value="{% if case and case.registration_latitude %}{{ case.registration_latitude }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <input type="text" name="registration_longitude" id="sam_longitude" placeholder="Longitude" value="{% if case and case.registration_longitude %}{{ case.registration_longitude }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                </div>
+                <button type="button" onclick="getSamLocation()" class="inline-flex items-center px-3 py-2 bg-green-100 text-green-700 rounded-md hover:bg-green-200 text-sm font-medium">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                    </svg>
+                    Get Current Location
+                </button>
+                <p class="text-xs text-gray-500 mt-1">Click button to auto-detect or enter coordinates manually</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 2: Anthropometry -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4 bg-gray-100 p-2 rounded">2. Anthropometry</h3>
+        
+        <!-- Age Group Indicator -->
+        <div class="mb-4 p-3 bg-blue-50 rounded-md">
+            <p class="text-sm text-blue-700"><strong>Note:</strong> For children 6-59 months, use MUAC &lt; 11.5 cm or WFH/WFL &lt; -3 Z-score. For infants 0-6 months, use WFA &lt; -3 Z-score.</p>
+        </div>
+
+        {% include 'cases/partials/inline_growth_chart.html' with chart_id="sam_reg" color="red" %}
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Weight (kg) *</label>
+                <input type="number" step="0.01" name="weight_kg" id="sam_reg_weight" required value="{% if case %}{{ case.weight_kg }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Length/Height (cm) *</label>
+                <input type="number" step="0.1" name="height_cm" id="sam_reg_height" required value="{% if case %}{{ case.height_cm }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                <p class="text-xs text-gray-500 mt-1">Length if &lt;24 months, Height if ≥24 months</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">MUAC (cm) *</label>
+                <input type="number" step="0.1" name="muac_cm" required value="{% if case %}{{ case.muac_cm }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                <p class="text-xs text-gray-500 mt-1">&lt; 11.5 cm for SAM (6-59 months)</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Bilateral Oedema</label>
+                <select name="oedema" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="None" {% if case and case.oedema == 'None' %}selected{% endif %}>None</option>
+                    <option value="+" {% if case and case.oedema == '+' %}selected{% endif %}>+ (mild - feet only)</option>
+                    <option value="++" {% if case and case.oedema == '++' %}selected{% endif %}>++ (moderate - feet & legs)</option>
+                    <option value="+++" {% if case and case.oedema == '+++' %}selected{% endif %}>+++ (severe - generalized)</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Weight-for-Height Z-score</label>
+                <select name="z_score_wfh" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select Z-score</option>
+                    <option value="< -3 SD">< -3 SD (Severe wasting)</option>
+                    <option value="-3 to < -2 SD">-3 to < -2 SD (Moderate wasting)</option>
+                    <option value="-2 to +1 SD">-2 to +1 SD (Normal)</option>
+                    <option value="> +1 to +2 SD">> +1 to +2 SD (Possible risk of overweight)</option>
+                    <option value="> +2 SD">> +2 SD (Overweight/Obese)</option>
+                </select>
+                <p class="text-xs text-gray-500 mt-1">&lt; -3 SD for SAM</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Weight-for-Age Z-score</label>
+                <select name="z_score_wfa" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select Z-score</option>
+                    <option value="< -3 SD">< -3 SD (Severely underweight)</option>
+                    <option value="-3 to < -2 SD">-3 to < -2 SD (Underweight)</option>
+                    <option value="-2 to +1 SD">-2 to +1 SD (Normal)</option>
+                    <option value="> +1 SD">> +1 SD (Above normal)</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Height-for-Age Z-score</label>
+                <select name="z_score_hfa" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select Z-score</option>
+                    <option value="< -3 SD">< -3 SD (Severely stunted)</option>
+                    <option value="-3 to < -2 SD">-3 to < -2 SD (Stunted)</option>
+                    <option value="-2 to +3 SD">-2 to +3 SD (Normal)</option>
+                    <option value="> +3 SD">> +3 SD (Above normal)</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Enrolment Criteria</label>
+                <select name="enrolment_criteria" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="MUAC < 11.5cm">MUAC &lt; 11.5 cm</option>
+                    <option value="WFH < -3SD">WFH/WFL &lt; -3 Z-score</option>
+                    <option value="Bilateral oedema">Bilateral pitting oedema</option>
+                    <option value="MUAC < 11.0cm infant">MUAC &lt; 11.0 cm (infant 6wks-6mo)</option>
+                    <option value="WFA < -3SD infant">WFA &lt; -3 Z-score (infant 0-6mo)</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 3: Medical History -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4 bg-gray-100 p-2 rounded">3. Medical History</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Diarrhoea</label>
+                <select name="diarrhoea" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Stool Frequency/Day</label>
+                <select name="stool_frequency" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="1-3">1-3</option>
+                    <option value="4-5">4-5</option>
+                    <option value=">5">&gt;5</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Vomiting</label>
+                <select name="vomiting" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Cough</label>
+                <select name="cough" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Passing Urine</label>
+                <select name="passing_urine" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Oedema Duration (days)</label>
+                <input type="number" name="oedema_duration_days" min="0" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500" placeholder="If oedema present">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Appetite (RUTF Test)</label>
+                <select name="appetite_test" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="Good" {% if case and case.appetite_test == 'Good' %}selected{% endif %}>Good (Pass)</option>
+                    <option value="Poor" {% if case and case.appetite_test == 'Poor' %}selected{% endif %}>Poor</option>
+                    <option value="None" {% if case and case.appetite_test == 'None' %}selected{% endif %}>None (Fail)</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Breastfeeding Status</label>
+                <select name="breastfeeding_status" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="Yes">Yes - Still breastfeeding</option>
+                    <option value="No">No - Not breastfeeding</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">If Yes, Prospect of Breastfeeding</label>
+                <select name="breastfeeding_prospect" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="Good">Good</option>
+                    <option value="Poor">Poor</option>
+                    <option value="None">None</option>
+                </select>
+            </div>
+            
+            <!-- Infant Under 6 Months Specific Fields -->
+            <div class="lg:col-span-2" id="infant-fields-section" style="display: none;">
+                <div class="bg-amber-50 border-l-4 border-amber-500 p-4 mb-4 rounded">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-amber-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-amber-800">⚠️ Infant Under 6 Months Assessment</h3>
+                            <p class="mt-1 text-sm text-amber-700">Complete the following fields for infants less than 6 months old. These are critical for IPC referral assessment.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Age in Weeks <span class="text-red-500">*</span></label>
+                        <input type="number" name="age_weeks" min="0" max="26" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500" placeholder="0-26 weeks" value="{% if case %}{{ case.age_weeks }}{% endif %}">
+                        <p class="mt-1 text-xs text-gray-500">Required for infants under 6 months</p>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Effective Suckling <span class="text-red-500">*</span></label>
+                        <select name="effective_suckling" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                            <option value="">Select</option>
+                            <option value="Yes" {% if case and case.effective_suckling == 'Yes' %}selected{% endif %}>Yes - Effective suckling</option>
+                            <option value="Poor" {% if case and case.effective_suckling == 'Poor' %}selected{% endif %}>Poor - Weak suckling</option>
+                            <option value="No" {% if case and case.effective_suckling == 'No' %}selected{% endif %}>No - Cannot suckle</option>
+                        </select>
+                        <p class="mt-1 text-xs text-red-600" id="suckling-warning" style="display: none;">⚠️ No/Poor suckling requires IPC referral</p>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Relactation Needed</label>
+                        <select name="relactation_needed" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                            <option value="">Select</option>
+                            <option value="False" {% if case and not case.relactation_needed %}selected{% endif %}>No</option>
+                            <option value="True" {% if case and case.relactation_needed %}selected{% endif %}>Yes - Mother needs relactation support</option>
+                        </select>
+                        <p class="mt-1 text-xs text-red-600" id="relactation-warning" style="display: none;">⚠️ Relactation needed requires IPC referral</p>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Visible Severe Wasting</label>
+                        <select name="visible_severe_wasting" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                            <option value="">Select</option>
+                            <option value="False" {% if case and not case.visible_severe_wasting %}selected{% endif %}>No</option>
+                            <option value="True" {% if case and case.visible_severe_wasting %}selected{% endif %}>Yes - Visible severe wasting present</option>
+                        </select>
+                        <p class="mt-1 text-xs text-red-600" id="wasting-warning" style="display: none;">⚠️ Visible severe wasting requires IPC referral</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Immunization Status</label>
+                <select name="immunization_status" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="Complete for Age">Complete for Age</option>
+                    <option value="Not Complete for Age">Not Complete for Age</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">G6PD Status</label>
+                <select name="g6pd_status" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="No Defect">No Defect</option>
+                    <option value="Partial Defect">Partial Defect</option>
+                    <option value="Full Defect">Full Defect</option>
+                </select>
+            </div>
+            <div class="lg:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Additional Medical History</label>
+                <textarea name="additional_medical_history" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500" placeholder="Any other relevant medical information..."></textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 4: Physical Examination -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4 bg-gray-100 p-2 rounded">4. Physical Examination</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Respiratory Rate (/min)</label>
+                <select name="respiratory_rate" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="<30">&lt; 30</option>
+                    <option value="30-39">30-39</option>
+                    <option value="40-49">40-49</option>
+                    <option value="50-59">50-59</option>
+                    <option value=">=60">≥ 60</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Temperature (°C)</label>
+                <input type="number" step="0.1" name="temperature_celsius" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500" placeholder="e.g., 37.5">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Chest Indrawing</label>
+                <select name="chest_indrawing" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Eyes</label>
+                <select name="eyes_condition" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="Normal">Normal</option>
+                    <option value="Sunken">Sunken</option>
+                    <option value="Discharge">Discharge</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Conjunctiva (Pallor)</label>
+                <select name="conjunctiva" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="Normal">Normal (Pink)</option>
+                    <option value="Mild Pallor">Mild Pallor</option>
+                    <option value="Moderate Pallor">Moderate Pallor</option>
+                    <option value="Severe Pallor">Severe Pallor</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Ears</label>
+                <select name="ears_condition" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="Normal">Normal</option>
+                    <option value="Discharge">Discharge</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Mouth</label>
+                <select name="mouth_condition" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="Normal">Normal</option>
+                    <option value="Thrush">Thrush/Candida</option>
+                    <option value="Sores">Sores/Ulcers</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Enlarged Lymph Nodes</label>
+                <select name="lymph_nodes" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="None">None</option>
+                    <option value="Neck">Neck</option>
+                    <option value="Axilla">Axilla</option>
+                    <option value="Groin">Groin</option>
+                    <option value="Multiple">Multiple sites</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Hands & Feet</label>
+                <select name="hands_feet" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="Normal">Normal (Warm)</option>
+                    <option value="Cold">Cold</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Skin Changes</label>
+                <select name="skin_changes" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="None">None</option>
+                    <option value="Stained/Discolored">Stained/Discolored</option>
+                    <option value="Peeling">Peeling</option>
+                    <option value="Ulcers/Torn">Ulcers/Torn</option>
+                    <option value="Abscess">Abscess</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Disability</label>
+                <select name="disability" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                    <option value="">Select</option>
+                    <option value="No">No</option>
+                    <option value="Yes">Yes</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">If Yes, Specify Disability</label>
+                <input type="text" name="disability_details" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500" placeholder="Type of disability">
+            </div>
+            <div class="lg:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Additional Physical Exam Notes</label>
+                <textarea name="physical_exam_notes" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500" placeholder="Any other physical examination findings..."></textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 5: Routine Medicines at Enrolment -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4 bg-gray-100 p-2 rounded">5. Routine Medicines at Enrolment</h3>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Left Side - Drug/Date/Dosage Table -->
+            <div class="overflow-x-auto">
+                <table class="min-w-full border border-gray-300">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase border border-gray-300">Drug</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase border border-gray-300">Date</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase border border-gray-300">Dosage</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white">
+                        <tr>
+                            <td class="px-3 py-2 text-sm font-medium text-gray-900 border border-gray-300">Amoxicillin</td>
+                            <td class="px-3 py-2 border border-gray-300">
+                                <input type="date" name="amoxicillin_date" class="w-full px-2 py-1 border border-gray-300 rounded-md text-sm">
+                            </td>
+                            <td class="px-3 py-2 border border-gray-300">
+                                <input type="text" name="amoxicillin_dosage" class="w-full px-2 py-1 border border-gray-300 rounded-md text-sm" placeholder="Dosage">
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="px-3 py-2 text-sm font-medium text-gray-900 border border-gray-300">Vitamin A</td>
+                            <td class="px-3 py-2 border border-gray-300">
+                                <input type="date" name="vitamin_a_date" class="w-full px-2 py-1 border border-gray-300 rounded-md text-sm">
+                            </td>
+                            <td class="px-3 py-2 border border-gray-300">
+                                <input type="text" name="vitamin_a_dosage" class="w-full px-2 py-1 border border-gray-300 rounded-md text-sm" placeholder="Dosage">
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="px-3 py-2 text-sm font-medium text-gray-900 border border-gray-300">Folic Acid</td>
+                            <td class="px-3 py-2 border border-gray-300">
+                                <input type="date" name="folic_acid_date" class="w-full px-2 py-1 border border-gray-300 rounded-md text-sm">
+                            </td>
+                            <td class="px-3 py-2 border border-gray-300">
+                                <input type="text" name="folic_acid_dosage" class="w-full px-2 py-1 border border-gray-300 rounded-md text-sm" placeholder="Dosage">
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="px-3 py-2 text-sm font-medium text-gray-900 border border-gray-300">Albendazole/Mebendazole</td>
+                            <td class="px-3 py-2 border border-gray-300">
+                                <input type="date" name="deworming_date" class="w-full px-2 py-1 border border-gray-300 rounded-md text-sm">
+                            </td>
+                            <td class="px-3 py-2 border border-gray-300">
+                                <input type="text" name="deworming_dosage" class="w-full px-2 py-1 border border-gray-300 rounded-md text-sm" placeholder="Dosage">
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="px-3 py-2 text-sm font-medium text-gray-900 border border-gray-300">Measles Vaccine</td>
+                            <td class="px-3 py-2 border border-gray-300">
+                                <input type="date" name="measles_vaccine_date" class="w-full px-2 py-1 border border-gray-300 rounded-md text-sm">
+                            </td>
+                            <td class="px-3 py-2 border border-gray-300">
+                                <input type="text" name="measles_vaccine_dosage" class="w-full px-2 py-1 border border-gray-300 rounded-md text-sm" placeholder="Dosage">
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Right Side - Malaria Test Table -->
+            <div class="overflow-x-auto">
+                <table class="min-w-full border border-gray-300">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase border border-gray-300">Drug</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase border border-gray-300">Date</th>
+                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-700 uppercase border border-gray-300" colspan="2"></th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white">
+                        <tr>
+                            <td class="px-3 py-2 text-sm font-medium text-gray-900 border border-gray-300">Malaria Test</td>
+                            <td class="px-3 py-2 border border-gray-300">
+                                <input type="date" name="malaria_test_date" class="w-full px-2 py-1 border border-gray-300 rounded-md text-sm">
+                            </td>
+                            <td class="px-3 py-2 text-sm text-gray-700 border border-gray-300 text-right">Results</td>
+                            <td class="px-3 py-2 border border-gray-300">
+                                <select name="malaria_test_result" class="w-full px-2 py-1 border border-gray-300 rounded-md text-sm">
+                                    <option value="">Select</option>
+                                    <option value="Positive">Positive</option>
+                                    <option value="Negative">Negative</option>
+                                    <option value="Not Done">Not Done</option>
+                                </select>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="px-3 py-2 text-sm font-medium text-gray-900 border border-gray-300">Antimalarial<br><span class="text-xs text-gray-500">(if test is positive)</span></td>
+                            <td class="px-3 py-2 border border-gray-300">
+                                <input type="date" name="antimalarial_date" class="w-full px-2 py-1 border border-gray-300 rounded-md text-sm">
+                            </td>
+                            <td class="px-3 py-2 text-sm text-gray-700 border border-gray-300 text-right">Dosage</td>
+                            <td class="px-3 py-2 border border-gray-300">
+                                <input type="text" name="antimalarial_dosage" class="w-full px-2 py-1 border border-gray-300 rounded-md text-sm" placeholder="Dosage">
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 6: RUTF Ration -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4 bg-gray-100 p-2 rounded">6. RUTF Ration at Enrolment</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+                    RUTF Sachets Given
+                    <button type="button" onclick="toggleRutfGuide()" class="text-blue-600 hover:text-blue-800 text-xs underline">📊 Calculator</button>
+                    <span id="rutfSuggestion" class="text-xs text-green-600 font-semibold"></span>
+                </label>
+                <input type="number" name="rutf_sachets_given" id="rutfSachetsGiven" min="0" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                <div id="rutfGuide" class="hidden mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs">
+                    <div class="font-semibold mb-2 text-blue-900">RUTF Dosage Guide (per week)</div>
+                    <table class="w-full text-left border-collapse">
+                        <thead><tr class="border-b border-blue-300"><th class="py-1">Weight (kg)</th><th class="py-1">Packets/Week</th><th class="py-1">Packets/Day</th></tr></thead>
+                        <tbody class="text-gray-700">
+                            <tr><td>4.0 – 4.9</td><td>11</td><td>1½</td></tr>
+                            <tr><td>5.0 – 6.9</td><td>14</td><td>2</td></tr>
+                            <tr><td>7.0 – 8.4</td><td>18</td><td>2½</td></tr>
+                            <tr><td>8.5 – 9.4</td><td>21</td><td>3</td></tr>
+                            <tr><td>9.5 – 10.4</td><td>25</td><td>3½</td></tr>
+                            <tr><td>10.5 – 11.9</td><td>28</td><td>4</td></tr>
+                            <tr><td>12+</td><td>32</td><td>4½</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">RUTF Ration (sachets/day)</label>
+                <input type="number" name="rutf_ration_per_day" min="0" step="0.5" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Next Visit Date</label>
+                <input type="date" name="next_visit_date" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 7: Other Medicines -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4 bg-gray-100 p-2 rounded">7. Other Medicines</h3>
+        <div class="space-y-3" id="other-medicines-container">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 other-medicine-row">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Drug Name</label>
+                    <input type="text" name="other_drug_1" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                    <input type="date" name="other_drug_1_date" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Dosage</label>
+                    <input type="text" name="other_drug_1_dosage" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 other-medicine-row">
+                <div>
+                    <input type="text" name="other_drug_2" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500" placeholder="Drug name">
+                </div>
+                <div>
+                    <input type="date" name="other_drug_2_date" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                </div>
+                <div>
+                    <input type="text" name="other_drug_2_dosage" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500" placeholder="Dosage">
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 other-medicine-row">
+                <div>
+                    <input type="text" name="other_drug_3" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500" placeholder="Drug name">
+                </div>
+                <div>
+                    <input type="date" name="other_drug_3_date" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                </div>
+                <div>
+                    <input type="text" name="other_drug_3_dosage" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500" placeholder="Dosage">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 8: Additional Notes -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4 bg-gray-100 p-2 rounded">8. Additional Notes</h3>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Comments / Additional Information</label>
+            <textarea name="additional_notes" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500" placeholder="Any additional information about the case..."></textarea>
+        </div>
+    </div>
+
+    <!-- Form Actions -->
+    <div class="flex justify-between items-center pt-4">
+        <a href="{% if edit_mode %}{% url 'cases:case_detail' case.pk %}{% else %}{% url 'cases:case_list' %}{% endif %}" class="bg-gray-500 text-white px-6 py-3 rounded-lg hover:bg-gray-600">Cancel</a>
+        <button type="submit" class="bg-red-600 text-white px-8 py-3 rounded-lg hover:bg-red-700 font-semibold">{% if edit_mode %}Update SAM Case{% else %}Register SAM Case{% endif %}</button>
+    </div>
+</form>
+
+<script>
+function samDobToAge() {
+    const dob = document.getElementById('sam_dob').value;
+    const ageField = document.getElementById('sam_age_months');
+    if (!dob) return;
+    const birthDate = new Date(dob);
+    const today = new Date();
+    let months = (today.getFullYear() - birthDate.getFullYear()) * 12 + (today.getMonth() - birthDate.getMonth());
+    if (today.getDate() < birthDate.getDate()) months--;
+    if (months < 0) months = 0;
+    ageField.value = months;
+}
+
+function samAgeToDob() {
+    const months = parseInt(document.getElementById('sam_age_months').value);
+    const dobField = document.getElementById('sam_dob');
+    if (isNaN(months) || months < 0) return;
+    const today = new Date();
+    const dob = new Date(today.getFullYear(), today.getMonth() - months, today.getDate());
+    dobField.value = dob.toISOString().split('T')[0];
+}
+
+function fetchSamRegNumber() {
+    const sel = document.getElementById('sam_facility_select');
+    const regField = document.getElementById('sam_reg_number');
+    const facilityId = sel.value;
+    if (!facilityId) { regField.value = ''; return; }
+    regField.value = 'Loading...';
+    const url = '/api/next-registration-number/?facility_id=' + facilityId + '&type=SAM';
+    console.log('SAM fetch:', url);
+    fetch(url)
+        .then(r => { console.log('SAM response status:', r.status); return r.json(); })
+        .then(data => {
+            console.log('SAM data:', data);
+            regField.value = data.registration_number || '';
+        })
+        .catch(err => { console.error('SAM fetch error:', err); regField.value = 'Error'; });
+}
+
+function getSamLocation() {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            function(position) {
+                document.getElementById('sam_latitude').value = position.coords.latitude.toFixed(6);
+                document.getElementById('sam_longitude').value = position.coords.longitude.toFixed(6);
+            },
+            function(error) {
+                alert('Unable to get location: ' + error.message);
+            }
+        );
+    } else {
+        alert('Geolocation is not supported by this browser.');
+    }
+}
+
+// ponytail: RUTF calculator - minimal lookup table, auto-updates on weight change
+function calcRutf(w) {
+    if (w < 4) return null;
+    if (w < 5) return 11;
+    if (w < 7) return 14;
+    if (w < 8.5) return 18;
+    if (w < 9.5) return 21;
+    if (w < 10.5) return 25;
+    if (w < 12) return 28;
+    return 32;
+}
+
+function toggleRutfGuide() {
+    document.getElementById('rutfGuide').classList.toggle('hidden');
+}
+
+// Auto-calculate on weight change
+const weightField = document.getElementById('sam_reg_weight');
+if (weightField) {
+    weightField.addEventListener('input', function() {
+        const w = parseFloat(this.value);
+        const sachets = calcRutf(w);
+        const suggestion = document.getElementById('rutfSuggestion');
+        if (sachets) {
+            suggestion.textContent = `Suggested: ${sachets} sachets/week`;
+            document.getElementById('rutfSachetsGiven').value = sachets;
+        } else {
+            suggestion.textContent = '';
+        }
+        checkIpcReferralCriteria(); // ponytail: check on weight change
+    });
+}
+
+// ponytail: Show/hide infant fields based on age
+function toggleInfantFields() {
+    const ageMonths = parseInt(document.getElementById('sam_age_months')?.value) || 0;
+    const infantSection = document.getElementById('infant-fields-section');
+    
+    if (infantSection) {
+        if (ageMonths < 6) {
+            infantSection.style.display = 'block';
+        } else {
+            infantSection.style.display = 'none';
+        }
+    }
+    
+    checkIpcReferralCriteria();
+}
+
+// Add event listener to age field
+const ageField = document.getElementById('sam_age_months');
+if (ageField) {
+    ageField.addEventListener('input', toggleInfantFields);
+    // Check on page load
+    toggleInfantFields();
+}
+
+// Add event listeners to infant-specific fields
+const effectiveSucklingField = document.querySelector('select[name="effective_suckling"]');
+if (effectiveSucklingField) {
+    effectiveSucklingField.addEventListener('change', function() {
+        const warning = document.getElementById('suckling-warning');
+        if (this.value === 'No' || this.value === 'Poor') {
+            warning.style.display = 'block';
+        } else {
+            warning.style.display = 'none';
+        }
+        checkIpcReferralCriteria();
+    });
+}
+
+const relactationField = document.querySelector('select[name="relactation_needed"]');
+if (relactationField) {
+    relactationField.addEventListener('change', function() {
+        const warning = document.getElementById('relactation-warning');
+        if (this.value === 'True') {
+            warning.style.display = 'block';
+        } else {
+            warning.style.display = 'none';
+        }
+        checkIpcReferralCriteria();
+    });
+}
+
+const wastingField = document.querySelector('select[name="visible_severe_wasting"]');
+if (wastingField) {
+    wastingField.addEventListener('change', function() {
+        const warning = document.getElementById('wasting-warning');
+        if (this.value === 'True') {
+            warning.style.display = 'block';
+        } else {
+            warning.style.display = 'none';
+        }
+        checkIpcReferralCriteria();
+    });
+}
+
+// ponytail: SAM OPC automation - IPC referral check
+function checkIpcReferralCriteria() {
+    const data = {
+        age_months: parseInt(document.getElementById('sam_age_months')?.value) || 0,
+        weight_kg: document.getElementById('sam_reg_weight')?.value,
+        oedema: document.querySelector('input[name="oedema"]:checked')?.value,
+        appetite_test: document.querySelector('select[name="appetite_test"]')?.value,
+        temperature_c: parseFloat(document.querySelector('input[name="temperature"]')?.value),
+        respiratory_rate: document.querySelector('input[name="respiratory_rate"]')?.value,
+        intractable_vomiting: document.querySelector('input[name="intractable_vomiting"]:checked')?.value === 'Yes',
+        convulsions: document.querySelector('input[name="convulsions"]:checked')?.value === 'Yes',
+        lethargic: document.querySelector('input[name="lethargic_or_not_alert"]:checked')?.value === 'Yes',
+        unconscious: document.querySelector('input[name="unconscious"]:checked')?.value === 'Yes',
+        chest_indrawing: document.querySelector('input[name="chest_indrawing"]:checked')?.value === 'Yes',
+        severe_dehydration: document.querySelector('input[name="severe_dehydration"]:checked')?.value === 'Yes',
+        severe_pallor: document.querySelector('input[name="very_pale_or_severe_palmar_pallor"]:checked')?.value === 'Yes',
+        // Infant-specific fields
+        effective_suckling: document.querySelector('select[name="effective_suckling"]')?.value,
+        relactation_needed: document.querySelector('select[name="relactation_needed"]')?.value === 'True',
+        visible_severe_wasting: document.querySelector('select[name="visible_severe_wasting"]')?.value === 'True',
+        breastfeeding_prospect: document.querySelector('select[name="breastfeeding_prospect"]')?.value
+    };
+    
+    const reasons = [];
+    
+    // Infant checks (<6 months)
+    if (data.age_months < 6) {
+        if (data.oedema && data.oedema !== 'None') reasons.push('Infant has oedema');
+        if (data.visible_severe_wasting) reasons.push('Visible severe wasting');
+        if (data.effective_suckling === 'No') reasons.push('No effective suckling');
+        if (data.breastfeeding_prospect === 'None' || data.breastfeeding_prospect === 'Poor') reasons.push('Poor/No breastfeeding prospect');
+        if (data.relactation_needed) reasons.push('Relactation needed');
+        if (data.appetite_test === 'Failed') reasons.push('Infant unable to feed');
+    }
+    
+    // Children 6-59 months checks
+    if (data.age_months >= 6) {
+        if (data.oedema === '+++') reasons.push('Grade +++ oedema');
+        if (data.appetite_test === 'Failed') reasons.push('Failed appetite test');
+        if (data.intractable_vomiting) reasons.push('Intractable vomiting');
+        if (data.convulsions) reasons.push('Convulsions');
+        if (data.lethargic) reasons.push('Lethargic or not alert');
+        if (data.unconscious) reasons.push('Unconscious');
+        if (data.chest_indrawing) reasons.push('Chest indrawing');
+        if (data.severe_dehydration) reasons.push('Severe dehydration');
+        if (data.severe_pallor) reasons.push('Severe palmar pallor');
+        if (data.weight_kg && data.age_months > 6 && parseFloat(data.weight_kg) < 4) reasons.push('Weight < 4kg');
+    }
+    
+    // Temperature checks (both age groups)
+    if (data.temperature_c && (data.temperature_c > 39 || data.temperature_c < 35)) {
+        reasons.push(`Temperature ${data.temperature_c}°C out of safe range`);
+    }
+    
+    // Respiratory rate checks
+    if (data.respiratory_rate) {
+        const rr = parseInt(data.respiratory_rate);
+        if (data.age_months < 2 && rr >= 60) reasons.push('High respiratory rate (≥60)');
+        else if (data.age_months < 12 && rr >= 50) reasons.push('High respiratory rate (≥50)');
+        else if (data.age_months < 60 && rr >= 40) reasons.push('High respiratory rate (≥40)');
+    }
+    
+    // Show/hide alert
+    const alert = document.getElementById('ipcReferralAlert');
+    const reasonsList = document.getElementById('ipcReferralReasons');
+    
+    if (reasons.length > 0) {
+        reasonsList.innerHTML = reasons.map(r => `<li>${r}</li>`).join('');
+        alert.classList.remove('hidden');
+        alert.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+        alert.classList.add('hidden');
+    }
+}
+
+// Attach listeners to key fields
+document.addEventListener('DOMContentLoaded', function() {
+    const fieldsToWatch = [
+        'sam_age_months', 'sam_reg_weight', 'appetite_test', 'temperature', 'respiratory_rate'
+    ];
+    
+    fieldsToWatch.forEach(id => {
+        const field = document.getElementById(id) || document.querySelector(`[name="${id}"]`);
+        if (field) {
+            field.addEventListener('change', checkIpcReferralCriteria);
+            field.addEventListener('input', checkIpcReferralCriteria);
+        }
+    });
+    
+    // Watch radio buttons and checkboxes
+    document.querySelectorAll('input[type="radio"], input[type="checkbox"]').forEach(input => {
+        input.addEventListener('change', checkIpcReferralCriteria);
+    });
+});
+</script>

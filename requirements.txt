@@ -1,0 +1,14 @@
+Django==5.0.1
+djangorestframework==3.14.0
+django-cors-headers==4.3.1
+mysqlclient==2.2.1
+python-decouple==3.8
+Pillow==10.2.0
+gunicorn==21.2.0
+whitenoise==6.6.0
+djangorestframework-simplejwt==5.3.1
+django-filter==23.5
+pytz==2024.1
+django-ratelimit==4.1.0
+openpyxl==3.1.2
+dj-database-url==2.1.0

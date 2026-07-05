@@ -1,0 +1,436 @@
+{% extends 'base.html' %}
+
+{% block title %}Monthly Facility Report - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Report Header -->
+    <div class="bg-gradient-to-r from-red-50 to-yellow-50 border-l-4 border-red-500 p-4 rounded print:border-none">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1 class="text-xl font-bold text-gray-800">Health Facility Monthly Management of SAM and MAM Report Form</h1>
+                <p class="text-gray-600">Combined Outpatient SAM/MAM Report</p>
+            </div>
+            <div class="flex space-x-2 print:hidden">
+                <button onclick="window.print()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a2 2 0 002 2h6a2 2 0 002-2v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clip-rule="evenodd"/>
+                    </svg>
+                    Print Report
+                </button>
+                <a href="{% url 'users:reports' %}" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg">
+                    Back to Reports
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter Form with Cascading Filters -->
+    {% with theme_color='indigo' %}
+    {% include 'reports/includes/cascading_filter.html' %}
+    {% endwith %}
+
+    <!-- Report Info Header -->
+    <div class="bg-white rounded-lg shadow print:shadow-none overflow-hidden">
+        <div class="overflow-x-auto">
+            <div class="flex divide-x divide-gray-200 min-w-max">
+                <div class="px-4 py-3">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest leading-none">Region</p>
+                    <p class="text-xs font-semibold text-gray-700 mt-1 whitespace-nowrap">{{ region_name|default:"—" }}</p>
+                </div>
+                <div class="px-4 py-3">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest leading-none">District</p>
+                    <p class="text-xs font-semibold text-gray-700 mt-1 whitespace-nowrap">{{ district_name|default:"—" }}</p>
+                </div>
+                <div class="px-4 py-3">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest leading-none">Sub-District</p>
+                    <p class="text-xs font-semibold text-gray-700 mt-1 whitespace-nowrap">{{ sub_district_name|default:"—" }}</p>
+                </div>
+                <div class="px-4 py-3">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest leading-none">Health Facility</p>
+                    <p class="text-xs font-semibold text-gray-700 mt-1 whitespace-nowrap">{{ facility_name }}</p>
+                </div>
+                <div class="px-4 py-3">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest leading-none">Facility Type</p>
+                    <p class="text-xs font-semibold text-gray-700 mt-1 whitespace-nowrap">Outpatient SAM/MAM</p>
+                </div>
+                <div class="px-4 py-3 bg-blue-50">
+                    <p class="text-xs font-bold text-blue-400 uppercase tracking-widest leading-none">Month / Year</p>
+                    <p class="text-xs font-bold text-blue-700 mt-1 whitespace-nowrap">{{ month_name }} {{ selected_year }}</p>
+                </div>
+                <div class="px-4 py-3">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest leading-none">Date</p>
+                    <p class="text-xs font-semibold text-gray-700 mt-1 whitespace-nowrap">{% now "M d, Y" %}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Report Content - Two Column Layout -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- LEFT SIDE: Monthly SAM Report -->
+        <div class="bg-white rounded-lg shadow overflow-hidden print:shadow-none">
+            <div class="px-4 py-3 bg-red-600 text-white font-bold">
+                MONTHLY SAM REPORT
+            </div>
+            <table class="min-w-full divide-y divide-gray-200 text-xs">
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <tr class="bg-gray-100 font-medium">
+                        <td class="px-3 py-2">Total SAM start of the month (A)</td>
+                        <td class="px-3 py-2 text-right w-20">{{ sam.start_of_month }}</td>
+                    </tr>
+                    <tr class="bg-blue-50">
+                        <td class="px-3 py-2">New SAM cases (&lt;6 months at risk) MUAC &lt;11cm, WAZ&lt; -2SD, WFL &lt; -2SD (B1)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.new_cases_under6 }}</td>
+                    </tr>
+                    <tr class="bg-blue-50">
+                        <td class="px-3 py-2">New SAM Cases 6-59 months (MUAC &lt; 11.5 cm or WFL/WFH &lt;-3 SD) (B2)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.new_cases_muac }}</td>
+                    </tr>
+                    <tr class="bg-blue-50">
+                        <td class="px-3 py-2">New SAM Cases 6-59 months (oedema/Marasmic kwashiorkor) (B3)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.new_cases_oedema }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Other new SAM cases (children ≥ 5years, adolescents, adults) (C)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.other_new_cases }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Old Cases: Referred from other outpatient care or inpatient care, or returned defaulter (D)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.old_cases }}</td>
+                    </tr>
+                    <tr class="bg-gray-200 font-bold">
+                        <td class="px-3 py-2">TOTAL SAM ENROLMENT (E=B1+B2+B3+C+D)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.total_enrolment }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number Discharge Cured (SAM &lt; 6 months at risk) (F1a)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.cured_under6 }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number Discharge Cured (SAM 6-59 months) (F1b)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.cured_6_59 }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number Discharge Died (SAM &lt; 6 months at Risk) (F2a)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.died_under6 }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number Discharge Died (SAM 6-59 months) (F2b)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.died_6_59 }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number Discharge Defaulted (SAM &lt; 6 months at risk) (F3a)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.defaulted_under6 }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number Discharge Defaulted (SAM 6-59 months) (F3b)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.defaulted_6_59 }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number Discharge Non-recovered (SAM &lt; 6 months at risk) (F4a)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.non_recovered_under6 }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number Discharge Non-recovered (SAM 6-59 months) (F4b)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.non_recovered_6_59 }}</td>
+                    </tr>
+                    <tr class="bg-gray-200 font-bold">
+                        <td class="px-3 py-2">Total SAM Discharges (F=F1+F2+F3+F4)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.total_discharges }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Referrals to other outpatient care or inpatient care (G)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.referrals }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Exits for Other (children ≥ 5 y, adolescents, adults) (H)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.other_exits }}</td>
+                    </tr>
+                    <tr class="bg-gray-200 font-bold">
+                        <td class="px-3 py-2">TOTAL SAM EXITS (I= F+G+H)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.total_exits }}</td>
+                    </tr>
+                    <tr class="bg-gray-300 font-bold">
+                        <td class="px-3 py-2">Total SAM end of month (J = A + E - I)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.end_of_month }}</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <!-- SAM Additional Information -->
+            <div class="px-4 py-2 bg-gray-100 font-bold text-sm border-t">ADDITIONAL INFORMATION</div>
+            <table class="min-w-full divide-y divide-gray-200 text-xs">
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <tr>
+                        <td class="px-3 py-2">Number of new males with SAM &lt;6 months at risk (B1m)</td>
+                        <td class="px-3 py-2 text-right w-20">{{ sam.new_males_under6 }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number of new females with SAM &lt;6 months at risk (B1f)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.new_females_under6 }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number of new males with SAM 6-59 months (B2m+ B3m)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.new_males_6_59 }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number of new females with SAM 6-59 months (B2f+ B3f)</td>
+                        <td class="px-3 py-2 text-right">{{ sam.new_females_6_59 }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- RIGHT SIDE: Monthly MAM Report -->
+        <div class="bg-white rounded-lg shadow overflow-hidden print:shadow-none">
+            <!-- High-risk MAM Section -->
+            <div class="px-4 py-3 bg-yellow-500 text-white font-bold">
+                MONTHLY MAM REPORT
+            </div>
+            <table class="min-w-full divide-y divide-gray-200 text-xs">
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <tr class="bg-gray-100 font-medium">
+                        <td class="px-3 py-2">Total high-risk MAM start of the month (K)</td>
+                        <td class="px-3 py-2 text-right w-20">{{ mam.high_risk_start }}</td>
+                    </tr>
+                    <tr class="bg-yellow-50">
+                        <td class="px-3 py-2">New MAM cases, high risk (MUAC:11.5 cm - 11.9cm MUAC 12.0 - 12.4cm/WFL/H &lt;-2sd with aggravating factor (L)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.new_high_risk }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Old cases: Referred from other MAM-OPC or returned defaulter (M)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.old_cases_high_risk }}</td>
+                    </tr>
+                    <tr class="bg-gray-200 font-bold">
+                        <td class="px-3 py-2">Total high risk MAM enrolment (N=L+M)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.high_risk_enrolment }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number Discharged Cured, high-risk MAM (O1)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.cured_high_risk }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number Discharged Died, high risk MAM (O2)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.died_high_risk }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number Discharged Defaulted high-risk MAM (O3)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.defaulted_high_risk }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number Discharged Non-Recovered high-risk MAM (O4)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.non_recovered_high_risk }}</td>
+                    </tr>
+                    <tr class="bg-gray-200 font-bold">
+                        <td class="px-3 py-2">Total Discharges high-risk (O=O1+O2+O3+O4)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.total_discharges_high_risk }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Referrals to other outpatient care or inpatient care for SAM (P)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.referrals_high_risk }}</td>
+                    </tr>
+                    <tr class="bg-gray-200 font-bold">
+                        <td class="px-3 py-2">Total high risk MAM exists (Q=O+P)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.total_exits_high_risk }}</td>
+                    </tr>
+                    <tr class="bg-gray-300 font-bold">
+                        <td class="px-3 py-2">Total high risk end of month (R= K+N-Q)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.high_risk_end }}</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <!-- Other MAM Section -->
+            <div class="px-4 py-2 bg-orange-400 text-white font-bold text-sm border-t">OTHER MAM</div>
+            <table class="min-w-full divide-y divide-gray-200 text-xs">
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <tr class="bg-gray-100 font-medium">
+                        <td class="px-3 py-2">Total Other MAM start of the month (S)</td>
+                        <td class="px-3 py-2 text-right w-20">{{ mam.other_start }}</td>
+                    </tr>
+                    <tr class="bg-yellow-50">
+                        <td class="px-3 py-2">New Other MAM cases, (MUAC: 12.0 - 12.4 cm) (T)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.new_other }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number discharge cured Other MAM (U1)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.cured_other }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number discharge defaulted Other MAM (U2)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.defaulted_other }}</td>
+                    </tr>
+                    <tr class="bg-gray-200 font-bold">
+                        <td class="px-3 py-2">Total Other MAM discharges (U=U1+U2)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.total_discharges_other }}</td>
+                    </tr>
+                    <tr class="bg-gray-300 font-bold">
+                        <td class="px-3 py-2">Total Other MAM end of month (V= S+T-U)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.other_end }}</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <!-- MAM Additional Information -->
+            <div class="px-4 py-2 bg-gray-100 font-bold text-sm border-t">ADDITIONAL INFORMATION</div>
+            <table class="min-w-full divide-y divide-gray-200 text-xs">
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <tr>
+                        <td class="px-3 py-2">Number of Male high risk MAM (Lm)</td>
+                        <td class="px-3 py-2 text-right w-20">{{ mam.new_males_high_risk }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number of Female high-risk MAM (Lf)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.new_females_high_risk }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number of Males, Other MAM (Tm)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.new_males_other }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number of Females, Other MAM (Tf)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.new_females_other }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Performance Indicators -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="bg-white rounded-lg shadow overflow-hidden print:shadow-none">
+            <div class="px-4 py-3 bg-indigo-600 text-white font-bold">
+                PERFORMANCE INDICATORS
+            </div>
+            <table class="min-w-full divide-y divide-gray-200 text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-2 text-left">Indicator</th>
+                        <th class="px-4 py-2 text-center">Target</th>
+                        <th class="px-4 py-2 text-center">SAM</th>
+                        <th class="px-4 py-2 text-center">MAM</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <tr>
+                        <td class="px-4 py-2 font-medium">Cure Rate</td>
+                        <td class="px-4 py-2 text-center text-green-600">&gt;75%</td>
+                        <td class="px-4 py-2 text-center {% if performance.sam_cure_rate >= 75 %}text-green-600{% else %}text-red-600{% endif %} font-bold">{{ performance.sam_cure_rate|floatformat:1 }}%</td>
+                        <td class="px-4 py-2 text-center {% if performance.mam_cure_rate >= 75 %}text-green-600{% else %}text-red-600{% endif %} font-bold">{{ performance.mam_cure_rate|floatformat:1 }}%</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-2 font-medium">Death Rate</td>
+                        <td class="px-4 py-2 text-center text-green-600">&lt;10%</td>
+                        <td class="px-4 py-2 text-center {% if performance.sam_death_rate < 10 %}text-green-600{% else %}text-red-600{% endif %} font-bold">{{ performance.sam_death_rate|floatformat:1 }}%</td>
+                        <td class="px-4 py-2 text-center {% if performance.mam_death_rate < 10 %}text-green-600{% else %}text-red-600{% endif %} font-bold">{{ performance.mam_death_rate|floatformat:1 }}%</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-2 font-medium">Defaulted Rate</td>
+                        <td class="px-4 py-2 text-center text-green-600">&lt;15%</td>
+                        <td class="px-4 py-2 text-center {% if performance.sam_default_rate < 15 %}text-green-600{% else %}text-red-600{% endif %} font-bold">{{ performance.sam_default_rate|floatformat:1 }}%</td>
+                        <td class="px-4 py-2 text-center {% if performance.mam_default_rate < 15 %}text-green-600{% else %}text-red-600{% endif %} font-bold">{{ performance.mam_default_rate|floatformat:1 }}%</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Estimation of Target and Coverage -->
+        <div class="bg-white rounded-lg shadow overflow-hidden print:shadow-none">
+            <div class="px-4 py-3 bg-purple-600 text-white font-bold">
+                ESTIMATION OF TARGET AND COVERAGE
+            </div>
+            <table class="min-w-full divide-y divide-gray-200 text-sm">
+                <tbody class="bg-white divide-y divide-gray-200">
+                    <tr>
+                        <td class="px-4 py-2">Estimated target with SAM</td>
+                        <td class="px-4 py-2 text-right w-24">{{ coverage.sam_target }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-2">Total Number of Children with SAM at the facility</td>
+                        <td class="px-4 py-2 text-right">{{ coverage.sam_total }}</td>
+                    </tr>
+                    <tr class="bg-gray-100">
+                        <td class="px-4 py-2 font-medium">Estimated coverage with SAM</td>
+                        <td class="px-4 py-2 text-right font-bold">{{ coverage.sam_coverage|floatformat:1 }}%</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-2">Estimated target with MAM</td>
+                        <td class="px-4 py-2 text-right">{{ coverage.mam_target }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-2">Total Number of Children with MAM at the facility</td>
+                        <td class="px-4 py-2 text-right">{{ coverage.mam_total }}</td>
+                    </tr>
+                    <tr class="bg-gray-100">
+                        <td class="px-4 py-2 font-medium">Estimated coverage with MAM</td>
+                        <td class="px-4 py-2 text-right font-bold">{{ coverage.mam_coverage|floatformat:1 }}%</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Facility Commodity Management Report -->
+    <div class="bg-white rounded-lg shadow overflow-hidden print:shadow-none">
+        <div class="px-4 py-3 bg-teal-600 text-white font-bold">
+            FACILITY COMMODITY MANAGEMENT REPORT
+        </div>
+        <table class="min-w-full divide-y divide-gray-200 text-sm">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-4 py-2 text-left">Commodity</th>
+                    <th class="px-4 py-2 text-center">RUTF</th>
+                    <th class="px-4 py-2 text-center">Facility prepared RUTF</th>
+                    <th class="px-4 py-2 text-center">Others</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                <tr>
+                    <td class="px-4 py-2">Quantity at the start of month</td>
+                    <td class="px-4 py-2 text-center">{{ commodity.rutf_start }}</td>
+                    <td class="px-4 py-2 text-center">{{ commodity.facility_rutf_start }}</td>
+                    <td class="px-4 py-2 text-center">{{ commodity.others_start }}</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-2">Quantity received</td>
+                    <td class="px-4 py-2 text-center">{{ commodity.rutf_received }}</td>
+                    <td class="px-4 py-2 text-center">{{ commodity.facility_rutf_received }}</td>
+                    <td class="px-4 py-2 text-center">{{ commodity.others_received }}</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-2">Quantities (Issued during the month for SAM) - <em>In packets</em></td>
+                    <td class="px-4 py-2 text-center">{{ commodity.rutf_issued_sam }}</td>
+                    <td class="px-4 py-2 text-center">{{ commodity.facility_rutf_issued_sam }}</td>
+                    <td class="px-4 py-2 text-center">{{ commodity.others_issued_sam }}</td>
+                </tr>
+                <tr>
+                    <td class="px-4 py-2">Quantities (Issued during the month for MAM) - <em>In packets</em></td>
+                    <td class="px-4 py-2 text-center">{{ commodity.rutf_issued_mam }}</td>
+                    <td class="px-4 py-2 text-center">{{ commodity.facility_rutf_issued_mam }}</td>
+                    <td class="px-4 py-2 text-center">{{ commodity.others_issued_mam }}</td>
+                </tr>
+                <tr class="bg-gray-100 font-medium">
+                    <td class="px-4 py-2">Quantities (Balance at the end of the month) - <em>In packets</em></td>
+                    <td class="px-4 py-2 text-center">{{ commodity.rutf_balance }}</td>
+                    <td class="px-4 py-2 text-center">{{ commodity.facility_rutf_balance }}</td>
+                    <td class="px-4 py-2 text-center">{{ commodity.others_balance }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+@media print {
+    body { font-size: 9px; }
+    .print\\:hidden { display: none !important; }
+    .print\\:shadow-none { box-shadow: none !important; }
+    .print\\:border-none { border: none !important; }
+    .print\\:p-2 { padding: 0.5rem !important; }
+    table { page-break-inside: avoid; }
+    .grid { display: block; }
+    .lg\\:grid-cols-2 > div { margin-bottom: 1rem; }
+}
+</style>
+{% endblock %}

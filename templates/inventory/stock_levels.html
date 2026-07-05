@@ -1,0 +1,349 @@
+{% extends 'base.html' %}
+
+{% block title %}Stock Levels - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Page Header -->
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Stock Levels</h1>
+            <p class="text-gray-600">Monitor and manage inventory stock levels across facilities</p>
+        </div>
+        <div class="flex space-x-2">
+            <a href="{% url 'inventory:receive_stock' %}" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                </svg>
+                Receive Stock
+            </a>
+            <a href="{% url 'inventory:distribute_stock' %}" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                </svg>
+                Distribute
+            </a>
+            <button onclick="location.reload()" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="flex items-center">
+                <div class="p-2 bg-blue-100 rounded-lg mr-3">
+                    <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">Total Items</p>
+                    <p class="text-2xl font-bold text-gray-900">{{ total_items }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="flex items-center">
+                <div class="p-2 bg-red-100 rounded-lg mr-3">
+                    <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">Critical Stock</p>
+                    <p class="text-2xl font-bold text-red-600">{{ critical_count }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="flex items-center">
+                <div class="p-2 bg-yellow-100 rounded-lg mr-3">
+                    <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">Low Stock</p>
+                    <p class="text-2xl font-bold text-yellow-600">{{ low_count }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="flex items-center">
+                <div class="p-2 bg-green-100 rounded-lg mr-3">
+                    <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">Normal Stock</p>
+                    <p class="text-2xl font-bold text-green-600">{{ normal_count }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="flex items-center">
+                <div class="p-2 bg-purple-100 rounded-lg mr-3">
+                    <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">Facilities</p>
+                    <p class="text-2xl font-bold text-purple-600">{{ facilities_count }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-lg shadow p-4">
+        <form method="get" class="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div>
+                <input type="text" name="search" value="{{ search }}" placeholder="Search items, codes, facilities..." 
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+            </div>
+            <div>
+                <select name="category" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                    <option value="">All Categories</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat.0 }}" {% if selected_category == cat.0 %}selected{% endif %}>{{ cat.1 }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <select name="status" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                    <option value="">All Status</option>
+                    <option value="critical" {% if selected_status == 'critical' %}selected{% endif %}>Critical</option>
+                    <option value="low" {% if selected_status == 'low' %}selected{% endif %}>Low Stock</option>
+                    <option value="normal" {% if selected_status == 'normal' %}selected{% endif %}>Normal</option>
+                </select>
+            </div>
+            <div>
+                <select name="facility" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                    <option value="">All Facilities</option>
+                    {% for facility in facilities %}
+                    <option value="{{ facility.id }}" {% if selected_facility == facility.id|stringformat:"s" %}selected{% endif %}>{{ facility.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md">
+                    Apply Filters
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Stock Levels Table -->
+    <div class="bg-white rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-900">Current Stock Levels</h3>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item Details</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Stock</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock Levels</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Facility</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for sl in stock_levels %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4">
+                            <div class="flex items-center">
+                                <div class="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                    <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                                    </svg>
+                                </div>
+                                <div class="ml-4">
+                                    <div class="text-sm font-medium text-gray-900">{{ sl.inventory_item.name }}</div>
+                                    <div class="text-xs text-gray-500">Code: {{ sl.inventory_item.code }} • {{ sl.inventory_item.category }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="text-sm font-medium text-gray-900">{{ sl.current_stock }} {{ sl.inventory_item.unit_of_measure }}</div>
+                            <div class="text-xs text-gray-500">Last updated: {{ sl.last_updated|date:"M d, Y" }}</div>
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="text-xs text-gray-500">Min: {{ sl.inventory_item.min_stock_level }} {{ sl.inventory_item.unit_of_measure }}</div>
+                            <div class="text-xs text-gray-500">Reorder: {{ sl.inventory_item.reorder_level }} {{ sl.inventory_item.unit_of_measure }}</div>
+                        </td>
+                        <td class="px-6 py-4">
+                            {% if sl.status == 'critical' %}
+                            <span class="px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">Out of Stock</span>
+                            {% elif sl.status == 'low' %}
+                            <span class="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">Low Stock</span>
+                            {% else %}
+                            <span class="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">Normal</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="text-sm text-gray-900">{% if sl.facility %}{{ sl.facility.name }}{% else %}{{ sl.get_location_type_display }}{% endif %}</div>
+                            <div class="text-xs text-gray-500">{{ sl.location_type|title }}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            <div class="flex space-x-2">
+                                <a href="{% url 'inventory:inventory_detail' sl.inventory_item.id %}" class="text-blue-600 hover:text-blue-800" title="View Details">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                    </svg>
+                                </a>
+                                <button onclick="receiveStock({{ sl.inventory_item.id }}, '{{ sl.inventory_item.name }}')" class="text-green-600 hover:text-green-800" title="Receive Stock">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                                    </svg>
+                                </button>
+                                <button onclick="issueStock({{ sl.inventory_item.id }}, '{{ sl.inventory_item.name }}')" class="text-orange-600 hover:text-orange-800" title="Issue/Distribute Stock">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="px-6 py-12 text-center">
+                            <div class="text-gray-500">
+                                <svg class="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                                </svg>
+                                <p class="text-lg font-medium">No stock levels found</p>
+                                <p class="mt-1">Add inventory items and update their stock levels</p>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Issue Stock Modal -->
+<div id="issueStockModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Issue Stock</h3>
+            <form method="post" action="{% url 'inventory:api_issue_stock' %}" id="issueStockForm">
+                {% csrf_token %}
+                <input type="hidden" name="item_id" id="issueItemId">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Item</label>
+                    <input type="text" id="issueItemName" readonly class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Facility</label>
+                    <select name="facility_id" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                        <option value="">Select Facility</option>
+                        {% for facility in facilities %}
+                        <option value="{{ facility.id }}">{{ facility.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                    <input type="number" name="quantity" required min="1" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div class="flex justify-end space-x-2">
+                    <button type="button" onclick="closeIssueModal()" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancel</button>
+                    <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Issue Stock</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Receive Stock Modal -->
+<div id="receiveStockModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <h3 class="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
+                <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                Receive Stock
+            </h3>
+            <form method="post" action="{% url 'inventory:api_receive_stock' %}" id="receiveStockForm">
+                {% csrf_token %}
+                <input type="hidden" name="item_id" id="receiveItemId">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Item</label>
+                    <input type="text" id="receiveItemName" readonly class="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Quantity to Receive <span class="text-red-500">*</span></label>
+                    <input type="number" name="quantity" required min="1" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500" placeholder="Enter quantity received">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Receive at Facility (optional)</label>
+                    <select name="facility_id" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500">
+                        <option value="">National Level</option>
+                        {% for facility in facilities %}
+                        <option value="{{ facility.id }}">{{ facility.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Reference / GRN Number</label>
+                    <input type="text" name="reference_number" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500" placeholder="e.g., GRN-2026-001">
+                </div>
+                <div class="flex justify-end space-x-2">
+                    <button type="button" onclick="closeReceiveModal()" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancel</button>
+                    <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">Receive Stock</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function issueStock(itemId, itemName) {
+    document.getElementById('issueItemId').value = itemId;
+    document.getElementById('issueItemName').value = itemName;
+    document.getElementById('issueStockModal').classList.remove('hidden');
+}
+
+function closeIssueModal() {
+    document.getElementById('issueStockModal').classList.add('hidden');
+}
+
+function receiveStock(itemId, itemName) {
+    document.getElementById('receiveItemId').value = itemId;
+    document.getElementById('receiveItemName').value = itemName;
+    document.getElementById('receiveStockModal').classList.remove('hidden');
+}
+
+function closeReceiveModal() {
+    document.getElementById('receiveStockModal').classList.add('hidden');
+}
+
+// Handle receive form submission via AJAX and reload page
+document.getElementById('receiveStockForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    fetch(this.action, { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                closeReceiveModal();
+                location.reload();
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => alert('Error: ' + err.message));
+});
+</script>
+{% endblock %}

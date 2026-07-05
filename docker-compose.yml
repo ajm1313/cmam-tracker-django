@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cmam-tracker-django-web
+    restart: unless-stopped
+    ports:
+      - "8083:8000"
+    volumes:
+      - ./media:/app/media
+      - ./staticfiles:/app/staticfiles
+      - ./logs:/app/logs
+      - ./templates:/app/templates
+      - ./apps:/app/apps
+      - ./config:/app/config
+    environment:
+      - DEBUG=True
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-change-this-key-in-production}
+      - DB_ENGINE=django.db.backends.mysql
+      - DB_NAME=cmam_tracker_django
+      - DB_USER=cmam_user_django
+      - DB_PASSWORD=cmam_password_django
+      - DB_HOST=db
+      - DB_PORT=3306
+      - ALLOWED_HOSTS=localhost,127.0.0.1,192.168.0.102,*
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - cmam-django-network
+
+  db:
+    image: mysql:8.0
+    container_name: cmam-tracker-django-db
+    restart: unless-stopped
+    ports:
+      - "3350:3306"
+    environment:
+      MYSQL_DATABASE: cmam_tracker_django
+      MYSQL_ROOT_PASSWORD: root_password_django
+      MYSQL_USER: cmam_user_django
+      MYSQL_PASSWORD: cmam_password_django
+    volumes:
+      - db-data-django:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_password_django"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cmam-django-network
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: cmam-tracker-django-phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8084:80"
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: root_password_django
+    depends_on:
+      - db
+    networks:
+      - cmam-django-network
+
+volumes:
+  db-data-django:
+    driver: local
+
+networks:
+  cmam-django-network:
+    driver: bridge

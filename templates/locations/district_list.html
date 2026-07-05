@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+
+{% block title %}Districts - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Districts</h1>
+            <p class="text-sm text-gray-500 mt-1">{{ districts|length }} district{{ districts|length|pluralize }} found</p>
+        </div>
+        <div class="flex gap-3">
+            <a href="{% url 'locations:location_dashboard' %}" class="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                ← Back to Locations
+            </a>
+            <a href="{% url 'locations:district_create' %}" class="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                Add District
+            </a>
+        </div>
+    </div>
+
+    <!-- Region filter -->
+    <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+        <form method="get" class="flex items-center gap-3">
+            <label class="text-sm font-medium text-gray-700 whitespace-nowrap">Filter by Region:</label>
+            <select name="region" onchange="this.form.submit()" class="block border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">All Regions</option>
+                {% for region in regions %}
+                <option value="{{ region.id }}" {% if selected_region == region.id|stringformat:"s" %}selected{% endif %}>{{ region.name }}</option>
+                {% endfor %}
+            </select>
+            {% if selected_region %}
+            <a href="{% url 'locations:district_list' %}" class="text-sm text-gray-500 hover:text-gray-700">Clear</a>
+            {% endif %}
+        </form>
+    </div>
+
+    <div class="bg-white shadow-sm rounded-2xl border border-gray-100 overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">District</th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Code</th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Region</th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Sub Districts</th>
+                    <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-100">
+                {% for district in districts %}
+                <tr class="hover:bg-gray-50 transition-colors">
+                    <td class="px-6 py-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
+                                <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            </div>
+                            <span class="text-sm font-semibold text-gray-900">{{ district.name }}</span>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">{{ district.code }}</span>
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="text-sm text-gray-600">{{ district.region.name }}</span>
+                    </td>
+                    <td class="px-6 py-4">
+                        <a href="{% url 'locations:sub_district_list' %}?district={{ district.id }}" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                            {{ district.sub_districts.count }} sub-district{{ district.sub_districts.count|pluralize }}
+                        </a>
+                    </td>
+                    <td class="px-6 py-4 text-right">
+                        <div class="flex items-center justify-end gap-3">
+                            <a href="{% url 'locations:sub_district_create' %}?district={{ district.id }}" class="text-xs font-medium text-purple-600 hover:text-purple-800">+ Sub-District</a>
+                            <a href="{% url 'locations:district_edit' district.pk %}" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">Edit</a>
+                            <a href="{% url 'locations:district_delete' district.pk %}" class="text-xs font-medium text-red-600 hover:text-red-800">Delete</a>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="px-6 py-12 text-center">
+                        <svg class="w-10 h-10 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/></svg>
+                        <p class="text-gray-500 text-sm">No districts found.</p>
+                        <a href="{% url 'locations:district_create' %}" class="mt-3 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700">
+                            Create First District
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

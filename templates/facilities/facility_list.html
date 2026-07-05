@@ -1,0 +1,151 @@
+{% extends 'base.html' %}
+
+{% block title %}Facilities - CMAM Tracker{% endblock %}
+
+{% block extra_css %}
+<style>
+    .fac-row { transition: background 0.15s; }
+    .fac-row:hover { background: #f8faff; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Page Header -->
+    <div class="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 rounded-2xl px-7 py-5 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+            <div class="w-11 h-11 bg-white/15 rounded-xl flex items-center justify-center border border-white/20">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold text-white tracking-tight">Facilities Management</h1>
+                <p class="text-emerald-300 text-xs mt-0.5">Manage health facilities across all regions</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <span class="bg-white/10 text-emerald-200 text-xs font-semibold px-3 py-1.5 rounded-full border border-white/15">
+                {{ facilities|length }} facilit{{ facilities|length|pluralize:"y,ies" }}
+            </span>
+            <a href="{% url 'facilities:facility_create' %}" class="flex items-center gap-2 bg-white hover:bg-gray-100 text-slate-900 text-sm font-bold px-4 py-2 rounded-xl shadow-md transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                + Create Facility
+            </a>
+        </div>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 px-4 py-3">
+        <div class="flex items-center gap-3">
+            <svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <input type="text" id="facSearch" placeholder="Search facilities by name, code, region or district…" class="w-full text-sm text-gray-700 placeholder-gray-400 outline-none bg-transparent">
+        </div>
+    </div>
+
+    <!-- Facilities Table -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <table class="min-w-full" id="facTable">
+            <thead>
+                <tr class="bg-gradient-to-r from-slate-50 to-emerald-50 border-b border-gray-100">
+                    <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Facility</th>
+                    <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
+                    <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Location</th>
+                    <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact</th>
+                    <th class="px-6 py-3.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">SAM Burden</th>
+                    <th class="px-6 py-3.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">SAM Target</th>
+                    <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                    <th class="px-6 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
+                {% for facility in facilities %}
+                <tr class="fac-row">
+                    <td class="px-6 py-4">
+                        <p class="text-sm font-semibold text-gray-900">{{ facility.name }}</p>
+                        <p class="text-xs text-gray-400 mt-0.5 font-mono">{{ facility.code }}</p>
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border
+                            {% if facility.type == 'OPC' %}bg-blue-50 text-blue-700 border-blue-100
+                            {% else %}bg-purple-50 text-purple-700 border-purple-100{% endif %}">
+                            {{ facility.type }}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4">
+                        <p class="text-sm text-gray-700">{{ facility.district.name }}</p>
+                        <p class="text-xs text-gray-400 mt-0.5">{{ facility.district.region.name }}</p>
+                    </td>
+                    <td class="px-6 py-4">
+                        <p class="text-sm text-gray-600">{{ facility.contact_person|default:"—" }}</p>
+                    </td>
+                    <td class="px-6 py-4 text-center">
+                        {% if facility.expected_sam_cases %}
+                        <span class="text-sm font-semibold text-gray-800">{{ facility.expected_sam_cases }}</span>
+                        {% else %}
+                        <span class="text-xs text-gray-400">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 text-center">
+                        {% if facility.sam_target %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">{{ facility.sam_target }}</span>
+                        {% else %}
+                        <span class="text-xs text-gray-400">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4">
+                        {% if facility.is_active %}
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Active
+                        </span>
+                        {% else %}
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-100">
+                            <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> Inactive
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 text-right">
+                        <div class="flex items-center justify-end gap-2">
+                            <a href="{% url 'facilities:facility_detail' facility.pk %}" class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-100 transition-colors">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                View
+                            </a>
+                            <a href="{% url 'facilities:facility_edit' facility.pk %}" class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-100 transition-colors">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                Edit
+                            </a>
+                            <a href="{% url 'facilities:facility_delete' facility.pk %}" class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-100 transition-colors">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                Delete
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="8" class="px-6 py-16 text-center">
+                        <div class="flex flex-col items-center gap-3">
+                            <div class="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center">
+                                <svg class="w-7 h-7 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                            </div>
+                            <p class="text-gray-500 font-medium">No facilities found</p>
+                            <p class="text-gray-400 text-sm">Add the first facility to get started</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    document.getElementById('facSearch').addEventListener('input', function() {
+        const q = this.value.toLowerCase();
+        document.querySelectorAll('#facTable tbody tr.fac-row').forEach(row => {
+            row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+        });
+    });
+</script>
+{% endblock %}

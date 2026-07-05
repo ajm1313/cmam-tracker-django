@@ -1,0 +1,25 @@
+PassengerEnabled On
+PassengerAppType wsgi
+PassengerStartupFile passenger_wsgi.py
+
+# Serve static and media files directly without going through Django
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Don't rewrite static/media requests
+    RewriteCond %{REQUEST_URI} ^/static/
+    RewriteRule ^ - [L]
+
+    RewriteCond %{REQUEST_URI} ^/media/
+    RewriteRule ^ - [L]
+</IfModule>
+
+# Security headers
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options nosniff
+    Header always set X-Frame-Options DENY
+    Header always set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# Disable directory listing
+Options -Indexes

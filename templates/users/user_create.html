@@ -1,0 +1,217 @@
+{% extends 'base.html' %}
+
+{% block title %}Create User - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-bold text-gray-900">Create User</h1>
+        <a href="{% url 'users:user_list' %}" class="text-gray-600 hover:text-gray-900">← Back to List</a>
+    </div>
+
+    <div class="bg-white shadow rounded-lg p-6">
+        <form method="post" class="space-y-6">
+            {% csrf_token %}
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Full Name <span class="text-red-500">*</span></label>
+                    <input type="text" name="name" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Email <span class="text-red-500">*</span></label>
+                    <input type="email" name="email" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Password <span class="text-red-500">*</span></label>
+                    <input type="password" name="password" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Confirm Password <span class="text-red-500">*</span></label>
+                    <input type="password" name="password_confirm" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Role <span class="text-red-500">*</span></label>
+                    <select name="role" id="role_select" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <option value="" data-level="0">Select Role</option>
+                        {% for role in roles %}
+                        <option value="{{ role.id }}" data-level="{{ role.level }}">{{ role.display_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Phone</label>
+                    <input type="text" name="phone" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                </div>
+            </div>
+            
+            <!-- Location Selection Section -->
+            <div id="location_section" class="border-t pt-6 mt-6 hidden">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Location Assignment</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div id="region_wrapper" class="hidden">
+                        <label class="block text-sm font-medium text-gray-700">Region <span class="text-red-500">*</span></label>
+                        <select name="region_id" id="region_select" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">Select Region</option>
+                            {% for region in regions %}
+                            <option value="{{ region.id }}">{{ region.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div id="district_wrapper" class="hidden">
+                        <label class="block text-sm font-medium text-gray-700">District <span class="text-red-500">*</span></label>
+                        <select name="district_id" id="district_select" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">Select District</option>
+                            {% for district in districts %}
+                            <option value="{{ district.id }}" data-region="{{ district.region_id }}">{{ district.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div id="sub_district_wrapper" class="hidden">
+                        <label class="block text-sm font-medium text-gray-700">Sub District <span class="text-red-500">*</span></label>
+                        <select name="sub_district_id" id="sub_district_select" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">Select Sub District</option>
+                            {% for sub_district in sub_districts %}
+                            <option value="{{ sub_district.id }}" data-district="{{ sub_district.district_id }}">{{ sub_district.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div id="facility_wrapper" class="hidden">
+                        <label class="block text-sm font-medium text-gray-700">Facility <span class="text-red-500">*</span></label>
+                        <select name="facility_id" id="facility_select" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">Select Facility</option>
+                            {% for facility in facilities %}
+                            <option value="{{ facility.id }}" data-district="{{ facility.district_id }}" data-sub-district="{{ facility.sub_district_id|default:'' }}">{{ facility.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex justify-end space-x-3">
+                <a href="{% url 'users:user_list' %}" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded">Cancel</a>
+                <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Create User</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const roleSelect = document.getElementById('role_select');
+    const locationSection = document.getElementById('location_section');
+    const regionWrapper = document.getElementById('region_wrapper');
+    const districtWrapper = document.getElementById('district_wrapper');
+    const subDistrictWrapper = document.getElementById('sub_district_wrapper');
+    const facilityWrapper = document.getElementById('facility_wrapper');
+    
+    const regionSelect = document.getElementById('region_select');
+    const districtSelect = document.getElementById('district_select');
+    const subDistrictSelect = document.getElementById('sub_district_select');
+    const facilitySelect = document.getElementById('facility_select');
+    
+    const allDistrictOptions = Array.from(districtSelect.querySelectorAll('option[data-region]'));
+    const allSubDistrictOptions = Array.from(subDistrictSelect.querySelectorAll('option[data-district]'));
+    const allFacilityOptions = Array.from(facilitySelect.querySelectorAll('option[data-district]'));
+    
+    function updateLocationVisibility() {
+        const selectedOption = roleSelect.options[roleSelect.selectedIndex];
+        const level = parseInt(selectedOption.dataset.level) || 0;
+        
+        // Hide all location fields first
+        locationSection.classList.add('hidden');
+        regionWrapper.classList.add('hidden');
+        districtWrapper.classList.add('hidden');
+        subDistrictWrapper.classList.add('hidden');
+        facilityWrapper.classList.add('hidden');
+        
+        // Show relevant fields based on role level
+        // Level 1 = National (no location needed)
+        // Level 2 = Regional (needs region)
+        // Level 3 = District (needs region + district)
+        // Level 4 = Sub District (needs region + district + sub_district)
+        // Level 5 = Facility (needs region + district + sub_district + facility)
+        
+        if (level >= 2) {
+            locationSection.classList.remove('hidden');
+            regionWrapper.classList.remove('hidden');
+        }
+        if (level >= 3) {
+            districtWrapper.classList.remove('hidden');
+        }
+        if (level >= 4) {
+            subDistrictWrapper.classList.remove('hidden');
+        }
+        if (level >= 5) {
+            facilityWrapper.classList.remove('hidden');
+        }
+        
+        // Reset selections
+        regionSelect.value = '';
+        filterDistricts();
+    }
+    
+    function filterDistricts() {
+        const selectedRegion = regionSelect.value;
+        
+        // Remove all district options except the placeholder
+        districtSelect.querySelectorAll('option[data-region]').forEach(opt => opt.remove());
+        
+        // Add back filtered options
+        allDistrictOptions.forEach(option => {
+            if (!selectedRegion || option.dataset.region === selectedRegion) {
+                districtSelect.appendChild(option.cloneNode(true));
+            }
+        });
+        
+        districtSelect.value = '';
+        filterSubDistricts();
+    }
+    
+    function filterSubDistricts() {
+        const selectedDistrict = districtSelect.value;
+        
+        // Remove all sub-district options except the placeholder
+        subDistrictSelect.querySelectorAll('option[data-district]').forEach(opt => opt.remove());
+        
+        // Add back filtered options
+        allSubDistrictOptions.forEach(option => {
+            if (!selectedDistrict || option.dataset.district === selectedDistrict) {
+                subDistrictSelect.appendChild(option.cloneNode(true));
+            }
+        });
+        
+        subDistrictSelect.value = '';
+        filterFacilities();
+    }
+    
+    function filterFacilities() {
+        const selectedDistrict = districtSelect.value;
+        const selectedSubDistrict = subDistrictSelect.value;
+        
+        // Remove all facility options except the placeholder
+        facilitySelect.querySelectorAll('option[data-district]').forEach(opt => opt.remove());
+        
+        // Add back filtered options
+        allFacilityOptions.forEach(option => {
+            const matchesDistrict = !selectedDistrict || option.dataset.district === selectedDistrict;
+            const matchesSubDistrict = !selectedSubDistrict || option.dataset.subDistrict === selectedSubDistrict || option.dataset.subDistrict === '';
+            if (matchesDistrict && matchesSubDistrict) {
+                facilitySelect.appendChild(option.cloneNode(true));
+            }
+        });
+        
+        facilitySelect.value = '';
+    }
+    
+    roleSelect.addEventListener('change', updateLocationVisibility);
+    regionSelect.addEventListener('change', filterDistricts);
+    districtSelect.addEventListener('change', filterSubDistricts);
+    subDistrictSelect.addEventListener('change', filterFacilities);
+    
+    // Initial state
+    updateLocationVisibility();
+});
+</script>
+{% endblock %}

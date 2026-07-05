@@ -1,0 +1,202 @@
+{% extends 'base.html' %}
+
+{% block title %}Receive Stock - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Page Header -->
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Receive Stock</h1>
+            <p class="text-gray-600">Record new stock received from suppliers or higher-level warehouses</p>
+        </div>
+        <a href="{% url 'inventory:stock_levels' %}" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center">
+            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+            </svg>
+            Back to Stock Levels
+        </a>
+    </div>
+
+    <!-- Form -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <form method="post" class="space-y-6">
+            {% csrf_token %}
+            
+            <!-- Item and Quantity -->
+            <div class="border-b pb-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                    </svg>
+                    What are you receiving?
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Item <span class="text-red-500">*</span></label>
+                        <select name="item_id" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500">
+                            <option value="">Select Item</option>
+                            {% for item in items %}
+                            <option value="{{ item.id }}">{{ item.name }} ({{ item.code }}) - {{ item.unit_of_measure }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Quantity to Receive <span class="text-red-500">*</span></label>
+                        <input type="number" name="quantity" required min="1" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500" placeholder="Enter quantity">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Reference / GRN Number</label>
+                        <input type="text" name="reference_number" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500" placeholder="e.g., GRN-2026-001">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Destination -->
+            <div class="border-b pb-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    Where is it being received?
+                </h3>
+                <input type="hidden" name="destination_type" id="destType" value="national">
+                <p class="text-sm text-gray-500 mb-3">Select Region, then District, then Facility. Leave lower levels blank to receive at a higher level.</p>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Region</label>
+                        <select name="destination_region" id="destRegion" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500">
+                            <option value="">-- National Level --</option>
+                            {% for region in regions %}
+                            <option value="{{ region.id }}">{{ region.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">District</label>
+                        <select name="destination_district" id="destDistrict" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500" disabled>
+                            <option value="">Select Region first</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Facility</label>
+                        <select name="destination_facility" id="destFacility" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500" disabled>
+                            <option value="">Select District first</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Batch Information (Optional) -->
+            <div class="border-b pb-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+                    </svg>
+                    Batch Information (Optional)
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Batch / Lot Number</label>
+                        <input type="text" name="batch_number" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500" placeholder="e.g., LOT-2026-A1">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
+                        <input type="date" name="expiry_date" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notes -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <textarea name="notes" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500" placeholder="Any additional information about this receipt..."></textarea>
+            </div>
+
+            <!-- Submit -->
+            <div class="flex justify-end space-x-4 border-t pt-6">
+                <a href="{% url 'inventory:stock_levels' %}" class="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</a>
+                <button type="submit" class="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+                    </svg>
+                    Receive Stock
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function updateLocationType() {
+    const region = document.getElementById('destRegion').value;
+    const district = document.getElementById('destDistrict').value;
+    const facility = document.getElementById('destFacility').value;
+    let type = 'national';
+    if (facility) type = 'facility';
+    else if (district) type = 'district';
+    else if (region) type = 'regional';
+    document.getElementById('destType').value = type;
+}
+
+function loadDistricts(regionId) {
+    const districtSelect = document.getElementById('destDistrict');
+    const facilitySelect = document.getElementById('destFacility');
+    districtSelect.innerHTML = '<option value="">-- All / Skip --</option>';
+    districtSelect.disabled = true;
+    facilitySelect.innerHTML = '<option value="">-- All / Skip --</option>';
+    facilitySelect.disabled = true;
+
+    if (regionId) {
+        fetch(`/api/inventory/districts/?region_id=${regionId}`)
+            .then(r => r.json())
+            .then(data => {
+                districtSelect.innerHTML = '<option value="">-- Select District --</option>';
+                data.districts.forEach(d => {
+                    const opt = document.createElement('option');
+                    opt.value = d.id;
+                    opt.textContent = d.name;
+                    districtSelect.appendChild(opt);
+                });
+                districtSelect.disabled = false;
+            })
+            .catch(() => { districtSelect.innerHTML = '<option value="">Error loading</option>'; });
+    }
+}
+
+function loadFacilities(districtId) {
+    const facilitySelect = document.getElementById('destFacility');
+    facilitySelect.innerHTML = '<option value="">-- All / Skip --</option>';
+    facilitySelect.disabled = true;
+
+    if (districtId) {
+        fetch(`/api/inventory/facilities/?district_id=${districtId}`)
+            .then(r => r.json())
+            .then(data => {
+                facilitySelect.innerHTML = '<option value="">-- Select Facility --</option>';
+                data.facilities.forEach(f => {
+                    const opt = document.createElement('option');
+                    opt.value = f.id;
+                    opt.textContent = f.name;
+                    facilitySelect.appendChild(opt);
+                });
+                facilitySelect.disabled = false;
+            })
+            .catch(() => { facilitySelect.innerHTML = '<option value="">Error loading</option>'; });
+    }
+}
+
+document.getElementById('destRegion').addEventListener('change', function() {
+    loadDistricts(this.value);
+    updateLocationType();
+});
+document.getElementById('destDistrict').addEventListener('change', function() {
+    loadFacilities(this.value);
+    updateLocationType();
+});
+document.getElementById('destFacility').addEventListener('change', function() {
+    updateLocationType();
+});
+</script>
+{% endblock %}

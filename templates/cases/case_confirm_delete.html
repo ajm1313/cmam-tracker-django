@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+
+{% block title %}Close Case - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex justify-between items-center">
+        <h1 class="text-2xl font-bold text-gray-900">Close Case</h1>
+        <a href="{% url 'cases:case_list' %}" class="text-gray-600 hover:text-gray-900">← Back</a>
+    </div>
+
+    <div class="bg-white shadow rounded-lg p-6">
+        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                    </svg>
+                </div>
+                <div class="ml-3">
+                    <p class="text-sm text-yellow-700">
+                        Are you sure you want to close the case for <strong>{{ case.child_name }}</strong>? 
+                        This will mark the case as discharged.
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <form method="post">
+            {% csrf_token %}
+            <div class="flex justify-end space-x-3">
+                <a href="{% url 'cases:case_list' %}" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded">Cancel</a>
+                <button type="submit" class="bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded">Close Case</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,110 @@
+<!-- Cascading Location Filter Form — always rendered for all user levels -->
+{% if not no_card %}<div class="bg-white rounded-lg shadow p-6 print:hidden">{% endif %}
+<form method="get" id="reportFilterForm" class="space-y-4">
+
+    {% if access_level != 'facility' %}
+    <!-- Location Filters Row (hidden for facility-level users) -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {% if access_level == 'admin' or access_level == 'national' %}
+        <!-- Region Filter -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Region</label>
+            <select name="region" id="regionSelect" onchange="this.form.submit()" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-{{ theme_color|default:'blue' }}-500 focus:border-{{ theme_color|default:'blue' }}-500">
+                <option value="">All Regions</option>
+                {% for region in regions %}
+                <option value="{{ region.id }}" {% if selected_region == region.id|stringformat:"s" %}selected{% endif %}>{{ region.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+        {% if access_level == 'admin' or access_level == 'national' or access_level == 'regional' %}
+        <!-- District Filter -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">District</label>
+            <select name="district" id="districtSelect" onchange="this.form.submit()" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-{{ theme_color|default:'blue' }}-500 focus:border-{{ theme_color|default:'blue' }}-500">
+                <option value="">All Districts</option>
+                {% for district in districts %}
+                <option value="{{ district.id }}" {% if selected_district == district.id|stringformat:"s" %}selected{% endif %}>{{ district.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+        {% if access_level == 'admin' or access_level == 'national' or access_level == 'regional' or access_level == 'district' %}
+        <!-- Sub-District Filter -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Sub-District</label>
+            <select name="sub_district" id="subDistrictSelect" onchange="this.form.submit()" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-{{ theme_color|default:'blue' }}-500 focus:border-{{ theme_color|default:'blue' }}-500">
+                <option value="">All Sub-Districts</option>
+                {% for sub_district in sub_districts %}
+                <option value="{{ sub_district.id }}" {% if selected_sub_district == sub_district.id|stringformat:"s" %}selected{% endif %}>{{ sub_district.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+        <!-- Facility Filter -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Health Facility</label>
+            <select name="facility" id="facilitySelect" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-{{ theme_color|default:'blue' }}-500 focus:border-{{ theme_color|default:'blue' }}-500">
+                <option value="">All Facilities</option>
+                {% for facility in facilities %}
+                <option value="{{ facility.id }}" {% if selected_facility == facility.id|stringformat:"s" %}selected{% endif %}>{{ facility.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    {% else %}
+    <!-- Facility-level user: show facility name (read-only) -->
+    <div class="flex items-center gap-2 text-sm py-1">
+        <svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+        </svg>
+        <span class="text-gray-500 font-medium">Facility:</span>
+        <span class="font-semibold text-gray-800">{% for f in facilities %}{{ f.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>
+    </div>
+    {% endif %}
+
+    {% if not hide_time_filters %}
+    <!-- Time Period Filters — shown for all user levels -->
+    <div class="border-t border-gray-200 pt-4">
+        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Filter by Period</p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Month</label>
+                <select name="month" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-{{ theme_color|default:'blue' }}-500 focus:border-{{ theme_color|default:'blue' }}-500">
+                    {% for m in months %}
+                    <option value="{{ m.0 }}" {% if selected_month == m.0|stringformat:"s" %}selected{% endif %}>{{ m.1 }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Year</label>
+                <select name="year" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-{{ theme_color|default:'blue' }}-500 focus:border-{{ theme_color|default:'blue' }}-500">
+                    {% for y in years %}
+                    <option value="{{ y }}" {% if selected_year == y|stringformat:"s" %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="flex items-end">
+                <button type="submit" class="w-full bg-{{ theme_color|default:'blue' }}-600 hover:bg-{{ theme_color|default:'blue' }}-700 text-white px-4 py-2 rounded-md font-medium">
+                    {% if hide_location_label %}Apply Filter{% else %}Generate Report{% endif %}
+                </button>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <!-- Location-only: Apply button -->
+    <div class="flex justify-end">
+        <button type="submit" class="bg-{{ theme_color|default:'blue' }}-600 hover:bg-{{ theme_color|default:'blue' }}-700 text-white px-6 py-2 rounded-md text-sm font-medium">
+            Apply Filter
+        </button>
+    </div>
+    {% endif %}
+
+</form>
+{% if not no_card %}</div>{% endif %}
+
+<!-- Cascade is server-side: region/district/sub-district selects auto-submit the form.
+     The view re-renders with child options populated. No AJAX needed. -->

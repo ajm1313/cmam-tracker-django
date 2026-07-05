@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+
+{% block title %}Process Discharge - {{ case.child_name }} | CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto space-y-6">
+    <!-- Header -->
+    <div class="bg-green-50 border-l-4 border-green-500 p-4 rounded">
+        <h1 class="text-2xl font-bold text-green-700">Process Discharge</h1>
+        <p class="text-green-600">{{ case.child_name }} - {{ case.malnutrition_type }}</p>
+    </div>
+
+    <!-- Case Summary -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Case Summary</h2>
+        <div class="grid grid-cols-2 gap-4 text-sm">
+            <div><span class="text-gray-500">Name:</span> <span class="font-medium ml-2">{{ case.child_name }}</span></div>
+            <div><span class="text-gray-500">Age:</span> <span class="font-medium ml-2">{{ case.age_months }} months</span></div>
+            <div><span class="text-gray-500">Gender:</span> <span class="font-medium ml-2">{{ case.child_gender }}</span></div>
+            <div><span class="text-gray-500">Type:</span> <span class="font-medium ml-2">{{ case.malnutrition_type }}</span></div>
+            <div><span class="text-gray-500">Registration:</span> <span class="font-medium ml-2">{{ case.registration_date|date:"M j, Y" }}</span></div>
+            <div><span class="text-gray-500">Facility:</span> <span class="font-medium ml-2">{{ case.facility.name }}</span></div>
+        </div>
+    </div>
+
+    <!-- Discharge Form -->
+    <form method="post" class="bg-white rounded-lg shadow p-6">
+        {% csrf_token %}
+        
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Discharge Details</h2>
+        
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Discharge Outcome *</label>
+                <div class="grid grid-cols-2 gap-3">
+                    <label class="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-green-50 transition">
+                        <input type="radio" name="outcome" value="Cured" required class="h-4 w-4 text-green-600">
+                        <div class="ml-3">
+                            <span class="font-medium text-gray-900">Cured</span>
+                            <p class="text-xs text-gray-500">Child has recovered</p>
+                        </div>
+                    </label>
+                    <label class="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-yellow-50 transition">
+                        <input type="radio" name="outcome" value="Defaulted" class="h-4 w-4 text-yellow-600">
+                        <div class="ml-3">
+                            <span class="font-medium text-gray-900">Defaulted</span>
+                            <p class="text-xs text-gray-500">Missed 3+ consecutive visits</p>
+                        </div>
+                    </label>
+                    <label class="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-red-50 transition">
+                        <input type="radio" name="outcome" value="Death" class="h-4 w-4 text-red-600">
+                        <div class="ml-3">
+                            <span class="font-medium text-gray-900">Death</span>
+                            <p class="text-xs text-gray-500">Child deceased</p>
+                        </div>
+                    </label>
+                    <label class="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-blue-50 transition">
+                        <input type="radio" name="outcome" value="Transfer" class="h-4 w-4 text-blue-600">
+                        <div class="ml-3">
+                            <span class="font-medium text-gray-900">Transfer</span>
+                            <p class="text-xs text-gray-500">Transferred to another facility</p>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <textarea name="outcome_notes" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500" placeholder="Additional notes about the discharge..."></textarea>
+            </div>
+        </div>
+
+        <!-- Form Actions -->
+        <div class="flex justify-between items-center mt-6 pt-6 border-t">
+            <a href="{% url 'cases:discharge_management' %}" class="bg-gray-500 text-white px-6 py-2 rounded-lg hover:bg-gray-600">Cancel</a>
+            <button type="submit" class="bg-green-600 text-white px-8 py-2 rounded-lg hover:bg-green-700">Process Discharge</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,361 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ case.child_name }} - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">{{ case.child_name }}</h1>
+            <p class="mt-1 text-sm text-gray-500">Registration: <span class="font-mono font-bold text-gray-800 bg-gray-100 px-2 py-0.5 rounded">{{ case.registration_number|default:"N/A" }}</span></p>
+        </div>
+        <div class="space-x-2">
+            <a href="{% url 'cases:case_edit' case.pk %}" class="bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">Edit</a>
+            <a href="{% url 'cases:case_list' %}" class="text-gray-600 hover:text-gray-900">← Back</a>
+        </div>
+    </div>
+
+    <!-- Status Badge -->
+    <div class="flex items-center space-x-4">
+        <span class="px-3 py-1 inline-flex text-sm leading-5 font-semibold rounded-full {% if case.malnutrition_type == 'SAM' %}bg-red-100 text-red-800{% elif case.malnutrition_type == 'MAM' %}bg-yellow-100 text-yellow-800{% else %}bg-purple-100 text-purple-800{% endif %}">
+            {{ case.malnutrition_type }}
+        </span>
+        {% if case.malnutrition_type == 'MAM' and case.mam_type %}
+        <span class="px-3 py-1 inline-flex text-sm leading-5 font-semibold rounded-full {% if case.mam_type == 'High-risk MAM' %}bg-orange-100 text-orange-800{% else %}bg-blue-100 text-blue-800{% endif %}">
+            {{ case.mam_type }}
+        </span>
+        {% endif %}
+        {% if case.malnutrition_type == 'MAM' and case.mam_visit_schedule %}
+        <span class="px-3 py-1 inline-flex text-sm leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">
+            📅 {{ case.mam_visit_schedule }}
+        </span>
+        {% endif %}
+        <span class="px-3 py-1 inline-flex text-sm leading-5 font-semibold rounded-full {% if case.status == 'Active' %}bg-green-100 text-green-800{% else %}bg-gray-100 text-gray-800{% endif %}">
+            {{ case.status }}
+        </span>
+        {% if case.age_months < 6 %}
+        <span class="px-3 py-1 inline-flex text-sm leading-5 font-semibold rounded-full bg-amber-100 text-amber-800">
+            👶 Infant &lt;6 months
+        </span>
+        {% endif %}
+        {% if case.ipc_referral_required %}
+        <span class="px-3 py-1 inline-flex text-sm leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+            🚨 IPC Referral Required
+        </span>
+        {% endif %}
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Child Information -->
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <div class="px-6 py-4 bg-gray-50 border-b">
+                <h2 class="text-lg font-medium text-gray-900">Child Information</h2>
+            </div>
+            <div class="p-6">
+                <dl class="grid grid-cols-2 gap-4">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Name</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ case.child_name }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Gender</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ case.gender }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Date of Birth</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ case.date_of_birth|date:"Y-m-d"|default:"N/A" }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Facility</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ case.facility.name }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Registration Date</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ case.registration_date|date:"Y-m-d" }}</dd>
+                    </div>
+                </dl>
+            </div>
+        </div>
+
+        <!-- Anthropometric Data -->
+        <div class="bg-white shadow rounded-lg overflow-hidden">
+            <div class="px-6 py-4 bg-gray-50 border-b">
+                <h2 class="text-lg font-medium text-gray-900">Anthropometric Data</h2>
+            </div>
+            <div class="p-6">
+                <dl class="grid grid-cols-2 gap-4">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Weight</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ case.weight|default:"N/A" }} kg</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Height</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ case.height|default:"N/A" }} cm</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">MUAC</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ case.muac|default:"N/A" }} cm</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Z-Score</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ case.z_score|default:"N/A" }}</dd>
+                    </div>
+                </dl>
+            </div>
+        </div>
+        
+        <!-- Infant-Specific Data (SAM <6 months) -->
+        {% if case.malnutrition_type == 'SAM' and case.age_months < 6 %}
+        <div class="bg-white shadow rounded-lg overflow-hidden border-l-4 border-amber-500">
+            <div class="px-6 py-4 bg-amber-50 border-b">
+                <h2 class="text-lg font-medium text-amber-900">👶 Infant Assessment (&lt;6 months)</h2>
+            </div>
+            <div class="p-6">
+                <dl class="grid grid-cols-2 gap-4">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Age in Weeks</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ case.age_weeks|default:"N/A" }} weeks</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Effective Suckling</dt>
+                        <dd class="mt-1 text-sm">
+                            <span class="px-2 py-1 rounded {% if case.effective_suckling == 'Yes' %}bg-green-100 text-green-800{% elif case.effective_suckling == 'Poor' %}bg-yellow-100 text-yellow-800{% elif case.effective_suckling == 'No' %}bg-red-100 text-red-800{% else %}bg-gray-100 text-gray-800{% endif %}">
+                                {{ case.effective_suckling|default:"N/A" }}
+                            </span>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Relactation Needed</dt>
+                        <dd class="mt-1 text-sm">
+                            <span class="px-2 py-1 rounded {% if case.relactation_needed %}bg-orange-100 text-orange-800{% else %}bg-gray-100 text-gray-800{% endif %}">
+                                {% if case.relactation_needed %}Yes{% else %}No{% endif %}
+                            </span>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Visible Severe Wasting</dt>
+                        <dd class="mt-1 text-sm">
+                            <span class="px-2 py-1 rounded {% if case.visible_severe_wasting %}bg-red-100 text-red-800{% else %}bg-gray-100 text-gray-800{% endif %}">
+                                {% if case.visible_severe_wasting %}Yes{% else %}No{% endif %}
+                            </span>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Breastfeeding Prospect</dt>
+                        <dd class="mt-1 text-sm">
+                            <span class="px-2 py-1 rounded {% if case.breastfeeding_prospect == 'Good' %}bg-green-100 text-green-800{% elif case.breastfeeding_prospect == 'Poor' %}bg-yellow-100 text-yellow-800{% elif case.breastfeeding_prospect == 'None' %}bg-red-100 text-red-800{% else %}bg-gray-100 text-gray-800{% endif %}">
+                                {{ case.breastfeeding_prospect|default:"N/A" }}
+                            </span>
+                        </dd>
+                    </div>
+                    {% if case.ipc_referral_required %}
+                    <div class="col-span-2">
+                        <dt class="text-sm font-medium text-red-600">IPC Referral Reason</dt>
+                        <dd class="mt-1 text-sm text-red-800 bg-red-50 p-2 rounded">{{ case.ipc_referral_reason|default:"N/A" }}</dd>
+                    </div>
+                    {% endif %}
+                    {% if case.day_4_visit_date or case.day_10_visit_date %}
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Day 4 Visit Date</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ case.day_4_visit_date|date:"Y-m-d"|default:"N/A" }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Day 10 Visit Date</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ case.day_10_visit_date|date:"Y-m-d"|default:"N/A" }}</dd>
+                    </div>
+                    {% endif %}
+                </dl>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- MAM Auto-Calculated Data -->
+        {% if case.malnutrition_type == 'MAM' %}
+        <div class="bg-white shadow rounded-lg overflow-hidden border-l-4 border-yellow-500">
+            <div class="px-6 py-4 bg-yellow-50 border-b">
+                <h2 class="text-lg font-medium text-yellow-900">📊 MAM Management Details</h2>
+            </div>
+            <div class="p-6">
+                <dl class="grid grid-cols-2 gap-4">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">MAM Type</dt>
+                        <dd class="mt-1 text-sm">
+                            <span class="px-2 py-1 rounded font-semibold {% if case.mam_type == 'High-risk MAM' %}bg-orange-100 text-orange-800{% else %}bg-blue-100 text-blue-800{% endif %}">
+                                {{ case.mam_type|default:"Not classified" }}
+                            </span>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Auto-Classified Type</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ case.auto_mam_type|default:"N/A" }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Visit Schedule</dt>
+                        <dd class="mt-1 text-sm">
+                            <span class="px-2 py-1 rounded bg-purple-100 text-purple-800">
+                                {{ case.mam_visit_schedule|default:"N/A" }}
+                            </span>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">SFF Sachets per Day</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ case.sff_sachets_per_day|default:"0" }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Appetite Test Required</dt>
+                        <dd class="mt-1 text-sm">
+                            <span class="px-2 py-1 rounded {% if case.mam_appetite_test_required %}bg-yellow-100 text-yellow-800{% else %}bg-gray-100 text-gray-800{% endif %}">
+                                {% if case.mam_appetite_test_required %}Yes{% else %}No{% endif %}
+                            </span>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Weeks in Treatment</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ case.mam_weeks_in_treatment|default:"0" }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Reporting Category</dt>
+                        <dd class="mt-1 text-sm">
+                            <span class="px-2 py-1 rounded bg-indigo-100 text-indigo-800 font-mono">
+                                {{ case.mam_reporting_category|default:"N/A" }}
+                            </span>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Has Aggravating Factors</dt>
+                        <dd class="mt-1 text-sm">
+                            <span class="px-2 py-1 rounded {% if case.has_aggravating_factors %}bg-orange-100 text-orange-800{% else %}bg-green-100 text-green-800{% endif %}">
+                                {% if case.has_aggravating_factors %}Yes{% else %}No{% endif %}
+                            </span>
+                        </dd>
+                    </div>
+                    {% if case.transitioned_to_sam %}
+                    <div class="col-span-2">
+                        <dt class="text-sm font-medium text-red-600">⚠️ Transitioned to SAM</dt>
+                        <dd class="mt-1 text-sm text-red-800 bg-red-50 p-2 rounded">
+                            <strong>Date:</strong> {{ case.sam_transition_date|date:"Y-m-d"|default:"N/A" }}<br>
+                            <strong>Reason:</strong> {{ case.sam_transition_reason|default:"N/A" }}
+                        </dd>
+                    </div>
+                    {% endif %}
+                </dl>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- MAM Aggravating Factors -->
+        {% if case.malnutrition_type == 'MAM' and case.has_aggravating_factors %}
+        <div class="bg-white shadow rounded-lg overflow-hidden border-l-4 border-blue-500">
+            <div class="px-6 py-4 bg-blue-50 border-b">
+                <h2 class="text-lg font-medium text-blue-900">📋 Aggravating Factors</h2>
+            </div>
+            <div class="p-6">
+                <dl class="grid grid-cols-2 gap-4">
+                    {% if case.age_months < 24 %}
+                    <div class="flex items-center">
+                        <svg class="h-5 w-5 text-orange-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                        <span class="text-sm text-gray-900">Age under 24 months</span>
+                    </div>
+                    {% endif %}
+                    {% if case.previous_sam_episode %}
+                    <div class="flex items-center">
+                        <svg class="h-5 w-5 text-orange-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                        <span class="text-sm text-gray-900">Previous SAM episode</span>
+                    </div>
+                    {% endif %}
+                    {% if case.failed_counselling_only %}
+                    <div class="flex items-center">
+                        <svg class="h-5 w-5 text-orange-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                        <span class="text-sm text-gray-900">Failed counselling only</span>
+                    </div>
+                    {% endif %}
+                    {% if case.hiv_tb_status and case.hiv_tb_status != 'None' %}
+                    <div class="flex items-center">
+                        <svg class="h-5 w-5 text-orange-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                        <span class="text-sm text-gray-900">HIV/TB: {{ case.hiv_tb_status }}</span>
+                    </div>
+                    {% endif %}
+                    {% if case.poor_maternal_health %}
+                    <div class="flex items-center">
+                        <svg class="h-5 w-5 text-orange-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                        <span class="text-sm text-gray-900">Poor maternal health</span>
+                    </div>
+                    {% endif %}
+                    {% if case.mother_deceased %}
+                    <div class="flex items-center">
+                        <svg class="h-5 w-5 text-orange-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                        <span class="text-sm text-gray-900">Mother deceased</span>
+                    </div>
+                    {% endif %}
+                    {% if case.household_vulnerability and case.household_vulnerability != 'None' %}
+                    <div class="flex items-center">
+                        <svg class="h-5 w-5 text-orange-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                        <span class="text-sm text-gray-900">Household vulnerability: {{ case.household_vulnerability }}</span>
+                    </div>
+                    {% endif %}
+                    {% if case.disability == 'Yes' %}
+                    <div class="flex items-center col-span-2">
+                        <svg class="h-5 w-5 text-orange-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                        <span class="text-sm text-gray-900">Disability: {{ case.disability_details|default:"Yes" }}</span>
+                    </div>
+                    {% endif %}
+                </dl>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- WHO Growth Chart -->
+    {% include 'cases/partials/growth_chart.html' %}
+
+    <!-- Visit History -->
+    <div class="bg-white shadow rounded-lg overflow-hidden">
+        <div class="px-6 py-4 bg-gray-50 border-b flex justify-between items-center">
+            <h2 class="text-lg font-medium text-gray-900">Visit History</h2>
+            <a href="{% url 'cases:visit_form' case.pk %}" class="text-blue-600 hover:text-blue-800 text-sm font-medium">+ Record Visit</a>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Weight</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">MUAC</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Notes</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for visit in visits %}
+                    <tr class="hover:bg-blue-50 cursor-pointer transition" onclick="window.location='{% url 'cases:visit_edit' visit.pk %}'">
+                        <td class="px-6 py-4 whitespace-nowrap"><a href="{% url 'cases:visit_edit' visit.pk %}" class="text-blue-600 hover:underline">{{ visit.visit_date|date:"Y-m-d" }}</a></td>
+                        <td class="px-6 py-4 whitespace-nowrap">{{ visit.weight_kg|default:"N/A" }} kg</td>
+                        <td class="px-6 py-4 whitespace-nowrap">{{ visit.muac_cm|default:"N/A" }} cm</td>
+                        <td class="px-6 py-4">{{ visit.medical_notes|default:"No notes"|truncatewords:10 }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="px-6 py-4 text-center text-gray-500">No visits recorded yet</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

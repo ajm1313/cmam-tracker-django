@@ -1,0 +1,485 @@
+{% extends 'base.html' %}
+
+{% block title %}Weekly SAM Report - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Report Header -->
+    <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded print:border-none">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold text-red-700">Health Facility Tally Sheet for Management of SAM</h1>
+                <p class="text-red-600">Weekly Outpatient Report</p>
+            </div>
+            <div class="flex space-x-2 print:hidden">
+                <button onclick="window.print()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a2 2 0 002 2h6a2 2 0 002-2v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clip-rule="evenodd"/>
+                    </svg>
+                    Print Report
+                </button>
+                <a href="{% url 'users:reports' %}" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg">
+                    Back to Reports
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter Form with Cascading Filters -->
+    {% with theme_color='red' %}
+    {% include 'reports/includes/cascading_filter.html' %}
+    {% endwith %}
+
+    <!-- Validation Results -->
+    {% if validation %}
+    <div class="bg-white rounded-lg shadow print:shadow-none overflow-hidden">
+        <div class="px-4 py-3 {% if validation.is_valid %}bg-green-50 border-l-4 border-green-500{% else %}bg-red-50 border-l-4 border-red-500{% endif %}">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                    {% if validation.is_valid %}
+                    <svg class="w-6 h-6 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                    </svg>
+                    <div>
+                        <h3 class="font-bold text-green-800">Report Validation: PASSED</h3>
+                        <p class="text-sm text-green-700">{{ validation.message }}</p>
+                    </div>
+                    {% else %}
+                    <svg class="w-6 h-6 text-red-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                    </svg>
+                    <div>
+                        <h3 class="font-bold text-red-800">Report Validation: FAILED</h3>
+                        <p class="text-sm text-red-700">{{ validation.message }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="text-sm font-semibold">
+                    {% if validation.error_count > 0 %}
+                    <span class="px-3 py-1 bg-red-100 text-red-800 rounded-full">{{ validation.error_count }} Error(s)</span>
+                    {% endif %}
+                    {% if validation.warning_count > 0 %}
+                    <span class="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full ml-2">{{ validation.warning_count }} Warning(s)</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        {% if validation.errors %}
+        <div class="px-4 py-3 bg-red-50 border-t border-red-200">
+            <h4 class="font-bold text-red-800 mb-2">❌ Errors (Must Fix):</h4>
+            <ul class="list-disc list-inside space-y-1 text-sm text-red-700">
+                {% for error in validation.errors %}
+                <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        
+        {% if validation.warnings %}
+        <div class="px-4 py-3 bg-yellow-50 border-t border-yellow-200">
+            <h4 class="font-bold text-yellow-800 mb-2">⚠️ Warnings (Review Recommended):</h4>
+            <ul class="list-disc list-inside space-y-1 text-sm text-yellow-700">
+                {% for warning in validation.warnings %}
+                <li>{{ warning }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Report Info -->
+    <div class="bg-white rounded-lg shadow print:shadow-none overflow-hidden">
+        <div class="overflow-x-auto">
+            <div class="flex divide-x divide-gray-200 min-w-max">
+                <div class="px-4 py-3">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest leading-none">Region</p>
+                    <p class="text-xs font-semibold text-gray-700 mt-1 whitespace-nowrap">{{ region_name|default:"—" }}</p>
+                </div>
+                <div class="px-4 py-3">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest leading-none">District</p>
+                    <p class="text-xs font-semibold text-gray-700 mt-1 whitespace-nowrap">{{ district_name|default:"—" }}</p>
+                </div>
+                <div class="px-4 py-3">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest leading-none">Sub-District</p>
+                    <p class="text-xs font-semibold text-gray-700 mt-1 whitespace-nowrap">{{ sub_district_name|default:"—" }}</p>
+                </div>
+                <div class="px-4 py-3">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest leading-none">Health Facility</p>
+                    <p class="text-xs font-semibold text-gray-700 mt-1 whitespace-nowrap">{{ facility_name }}</p>
+                </div>
+                <div class="px-4 py-3">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest leading-none">Facility Type</p>
+                    <p class="text-xs font-semibold text-gray-700 mt-1 whitespace-nowrap">Outpatient</p>
+                </div>
+                <div class="px-4 py-3 bg-red-50">
+                    <p class="text-xs font-bold text-red-400 uppercase tracking-widest leading-none">Month / Year</p>
+                    <p class="text-xs font-bold text-red-700 mt-1 whitespace-nowrap">{{ month_name }} {{ selected_year }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Weekly Tally Sheet -->
+    <div class="bg-white rounded-lg shadow overflow-x-auto print:shadow-none">
+        <table class="min-w-full divide-y divide-gray-200 text-xs">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-3 py-2 text-left font-medium text-gray-700 border-r" style="min-width: 350px;"></th>
+                    <th class="px-2 py-2 text-center font-medium text-gray-700 border-r bg-blue-50">Week</th>
+                    <th class="px-2 py-2 text-center font-medium text-gray-700 border-r">1</th>
+                    <th class="px-2 py-2 text-center font-medium text-gray-700 border-r">2</th>
+                    <th class="px-2 py-2 text-center font-medium text-gray-700 border-r">3</th>
+                    <th class="px-2 py-2 text-center font-medium text-gray-700 border-r">4</th>
+                    <th class="px-2 py-2 text-center font-medium text-gray-700 border-r">5</th>
+                    <th class="px-2 py-2 text-center font-medium text-gray-700 bg-blue-50">TOTAL</th>
+                </tr>
+                <tr>
+                    <th class="px-3 py-1 text-left font-medium text-gray-500 border-r"></th>
+                    <th class="px-2 py-1 text-center font-medium text-gray-500 border-r bg-blue-50">Date</th>
+                    <th class="px-2 py-1 text-center font-medium text-gray-500 border-r">{{ week_dates.0 }}</th>
+                    <th class="px-2 py-1 text-center font-medium text-gray-500 border-r">{{ week_dates.1 }}</th>
+                    <th class="px-2 py-1 text-center font-medium text-gray-500 border-r">{{ week_dates.2 }}</th>
+                    <th class="px-2 py-1 text-center font-medium text-gray-500 border-r">{{ week_dates.3 }}</th>
+                    <th class="px-2 py-1 text-center font-medium text-gray-500 border-r">{{ week_dates.4 }}</th>
+                    <th class="px-2 py-1 text-center font-medium text-gray-500 bg-blue-50"></th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                <!-- Total start of week (A) -->
+                <tr class="bg-gray-100 font-medium">
+                    <td class="px-3 py-2 border-r">Total start of week (A)</td>
+                    <td class="px-2 py-2 border-r bg-blue-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.start_of_week.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.start_of_week.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.start_of_week.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.start_of_week.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.start_of_week.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold"></td>
+                </tr>
+
+                <!-- B1: New cases <6 months at risk (CMAM Guide) -->
+                <tr>
+                    <td class="px-3 py-2 border-r">New cases (&lt;6 months at risk) MUAC &gt;11cm, WAZ &lt; -2SD, WFL &lt; -2SD (B1)</td>
+                    <td class="px-2 py-2 border-r bg-blue-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_under6_at_risk.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_under6_at_risk.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_under6_at_risk.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_under6_at_risk.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_under6_at_risk.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold">{{ data.new_cases_under6_at_risk_total }}</td>
+                </tr>
+
+                <!-- B2: New Cases 6-59 months MUAC (CMAM Guide) -->
+                <tr class="bg-blue-50">
+                    <td class="px-3 py-2 border-r">New Cases 6-59 months (MUAC < 11.5 cm or WFL/WFH < -3 SD) (B2)</td>
+                    <td class="px-2 py-2 border-r bg-blue-100"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_6_59_muac.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_6_59_muac.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_6_59_muac.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_6_59_muac.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_6_59_muac.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-100 font-bold">{{ data.new_cases_6_59_muac_total }}</td>
+                </tr>
+
+                <!-- B3: New Cases 6-59 months oedema (CMAM Guide) -->
+                <tr class="bg-blue-50">
+                    <td class="px-3 py-2 border-r">New Cases 6-59 months (oedema/Marasmic kwashiorkor) (B3)</td>
+                    <td class="px-2 py-2 border-r bg-blue-100"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_6_59_oedema.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_6_59_oedema.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_6_59_oedema.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_6_59_oedema.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_cases_6_59_oedema.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-100 font-bold">{{ data.new_cases_6_59_oedema_total }}</td>
+                </tr>
+
+                <!-- Other new cases (C) -->
+                <tr>
+                    <td class="px-3 py-2 border-r">Other new cases (children ≥ 5years, adolescents, adults) (C)</td>
+                    <td class="px-2 py-2 border-r bg-blue-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.other_new_cases.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.other_new_cases.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.other_new_cases.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.other_new_cases.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.other_new_cases.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold">{{ data.other_new_cases_total }}</td>
+                </tr>
+
+                <!-- Old Cases (D) -->
+                <tr>
+                    <td class="px-3 py-2 border-r">Old Cases: Referred from other outpatient care or inpatient care, or returned defaulter (D)</td>
+                    <td class="px-2 py-2 border-r bg-blue-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.old_cases.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.old_cases.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.old_cases.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.old_cases.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.old_cases.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold">{{ data.old_cases_total }}</td>
+                </tr>
+
+                <!-- TOTAL ENROLMENT (E) -->
+                <tr class="bg-gray-200 font-bold">
+                    <td class="px-3 py-2 border-r">TOTAL ENROLMENT (E=B1+B2+B3+C+D)</td>
+                    <td class="px-2 py-2 border-r bg-blue-100"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_enrolment.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_enrolment.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_enrolment.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_enrolment.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_enrolment.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-100">{{ data.total_enrolment_total }}</td>
+                </tr>
+
+                <!-- F1a: Cured <6 months at risk (CMAM Guide) -->
+                <tr>
+                    <td class="px-3 py-2 border-r">Cured &lt;6 months at risk (F1a)</td>
+                    <td class="px-2 py-2 border-r bg-blue-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.cured_under6.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.cured_under6.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.cured_under6.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.cured_under6.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.cured_under6.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold">{{ data.cured_under6_total }}</td>
+                </tr>
+
+                <!-- F1b: Cured 6-59 months (CMAM Guide) -->
+                <tr>
+                    <td class="px-3 py-2 border-r">Cured 6-59 months (F1b)</td>
+                    <td class="px-2 py-2 border-r bg-blue-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.cured_6_59.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.cured_6_59.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.cured_6_59.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.cured_6_59.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.cured_6_59.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold">{{ data.cured_6_59_total }}</td>
+                </tr>
+
+                <!-- F2a: Died <6 months at Risk (CMAM Guide) -->
+                <tr>
+                    <td class="px-3 py-2 border-r">Died &lt;6 months at Risk (F2a)</td>
+                    <td class="px-2 py-2 border-r bg-blue-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.died_under6.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.died_under6.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.died_under6.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.died_under6.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.died_under6.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold">{{ data.died_under6_total }}</td>
+                </tr>
+
+                <!-- F2b: Died 6-59 months (CMAM Guide) -->
+                <tr>
+                    <td class="px-3 py-2 border-r">Died 6-59 months (F2b)</td>
+                    <td class="px-2 py-2 border-r bg-blue-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.died_6_59.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.died_6_59.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.died_6_59.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.died_6_59.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.died_6_59.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold">{{ data.died_6_59_total }}</td>
+                </tr>
+
+                <!-- F3a: Defaulted <6 months at risk (CMAM Guide) -->
+                <tr>
+                    <td class="px-3 py-2 border-r">Defaulted &lt;6 months at risk (F3a)</td>
+                    <td class="px-2 py-2 border-r bg-blue-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.defaulted_under6.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.defaulted_under6.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.defaulted_under6.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.defaulted_under6.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.defaulted_under6.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold">{{ data.defaulted_under6_total }}</td>
+                </tr>
+
+                <!-- F3b: Defaulted 6-59 months (CMAM Guide) -->
+                <tr>
+                    <td class="px-3 py-2 border-r">Defaulted 6-59 months (F3b)</td>
+                    <td class="px-2 py-2 border-r bg-blue-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.defaulted_6_59.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.defaulted_6_59.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.defaulted_6_59.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.defaulted_6_59.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.defaulted_6_59.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold">{{ data.defaulted_6_59_total }}</td>
+                </tr>
+
+                <!-- F4a: Non-recovered <6 months at risk (CMAM Guide) -->
+                <tr>
+                    <td class="px-3 py-2 border-r">Non-recovered &lt;6 months at risk (F4a)</td>
+                    <td class="px-2 py-2 border-r bg-blue-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.non_recovered_under6.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.non_recovered_under6.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.non_recovered_under6.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.non_recovered_under6.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.non_recovered_under6.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold">{{ data.non_recovered_under6_total }}</td>
+                </tr>
+
+                <!-- F4b: Non-recovered 6-59 months (CMAM Guide) -->
+                <tr>
+                    <td class="px-3 py-2 border-r">Non-recovered 6-59 months (F4b)</td>
+                    <td class="px-2 py-2 border-r bg-blue-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.non_recovered_6_59.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.non_recovered_6_59.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.non_recovered_6_59.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.non_recovered_6_59.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.non_recovered_6_59.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold">{{ data.non_recovered_6_59_total }}</td>
+                </tr>
+
+                <!-- Total Discharges (F) -->
+                <tr class="bg-gray-200 font-bold">
+                    <td class="px-3 py-2 border-r">Total Discharges (F=F1+F2+F3+F4)</td>
+                    <td class="px-2 py-2 border-r bg-blue-100"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_discharges.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_discharges.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_discharges.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_discharges.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_discharges.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-100">{{ data.total_discharges_total }}</td>
+                </tr>
+
+                <!-- Referrals (G) -->
+                <tr>
+                    <td class="px-3 py-2 border-r">Referrals to other outpatient care or inpatient care (G)</td>
+                    <td class="px-2 py-2 border-r bg-blue-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.referrals.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.referrals.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.referrals.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.referrals.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.referrals.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold">{{ data.referrals_total }}</td>
+                </tr>
+
+                <!-- Total exits for Other (H) -->
+                <tr>
+                    <td class="px-3 py-2 border-r">Total exits for Other (children ≥ 5 y, adolescents, adults) (H)</td>
+                    <td class="px-2 py-2 border-r bg-blue-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.other_exits.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.other_exits.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.other_exits.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.other_exits.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.other_exits.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold">{{ data.other_exits_total }}</td>
+                </tr>
+
+                <!-- TOTAL EXITS (I) -->
+                <tr class="bg-gray-200 font-bold">
+                    <td class="px-3 py-2 border-r">TOTAL EXITS (I= F+G+H)</td>
+                    <td class="px-2 py-2 border-r bg-blue-100"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_exits.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_exits.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_exits.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_exits.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.total_exits.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-100">{{ data.total_exits_total }}</td>
+                </tr>
+
+                <!-- Total end of week (J) -->
+                <tr class="bg-gray-300 font-bold">
+                    <td class="px-3 py-2 border-r">Total end of week (J = A + E - I)</td>
+                    <td class="px-2 py-2 border-r bg-blue-200"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.end_of_week.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.end_of_week.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.end_of_week.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.end_of_week.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.end_of_week.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-200">{{ data.end_of_week_total }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Additional Information -->
+    <div class="bg-white rounded-lg shadow overflow-x-auto print:shadow-none">
+        <div class="px-4 py-3 bg-gray-100 border-b">
+            <h3 class="font-bold text-gray-700">ADDITIONAL INFORMATION</h3>
+        </div>
+        <table class="min-w-full divide-y divide-gray-200 text-xs">
+            <tbody class="bg-white divide-y divide-gray-200">
+                <tr>
+                    <td class="px-3 py-2 border-r" style="min-width: 350px;">Number of new males with SAM (B2+B3)</td>
+                    <td class="px-2 py-2 border-r bg-blue-50 w-16"></td>
+                    <td class="px-2 py-2 text-center border-r w-16">{{ data.new_males.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r w-16">{{ data.new_males.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r w-16">{{ data.new_males.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r w-16">{{ data.new_males.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r w-16">{{ data.new_males.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold w-16">{{ data.new_males_total }}</td>
+                </tr>
+                <tr>
+                    <td class="px-3 py-2 border-r">Number of new females with SAM (B2+B3)</td>
+                    <td class="px-2 py-2 border-r bg-blue-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_females.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_females.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_females.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_females.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.new_females.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold">{{ data.new_females_total }}</td>
+                </tr>
+                <tr>
+                    <td class="px-3 py-2 border-r">Quantity of RUTF at the start of week</td>
+                    <td class="px-2 py-2 border-r bg-blue-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_start.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_start.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_start.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_start.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_start.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold"></td>
+                </tr>
+                <tr>
+                    <td class="px-3 py-2 border-r">Quantity of RUTF received</td>
+                    <td class="px-2 py-2 border-r bg-blue-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_received.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_received.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_received.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_received.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_received.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold">{{ data.rutf_received_total }}</td>
+                </tr>
+                <tr>
+                    <td class="px-3 py-2 border-r">RUTF Quantities (Issued during the week for SAM) - <em>In packets</em></td>
+                    <td class="px-2 py-2 border-r bg-blue-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_issued_sam.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_issued_sam.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_issued_sam.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_issued_sam.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_issued_sam.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold">{{ data.rutf_issued_sam_total }}</td>
+                </tr>
+                <tr>
+                    <td class="px-3 py-2 border-r">RUTF Quantities (Issued during the week for MAM) - <em>In packets</em></td>
+                    <td class="px-2 py-2 border-r bg-blue-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_issued_mam.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_issued_mam.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_issued_mam.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_issued_mam.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_issued_mam.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold">{{ data.rutf_issued_mam_total }}</td>
+                </tr>
+                <tr>
+                    <td class="px-3 py-2 border-r">RUTF Quantities (Balance at the end of the week) - <em>In packets</em></td>
+                    <td class="px-2 py-2 border-r bg-blue-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_balance.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_balance.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_balance.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_balance.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_balance.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-blue-50 font-bold"></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+@media print {
+    body { font-size: 10px; }
+    .print\\:hidden { display: none !important; }
+    .print\\:shadow-none { box-shadow: none !important; }
+    .print\\:border-none { border: none !important; }
+    .print\\:p-2 { padding: 0.5rem !important; }
+    table { page-break-inside: avoid; }
+}
+</style>
+{% endblock %}
