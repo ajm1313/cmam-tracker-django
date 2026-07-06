@@ -17,10 +17,16 @@ DEBUG = config('DEBUG', default=True, cast=bool)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,192.168.0.100,192.168.0.101,10.0.2.2,*').split(',')
 
-# Railway assigns a dynamic public domain via this env var
+# Railway assigns a dynamic public domain via this env var (when present)
 _RAILWAY_DOMAIN = config('RAILWAY_PUBLIC_DOMAIN', default='')
 if _RAILWAY_DOMAIN and _RAILWAY_DOMAIN not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(_RAILWAY_DOMAIN)
+
+# Always trust Railway's own domain suffix regardless of whether
+# RAILWAY_PUBLIC_DOMAIN was injected (Django supports wildcard hosts with a
+# leading dot).
+if '.up.railway.app' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append('.up.railway.app')
 
 # CSRF Trusted Origins (for browser preview proxy)
 # ponytail: Use .env or wildcard middleware instead of hardcoding ports
@@ -40,6 +46,9 @@ CSRF_TRUSTED_ORIGINS = [
 
 if _RAILWAY_DOMAIN:
     CSRF_TRUSTED_ORIGINS.append(f'https://{_RAILWAY_DOMAIN}')
+
+# Trust all Railway subdomains regardless of RAILWAY_PUBLIC_DOMAIN detection
+CSRF_TRUSTED_ORIGINS.append('https://*.up.railway.app')
 
 # Allow all localhost origins in DEBUG mode
 if DEBUG:
