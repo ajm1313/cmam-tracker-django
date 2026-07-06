@@ -266,6 +266,10 @@ LOGOUT_REDIRECT_URL = '/login/'
 
 # Security settings
 if not DEBUG:
+    # Trust the X-Forwarded-Proto header set by reverse proxies (Railway,
+    # Render, etc.) that terminate SSL and forward plain HTTP internally.
+    # Without this, SECURE_SSL_REDIRECT causes an infinite redirect loop.
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
