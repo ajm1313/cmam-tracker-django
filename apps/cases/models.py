@@ -242,11 +242,19 @@ class OpcRegistration(TimeStampedModel):
         return self.visits.count()
     
     def get_next_visit_date(self):
+        # ponytail: schedule next visit on the facility's OPC day if configured;
+        # otherwise fall back to a fixed interval (SAM=7 days, MAM=14 days).
         latest_visit = self.get_latest_visit()
-        if not latest_visit:
-            return self.registration_date + timedelta(days=7)
+        base_date = latest_visit.visit_date if latest_visit else self.registration_date
         interval = 7 if self.is_sam() else 14
-        return latest_visit.visit_date + timedelta(days=interval)
+        earliest = base_date + timedelta(days=interval)
+        opc_day = getattr(self.facility, 'opc_day', None)
+        if opc_day is not None:
+            # Advance to the next occurrence of the facility's OPC weekday
+            # on or after `earliest` (0=Monday … 6=Sunday).
+            days_ahead = (opc_day - earliest.weekday()) % 7
+            return earliest + timedelta(days=days_ahead)
+        return earliest
     
     def is_visit_due(self):
         next_visit = self.get_next_visit_date()

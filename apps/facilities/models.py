@@ -11,6 +11,16 @@ class Facility(TimeStampedModel):
         ('IPC', 'Inpatient Care'),
     ]
     
+    OPC_DAY_CHOICES = [
+        (0, 'Monday'),
+        (1, 'Tuesday'),
+        (2, 'Wednesday'),
+        (3, 'Thursday'),
+        (4, 'Friday'),
+        (5, 'Saturday'),
+        (6, 'Sunday'),
+    ]
+
     name = models.CharField(max_length=255)
     code = models.CharField(max_length=50, unique=True)
     type = models.CharField(max_length=10, choices=FACILITY_TYPES)
@@ -20,6 +30,10 @@ class Facility(TimeStampedModel):
     contact_person = models.CharField(max_length=255, null=True, blank=True)
     phone = models.CharField(max_length=20, null=True, blank=True)
     email = models.EmailField(null=True, blank=True)
+    opc_day = models.IntegerField(
+        choices=OPC_DAY_CHOICES, null=True, blank=True,
+        help_text='Weekly OPC clinic day (used to schedule SAM & MAM OPC visits)'
+    )
     population = models.PositiveIntegerField(null=True, blank=True, help_text='Catchment population of the facility')
     sam_prevalence = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, help_text='SAM prevalence rate (%) of the region')
     latitude = models.DecimalField(max_digits=10, decimal_places=8, null=True, blank=True)
@@ -48,6 +62,13 @@ class Facility(TimeStampedModel):
     def is_ipc(self):
         """Check if facility is IPC"""
         return self.type == 'IPC'
+
+    @property
+    def opc_day_display(self):
+        """Return the human-readable OPC day name"""
+        if self.opc_day is None:
+            return None
+        return dict(self.OPC_DAY_CHOICES).get(self.opc_day)
 
     @property
     def expected_sam_cases(self):

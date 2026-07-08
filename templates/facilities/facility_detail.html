@@ -118,6 +118,22 @@
                         <p class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Capacity</p>
                         <p class="text-sm text-gray-900">{% if facility.capacity %}{{ facility.capacity }} patients{% else %}N/A{% endif %}</p>
                     </div>
+                    {% if facility.type == 'OPC' %}
+                    <div class="sm:col-span-2">
+                        <p class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">OPC Visit Day</p>
+                        {% if facility.opc_day_display %}
+                        <span class="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-cyan-100 text-cyan-700">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                            Every {{ facility.opc_day_display }}
+                        </span>
+                        <p class="mt-1 text-xs text-gray-400">SAM &amp; MAM OPC visits are scheduled on this day each week.</p>
+                        {% else %}
+                        <p class="text-sm text-amber-600 font-medium">⚠ Not configured — visit scheduling uses fixed intervals</p>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                     <div class="sm:col-span-2">
                         <p class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Address</p>
                         <p class="text-sm text-gray-900">{{ facility.address|default:"N/A" }}</p>

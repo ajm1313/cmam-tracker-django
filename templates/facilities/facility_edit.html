@@ -23,10 +23,24 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Type</label>
-                    <select name="type" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    <select name="type" id="id_type" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
                         <option value="OPC" {% if facility.type == 'OPC' %}selected{% endif %}>OPC (Outpatient Care)</option>
                         <option value="IPC" {% if facility.type == 'IPC' %}selected{% endif %}>IPC (Inpatient Care)</option>
                     </select>
+                </div>
+                <div id="opc_day_row" {% if facility.type != 'OPC' %}style="display:none"{% endif %}>
+                    <label class="block text-sm font-medium text-gray-700">OPC Visit Day</label>
+                    <select name="opc_day" id="id_opc_day" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <option value="">— Not set —</option>
+                        <option value="0" {% if facility.opc_day == 0 %}selected{% endif %}>Monday</option>
+                        <option value="1" {% if facility.opc_day == 1 %}selected{% endif %}>Tuesday</option>
+                        <option value="2" {% if facility.opc_day == 2 %}selected{% endif %}>Wednesday</option>
+                        <option value="3" {% if facility.opc_day == 3 %}selected{% endif %}>Thursday</option>
+                        <option value="4" {% if facility.opc_day == 4 %}selected{% endif %}>Friday</option>
+                        <option value="5" {% if facility.opc_day == 5 %}selected{% endif %}>Saturday</option>
+                        <option value="6" {% if facility.opc_day == 6 %}selected{% endif %}>Sunday</option>
+                    </select>
+                    <p class="mt-1 text-xs text-gray-400">The fixed weekly day when SAM &amp; MAM OPC visits are held at this facility.</p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Contact Person</label>
@@ -98,6 +112,14 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const typeSelect = document.getElementById('id_type');
+    const opcDayRow = document.getElementById('opc_day_row');
+    function toggleOpcDay() {
+        opcDayRow.style.display = typeSelect.value === 'OPC' ? '' : 'none';
+    }
+    typeSelect.addEventListener('change', toggleOpcDay);
+    toggleOpcDay();
+
     const UNDER5 = 0.17, ICF = 2.6, COVERAGE = 0.80;
     const popInput = document.getElementById('id_population');
     const prevInput = document.getElementById('id_sam_prevalence');

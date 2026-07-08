@@ -56,11 +56,13 @@ class UserSerializer(serializers.ModelSerializer):
 class FacilitySerializer(serializers.ModelSerializer):
     district_name = serializers.CharField(source='district.name', read_only=True)
     region_name = serializers.CharField(source='district.region.name', read_only=True)
-    
+    opc_day_display = serializers.CharField(source='opc_day_display', read_only=True)
+
     class Meta:
         model = Facility
-        fields = ['id', 'name', 'code', 'type', 'district', 'district_name', 
-                  'region_name', 'address', 'contact_person', 'phone', 'capacity']
+        fields = ['id', 'name', 'code', 'type', 'district', 'district_name',
+                  'region_name', 'address', 'contact_person', 'phone', 'capacity',
+                  'opc_day', 'opc_day_display']
 
 
 class InventoryItemSerializer(serializers.ModelSerializer):

@@ -39,6 +39,8 @@ def facility_create(request):
         address = request.POST.get('address', '').strip() or None
         population = request.POST.get('population', '').strip() or None
         sam_prevalence = request.POST.get('sam_prevalence', '').strip() or None
+        opc_day_raw = request.POST.get('opc_day', '').strip()
+        opc_day = int(opc_day_raw) if opc_day_raw != '' else None
         
         if not name or not code or not facility_type or not district_id:
             messages.error(request, 'Name, Code, Type, and District are required')
@@ -61,6 +63,7 @@ def facility_create(request):
                 address=address,
                 population=int(population) if population else None,
                 sam_prevalence=sam_prevalence if sam_prevalence else None,
+                opc_day=opc_day,
             )
             messages.success(request, f'Facility "{name}" created successfully')
             return redirect('facilities:facility_list')
@@ -103,6 +106,9 @@ def facility_edit(request, pk):
         
         sam_val = request.POST.get('sam_prevalence', '').strip()
         facility.sam_prevalence = sam_val if sam_val else None
+
+        opc_day_raw = request.POST.get('opc_day', '').strip()
+        facility.opc_day = int(opc_day_raw) if opc_day_raw != '' else None
         
         if not facility.name or not facility.code:
             messages.error(request, 'Name and Code are required')
