@@ -48,6 +48,7 @@ urlpatterns = [
     # Cases
     path('v1/cases/', views.cases_list, name='cases_list'),
     path('v1/cases/create/', views.case_create_api, name='case_create'),
+    path('v1/cases/next-reg-number/', views.next_reg_number_api, name='next_reg_number'),
     path('v1/cases/due-visits/', views.due_visits_api, name='due_visits'),
     path('v1/cases/discharge/', views.discharge_stats_api, name='discharge_stats'),
     path('v1/cases/<int:pk>/', views.case_detail_api, name='case_detail'),

@@ -314,6 +314,22 @@ def case_detail_api(request, pk):
     return Response({'success': True, 'data': serializer.data})
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def next_reg_number_api(request):
+    """Preview the next auto-generated registration number for a facility + type"""
+    facility_id = request.query_params.get('facility_id')
+    mal_type = request.query_params.get('type', 'SAM')
+    if not facility_id:
+        return Response({'success': False, 'message': 'facility_id required'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        facility = Facility.objects.get(pk=facility_id)
+    except Facility.DoesNotExist:
+        return Response({'success': False, 'message': 'Facility not found'}, status=status.HTTP_404_NOT_FOUND)
+    reg_number = OpcRegistration.generate_registration_number(facility, mal_type)
+    return Response({'success': True, 'data': {'registration_number': reg_number}})
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def case_create_api(request):
