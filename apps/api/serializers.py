@@ -54,15 +54,65 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class FacilitySerializer(serializers.ModelSerializer):
-    district_name = serializers.CharField(source='district.name', read_only=True)
-    region_name = serializers.CharField(source='district.region.name', read_only=True)
-    opc_day_display = serializers.CharField(source='opc_day_display', read_only=True)
+    district_name = serializers.SerializerMethodField()
+    region_name = serializers.SerializerMethodField()
+    sub_district_name = serializers.SerializerMethodField()
+    opc_day_display = serializers.SerializerMethodField()
+    expected_sam_cases = serializers.SerializerMethodField()
+    sam_target = serializers.SerializerMethodField()
+    # Aliases expected by mobile app
+    facility_type = serializers.CharField(source='type', read_only=True)
+    contact_phone = serializers.CharField(source='phone', read_only=True, allow_null=True)
 
     class Meta:
         model = Facility
-        fields = ['id', 'name', 'code', 'type', 'district', 'district_name',
-                  'region_name', 'address', 'contact_person', 'phone', 'capacity',
-                  'opc_day', 'opc_day_display']
+        fields = [
+            'id', 'name', 'code',
+            'type', 'facility_type',          # both for compat
+            'is_active',
+            'district', 'district_name', 'region_name', 'sub_district_name',
+            'address', 'contact_person',
+            'phone', 'contact_phone',          # both for compat
+            'capacity',
+            'opc_day', 'opc_day_display',
+            'expected_sam_cases', 'sam_target',
+        ]
+
+    def get_district_name(self, obj):
+        try:
+            return obj.district.name if obj.district_id else None
+        except Exception:
+            return None
+
+    def get_region_name(self, obj):
+        try:
+            return obj.district.region.name if obj.district_id else None
+        except Exception:
+            return None
+
+    def get_sub_district_name(self, obj):
+        try:
+            return obj.sub_district.name if obj.sub_district_id else None
+        except Exception:
+            return None
+
+    def get_opc_day_display(self, obj):
+        try:
+            return obj.opc_day_display
+        except Exception:
+            return None
+
+    def get_expected_sam_cases(self, obj):
+        try:
+            return obj.expected_sam_cases
+        except Exception:
+            return None
+
+    def get_sam_target(self, obj):
+        try:
+            return obj.sam_target
+        except Exception:
+            return None
 
 
 class InventoryItemSerializer(serializers.ModelSerializer):

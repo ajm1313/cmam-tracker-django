@@ -236,8 +236,18 @@ def facility_movements(request, facility_id):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def facilities_list(request):
-    """Get accessible facilities for user"""
-    facilities = request.user.get_accessible_facilities()
+    """Get accessible facilities for user, with optional ?search= filter"""
+    facilities = request.user.get_accessible_facilities().select_related(
+        'district', 'district__region', 'sub_district'
+    )
+    search = request.query_params.get('search', '').strip()
+    if search:
+        from django.db.models import Q
+        facilities = facilities.filter(
+            Q(name__icontains=search) |
+            Q(code__icontains=search) |
+            Q(district__name__icontains=search)
+        )
     serializer = FacilitySerializer(facilities, many=True)
     return Response({
         'success': True,
