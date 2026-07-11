@@ -108,12 +108,34 @@ def dashboard(request):
     date_filter = Q(registration_date__year=year, registration_date__month=month)
     
     # Get statistics scoped to filtered facilities and selected month/year
-    # Count users who have active roles at the filtered facilities
-    if facility_ids:
+    # Count users with active roles matching the cascading filter level
+    if selected_facility:
+        # Facility level: users assigned to this facility
         scoped_user_count = User.objects.filter(
             is_active=True,
             user_roles__is_active=True,
-            user_roles__facility_id__in=facility_ids,
+            user_roles__facility_id=selected_facility,
+        ).distinct().count()
+    elif selected_sub_district:
+        # Sub-district level: users at this sub-district OR at any facility within it
+        scoped_user_count = User.objects.filter(
+            is_active=True,
+            user_roles__is_active=True,
+            user_roles__sub_district_id=selected_sub_district,
+        ).distinct().count()
+    elif selected_district:
+        # District level: users at this district, its sub-districts, or facilities within it
+        scoped_user_count = User.objects.filter(
+            is_active=True,
+            user_roles__is_active=True,
+            user_roles__district_id=selected_district,
+        ).distinct().count()
+    elif selected_region:
+        # Region level: users at this region, its districts, sub-districts, or facilities
+        scoped_user_count = User.objects.filter(
+            is_active=True,
+            user_roles__is_active=True,
+            user_roles__region_id=selected_region,
         ).distinct().count()
     else:
         scoped_user_count = User.objects.filter(is_active=True).count()
