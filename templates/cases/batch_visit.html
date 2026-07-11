@@ -1,0 +1,167 @@
+{% extends 'base.html' %}
+
+{% block title %}Batch Visit Entry - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 rounded-2xl px-7 py-5 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+            <div class="w-11 h-11 bg-white/15 rounded-xl flex items-center justify-center border border-white/20">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold text-white tracking-tight">Batch Visit Entry</h1>
+                <p class="text-blue-300 text-xs mt-0.5">Record visits for multiple cases at once</p>
+            </div>
+        </div>
+        <div class="text-sm text-blue-200 bg-white/10 rounded-lg px-3 py-1.5 border border-white/15">
+            {{ active_cases|length }} active case{{ active_cases|length|pluralize }}
+        </div>
+    </div>
+
+    <!-- Instructions -->
+    <div class="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-start gap-3">
+        <svg class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <p class="text-sm text-blue-800">Fill in weight, height, and MUAC for each case you want to record a visit for. Leave a row blank to skip it. Click <strong>Submit Visits</strong> when done.</p>
+    </div>
+
+    <!-- Batch Form -->
+    <form id="batchForm" method="post" class="space-y-4">
+        {% csrf_token %}
+        <input type="hidden" name="entries" id="entriesInput" value="[]">
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="min-w-full" id="batchTable">
+                    <thead>
+                        <tr class="border-b border-gray-100 bg-gray-50">
+                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">
+                                <input type="checkbox" id="selectAll" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                            </th>
+                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Child</th>
+                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
+                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Facility</th>
+                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Last Visit</th>
+                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Visit Date</th>
+                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Weight (kg)</th>
+                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Height (cm)</th>
+                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">MUAC (cm)</th>
+                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-50">
+                        {% for case in active_cases %}
+                        <tr class="batch-row" data-case-id="{{ case.id }}">
+                            <td class="px-4 py-3">
+                                <input type="checkbox" class="row-check rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-7 h-7 rounded-full bg-gradient-to-br from-rose-400 to-pink-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                        {{ case.child_name|first|upper }}
+                                    </div>
+                                    <div>
+                                        <p class="text-sm font-semibold text-gray-900">{{ case.child_name }}</p>
+                                        <p class="text-xs text-gray-400">{{ case.registration_number|default:"—" }}</p>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold
+                                    {% if case.malnutrition_type == 'SAM' %}bg-red-50 text-red-700{% else %}bg-amber-50 text-amber-700{% endif %}">{{ case.malnutrition_type }}</span>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-gray-600">{{ case.facility.name }}</td>
+                            <td class="px-4 py-3 text-sm text-gray-500">{{ case.last_visit_date|date:"M j, Y"|default:"—" }}</td>
+                            <td class="px-4 py-3">
+                                <input type="date" class="visit-date w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs" value="{{ today|date:'Y-m-d' }}">
+                            </td>
+                            <td class="px-4 py-3">
+                                <input type="number" step="0.01" min="0" max="50" class="visit-weight w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-xs" placeholder="kg">
+                            </td>
+                            <td class="px-4 py-3">
+                                <input type="number" step="0.1" min="0" max="120" class="visit-height w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-xs" placeholder="cm">
+                            </td>
+                            <td class="px-4 py-3">
+                                <input type="number" step="0.1" min="0" max="30" class="visit-muac w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-xs" placeholder="cm">
+                            </td>
+                            <td class="px-4 py-3">
+                                <input type="text" class="visit-notes w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs" placeholder="Optional">
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="10" class="px-6 py-12 text-center">
+                                <p class="text-gray-500 font-medium text-sm">No active cases found</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        {% if active_cases %}
+        <div class="flex items-center justify-between">
+            <p class="text-sm text-gray-500"><span id="selectedCount">0</span> case(s) selected</p>
+            <button type="submit" id="submitBtn" class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                Submit Visits
+            </button>
+        </div>
+        {% endif %}
+    </form>
+</div>
+
+<script>
+const selectAll = document.getElementById('selectAll');
+const submitBtn = document.getElementById('submitBtn');
+const selectedCount = document.getElementById('selectedCount');
+const entriesInput = document.getElementById('entriesInput');
+
+function updateSelection() {
+    const checked = document.querySelectorAll('.row-check:checked');
+    selectedCount.textContent = checked.length;
+    submitBtn.disabled = checked.length === 0;
+}
+
+selectAll.addEventListener('change', function() {
+    document.querySelectorAll('.row-check').forEach(cb => cb.checked = this.checked);
+    updateSelection();
+});
+
+document.querySelectorAll('.row-check').forEach(cb => cb.addEventListener('change', updateSelection));
+
+document.getElementById('batchForm').addEventListener('submit', function(e) {
+    const entries = [];
+    document.querySelectorAll('.row-check:checked').forEach(cb => {
+        const row = cb.closest('tr');
+        const caseId = row.dataset.caseId;
+        const weight = row.querySelector('.visit-weight').value;
+        const height = row.querySelector('.visit-height').value;
+        const muac = row.querySelector('.visit-muac').value;
+        const visitDate = row.querySelector('.visit-date').value;
+        const notes = row.querySelector('.visit-notes').value;
+
+        if (weight && height) {
+            entries.push({
+                case_id: parseInt(caseId),
+                weight: parseFloat(weight),
+                height: parseFloat(height),
+                muac: muac ? parseFloat(muac) : null,
+                visit_date: visitDate,
+                notes: notes,
+            });
+        }
+    });
+    entriesInput.value = JSON.stringify(entries);
+
+    if (entries.length === 0) {
+        e.preventDefault();
+        alert('Please fill in at least weight and height for selected cases.');
+    }
+});
+</script>
+{% endblock %}

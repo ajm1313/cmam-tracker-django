@@ -6,7 +6,7 @@ from django.db.models import Count, Q, F
 from django.http import HttpResponseForbidden, JsonResponse
 from datetime import datetime, timedelta
 import calendar
-from .models import User, Role, UserRole, SystemFeature, RoleFeaturePermission, AccessControlLog
+from .models import User, Role, UserRole, SystemFeature, RoleFeaturePermission, AccessControlLog, AuditLog
 from apps.facilities.models import Facility
 from apps.locations.models import Region, District, SubDistrict
 from apps.cases.models import OpcRegistration, OpcVisit
@@ -141,6 +141,34 @@ def dashboard(request):
     else:
         dropdown_facilities = accessible_facilities
     
+    # Visit reminders — cases with due/overdue visits
+    from django.utils import timezone as _tz
+    today = _tz.now().date()
+    active_for_reminders = OpcRegistration.objects.filter(
+        facility_id__in=facility_ids,
+        status='Active'
+    ).select_related('facility').annotate(
+        visit_count=Count('visits'),
+        last_visit_date=Max('visits__visit_date')
+    )
+    due_reminders = []
+    for c in active_for_reminders:
+        interval = 7 if c.malnutrition_type == 'SAM' else 14
+        if c.last_visit_date:
+            next_due = c.last_visit_date + timedelta(days=interval)
+        else:
+            next_due = c.registration_date + timedelta(days=interval)
+        days_until = (next_due - today).days
+        if days_until <= 3:  # Due now or within 3 days
+            due_reminders.append({
+                'case': c,
+                'next_due': next_due,
+                'days_until': days_until,
+                'is_overdue': days_until < 0,
+            })
+    due_reminders.sort(key=lambda x: x['days_until'])
+    due_reminders = due_reminders[:10]  # Top 10 most urgent
+
     context = {
         'stats': stats,
         'user': user,
@@ -158,6 +186,7 @@ def dashboard(request):
         'years': years,
         'month_name': calendar.month_name[month],
         'filter_active': filter_active,
+        'due_reminders': due_reminders,
         **location_context,
     }
     return render(request, 'users/dashboard.html', context)
@@ -177,6 +206,11 @@ def user_profile(request):
         if name:
             user.name = name
         user.phone = phone if phone else None
+        
+        # Handle avatar upload
+        if request.FILES.get('avatar'):
+            user.avatar = request.FILES['avatar']
+        
         user.save()
         
         messages.success(request, 'Profile updated successfully!')
@@ -1842,3 +1876,88 @@ def enrich_location_context(ctx, selected_region, selected_district):
         ctx['sub_districts'] = list(SubDistrict.objects.filter(district_id=selected_district).order_by('name'))
 
     return ctx
+
+
+# ==================== AUDIT LOG ====================
+
+@login_required
+def audit_log(request):
+    """View audit logs — superuser only"""
+    if not request.user.is_superuser:
+        messages.error(request, 'You do not have permission to view audit logs.')
+        return redirect('users:dashboard')
+    
+    qs = AuditLog.objects.select_related('user').all()
+    
+    # Filters
+    action = request.GET.get('action', '')
+    resource_type = request.GET.get('resource_type', '')
+    user_id = request.GET.get('user', '')
+    date_from = request.GET.get('date_from', '')
+    date_to = request.GET.get('date_to', '')
+    
+    if action:
+        qs = qs.filter(action=action)
+    if resource_type:
+        qs = qs.filter(resource_type__icontains=resource_type)
+    if user_id:
+        qs = qs.filter(user_id=user_id)
+    if date_from:
+        qs = qs.filter(created_at__date__gte=date_from)
+    if date_to:
+        qs = qs.filter(created_at__date__lte=date_to)
+    
+    qs = qs[:200]
+    
+    context = {
+        'logs': qs,
+        'actions': AuditLog.ACTION_CHOICES,
+        'filters': {'action': action, 'resource_type': resource_type, 'user': user_id, 'date_from': date_from, 'date_to': date_to},
+    }
+    return render(request, 'users/audit_log.html', context)
+
+
+# ==================== SETTINGS ====================
+
+@login_required
+def settings(request):
+    """User settings page"""
+    user = request.user
+    user_role = UserRole.objects.filter(user=user).select_related('role', 'facility', 'region', 'district').first()
+    
+    if request.method == 'POST':
+        action = request.POST.get('action', '')
+        
+        if action == 'change_password':
+            old_password = request.POST.get('old_password', '')
+            new_password = request.POST.get('new_password', '')
+            confirm_password = request.POST.get('confirm_password', '')
+            
+            if not user.check_password(old_password):
+                messages.error(request, 'Current password is incorrect.')
+            elif new_password != confirm_password:
+                messages.error(request, 'New passwords do not match.')
+            elif len(new_password) < 6:
+                messages.error(request, 'Password must be at least 6 characters.')
+            else:
+                user.set_password(new_password)
+                user.save()
+                messages.success(request, 'Password changed successfully.')
+        
+        elif action == 'update_notifications':
+            # Notification preferences (stored in session for now)
+            request.session['notify_visits'] = request.POST.get('notify_visits') == 'on'
+            request.session['notify_discharge'] = request.POST.get('notify_discharge') == 'on'
+            request.session['notify_stock'] = request.POST.get('notify_stock') == 'on'
+            messages.success(request, 'Notification preferences saved.')
+        
+        return redirect('users:settings')
+    
+    context = {
+        'user_obj': user,
+        'user_role': user_role,
+        'notify_visits': request.session.get('notify_visits', True),
+        'notify_discharge': request.session.get('notify_discharge', True),
+        'notify_stock': request.session.get('notify_stock', False),
+    }
+    return render(request, 'users/settings.html', context)

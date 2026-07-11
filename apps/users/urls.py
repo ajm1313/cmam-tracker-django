@@ -33,6 +33,12 @@ urlpatterns = [
     # Profile
     path('profile/', views.user_profile, name='user_profile'),
     
+    # Settings
+    path('settings/', views.settings, name='settings'),
+    
+    # Audit Log
+    path('manage/audit-log/', views.audit_log, name='audit_log'),
+    
     # User Management
     path('manage/users/', views.user_list, name='user_list'),
     path('manage/users/create/', views.user_create, name='user_create'),

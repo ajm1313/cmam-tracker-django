@@ -11,6 +11,8 @@
         </div>
         <div class="space-x-2">
             <a href="{% url 'cases:case_edit' case.pk %}" class="bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">Edit</a>
+            <a href="{% url 'cases:case_transfer' case.pk %}" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Transfer</a>
+            <a href="{% url 'cases:case_tasks' case.pk %}" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">Tasks</a>
             <a href="{% url 'cases:case_list' %}" class="text-gray-600 hover:text-gray-900">← Back</a>
         </div>
     </div>

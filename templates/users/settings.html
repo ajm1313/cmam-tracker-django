@@ -1,0 +1,134 @@
+{% extends 'base.html' %}
+
+{% block title %}Settings - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-3xl mx-auto">
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 rounded-2xl px-7 py-5 shadow-xl">
+        <div class="flex items-center gap-3">
+            <div class="w-11 h-11 bg-white/15 rounded-xl flex items-center justify-center border border-white/20">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold text-white tracking-tight">Settings</h1>
+                <p class="text-blue-300 text-xs mt-0.5">Manage your account preferences</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Password -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-blue-50 flex items-center gap-2">
+            <div class="w-1 h-5 bg-blue-500 rounded-full"></div>
+            <h2 class="text-sm font-bold text-gray-800 uppercase tracking-wider">Change Password</h2>
+        </div>
+        <form method="post" class="p-6 space-y-4">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="change_password">
+            <div>
+                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Current Password</label>
+                <input type="password" name="old_password" required class="block w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">New Password</label>
+                    <input type="password" name="new_password" required class="block w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Confirm Password</label>
+                    <input type="password" name="confirm_password" required class="block w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+            <button type="submit" class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-6 6m0 0c-2.21 0-4-1.79-4-4m4 4v2m0 0v2m0-2h2m-2 0H8"/></svg>
+                Update Password
+            </button>
+        </form>
+    </div>
+
+    <!-- Notification Preferences -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-emerald-50 flex items-center gap-2">
+            <div class="w-1 h-5 bg-emerald-500 rounded-full"></div>
+            <h2 class="text-sm font-bold text-gray-800 uppercase tracking-wider">Notification Preferences</h2>
+        </div>
+        <form method="post" class="p-6 space-y-4">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="update_notifications">
+            <div class="space-y-3">
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" name="notify_visits" {% if notify_visits %}checked{% endif %} class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                    <div>
+                        <p class="text-sm font-semibold text-gray-900">Visit Reminders</p>
+                        <p class="text-xs text-gray-500">Get notified when visits are due</p>
+                    </div>
+                </label>
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" name="notify_discharge" {% if notify_discharge %}checked{% endif %} class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                    <div>
+                        <p class="text-sm font-semibold text-gray-900">Discharge Alerts</p>
+                        <p class="text-xs text-gray-500">Get notified when cases are ready for discharge</p>
+                    </div>
+                </label>
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" name="notify_stock" {% if notify_stock %}checked{% endif %} class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                    <div>
+                        <p class="text-sm font-semibold text-gray-900">Low Stock Alerts</p>
+                        <p class="text-xs text-gray-500">Get notified when inventory items are running low</p>
+                    </div>
+                </label>
+            </div>
+            <button type="submit" class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-5 py-2.5 rounded-xl transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                Save Preferences
+            </button>
+        </form>
+    </div>
+
+    <!-- Appearance -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-purple-50 flex items-center gap-2">
+            <div class="w-1 h-5 bg-purple-500 rounded-full"></div>
+            <h2 class="text-sm font-bold text-gray-800 uppercase tracking-wider">Appearance</h2>
+        </div>
+        <div class="p-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-semibold text-gray-900">Dark Mode</p>
+                    <p class="text-xs text-gray-500">Toggle dark theme for the webapp</p>
+                </div>
+                <button type="button" onclick="toggleDarkMode()" id="darkModeBtn" class="relative inline-flex h-7 w-12 items-center rounded-full transition-colors bg-gray-200">
+                    <span class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform translate-x-1" id="darkModeKnob"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Account Info -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-gray-50 flex items-center gap-2">
+            <div class="w-1 h-5 bg-gray-500 rounded-full"></div>
+            <h2 class="text-sm font-bold text-gray-800 uppercase tracking-wider">Account Information</h2>
+        </div>
+        <div class="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+            <div>
+                <p class="text-xs font-semibold text-gray-400 uppercase mb-1">Name</p>
+                <p class="font-semibold text-gray-900">{{ user_obj.name }}</p>
+            </div>
+            <div>
+                <p class="text-xs font-semibold text-gray-400 uppercase mb-1">Email</p>
+                <p class="font-semibold text-gray-900">{{ user_obj.email }}</p>
+            </div>
+            <div>
+                <p class="text-xs font-semibold text-gray-400 uppercase mb-1">Role</p>
+                <p class="font-semibold text-gray-900">{{ user_role.role.name|default:"Super Administrator" }}</p>
+            </div>
+            <div>
+                <p class="text-xs font-semibold text-gray-400 uppercase mb-1">Member Since</p>
+                <p class="font-semibold text-gray-900">{{ user_obj.date_joined|date:"F d, Y" }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

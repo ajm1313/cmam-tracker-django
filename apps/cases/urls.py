@@ -21,6 +21,15 @@ urlpatterns = [
     path('manage/discharge/', views.discharge_management, name='discharge_management'),
     path('manage/discharge/<int:registration_id>/process/', views.process_discharge, name='process_discharge'),
     
+    # Case Transfer / Referral
+    path('manage/cases/<int:pk>/transfer/', views.case_transfer, name='case_transfer'),
+    
+    # Batch Visit Entry
+    path('manage/batch-visit/', views.batch_visit, name='batch_visit'),
+    
+    # Case Tasks
+    path('manage/cases/<int:pk>/tasks/', views.case_tasks, name='case_tasks'),
+    
     # API
     path('api/next-registration-number/', views.api_next_registration_number, name='api_next_registration_number'),
 ]

@@ -4,22 +4,75 @@ from django.contrib import messages
 from django.db.models import Q, Count, Max, F
 from django.db.models.functions import Coalesce
 from django.utils import timezone
-from datetime import timedelta
-from .models import OpcRegistration, OpcVisit, SamCase, MamCase, IpcCase
+from datetime import timedelta, date
+from .models import OpcRegistration, OpcVisit, SamCase, MamCase, IpcCase, CaseTask
 
 
 @login_required
 def case_list(request):
-    """List all cases"""
+    """List all cases with advanced filters"""
     user = request.user
     facilities = user.get_accessible_facilities()
     
-    opc_registrations = OpcRegistration.objects.filter(
-        facility__in=facilities
-    ).select_related('facility')
+    qs = OpcRegistration.objects.filter(facility__in=facilities).select_related('facility')
+    
+    # Advanced filters
+    search = request.GET.get('search', '').strip()
+    status = request.GET.get('status', '')
+    case_type = request.GET.get('type', '')
+    gender = request.GET.get('gender', '')
+    age_min = request.GET.get('age_min', '')
+    age_max = request.GET.get('age_max', '')
+    muac_max = request.GET.get('muac_max', '')
+    date_from = request.GET.get('date_from', '')
+    date_to = request.GET.get('date_to', '')
+    facility_id = request.GET.get('facility', '')
+    
+    if search:
+        qs = qs.filter(
+            Q(child_name__icontains=search) |
+            Q(registration_number__icontains=search) |
+            Q(facility__name__icontains=search)
+        )
+    if status:
+        qs = qs.filter(status=status)
+    if case_type:
+        qs = qs.filter(malnutrition_type=case_type)
+    if gender:
+        qs = qs.filter(child_gender=gender)
+    if age_min:
+        try:
+            qs = qs.filter(age_months__gte=int(age_min))
+        except ValueError:
+            pass
+    if age_max:
+        try:
+            qs = qs.filter(age_months__lte=int(age_max))
+        except ValueError:
+            pass
+    if muac_max:
+        try:
+            qs = qs.filter(muac_cm__lte=float(muac_max))
+        except ValueError:
+            pass
+    if date_from:
+        qs = qs.filter(registration_date__gte=date_from)
+    if date_to:
+        qs = qs.filter(registration_date__lte=date_to)
+    if facility_id:
+        qs = qs.filter(facility_id=facility_id)
+    
+    filter_active = any([search, status, case_type, gender, age_min, age_max, muac_max, date_from, date_to, facility_id])
     
     context = {
-        'opc_registrations': opc_registrations,
+        'opc_registrations': qs,
+        'facilities': facilities,
+        'filter_active': filter_active,
+        'filters': {
+            'search': search, 'status': status, 'type': case_type, 'gender': gender,
+            'age_min': age_min, 'age_max': age_max, 'muac_max': muac_max,
+            'date_from': date_from, 'date_to': date_to, 'facility': facility_id,
+        }
     }
     return render(request, 'cases/case_list.html', context)
 
@@ -691,3 +744,122 @@ def process_discharge(request, registration_id):
     
     context = {'case': case}
     return render(request, 'cases/process_discharge.html', context)
+
+
+# ==================== CASE TRANSFER / REFERRAL ====================
+
+@login_required
+def case_transfer(request, pk):
+    """Transfer/referral a case to another facility or IPC"""
+    case = get_object_or_404(OpcRegistration, pk=pk)
+    user = request.user
+    facilities = user.get_accessible_facilities()
+
+    if request.method == 'POST':
+        transfer_type = request.POST.get('transfer_type', 'facility')
+        destination_facility_id = request.POST.get('destination_facility_id')
+        reason = request.POST.get('reason', '')
+        notes = request.POST.get('notes', '')
+
+        if transfer_type == 'ipc':
+            case.status = 'Transfer'
+            case.outcome = 'Transfer to IPC'
+            case.outcome_notes = f'Transferred to IPC: {reason}. {notes}'
+            case.discharge_date = timezone.now().date()
+            case.save()
+            messages.success(request, f'Case {case.child_name} transferred to IPC.')
+            return redirect('cases:case_detail', pk=case.pk)
+        elif transfer_type == 'facility' and destination_facility_id:
+            try:
+                dest_facility = facilities.get(id=destination_facility_id)
+            except Exception:
+                messages.error(request, 'Invalid destination facility.')
+                return redirect('cases:case_transfer', pk=case.pk)
+
+            case.facility = dest_facility
+            case.admission_type = 'Transfer In'
+            case.outcome_notes = f'Transferred from {case.facility.name}: {reason}. {notes}'
+            case.save()
+            messages.success(request, f'Case {case.child_name} transferred to {dest_facility.name}.')
+            return redirect('cases:case_detail', pk=case.pk)
+        else:
+            messages.error(request, 'Please select a valid transfer destination.')
+
+    context = {'case': case, 'facilities': facilities}
+    return render(request, 'cases/case_transfer.html', context)
+
+
+# ==================== BATCH VISIT ENTRY ====================
+
+@login_required
+def batch_visit(request):
+    """Batch visit entry — record visits for multiple cases at once"""
+    user = request.user
+    facilities = user.get_accessible_facilities()
+    facility_ids = list(facilities.values_list('id', flat=True))
+
+    today = timezone.now().date()
+
+    # Get active cases due for visits
+    active_cases = OpcRegistration.objects.filter(
+        facility_id__in=facility_ids,
+        status='Active'
+    ).select_related('facility').annotate(
+        visit_count=Count('visits'),
+        last_visit_date=Max('visits__visit_date')
+    ).order_by('facility', 'child_name')
+
+    if request.method == 'POST':
+        import json
+        entries = request.POST.get('entries', '[]')
+        try:
+            entries = json.loads(entries)
+        except (json.JSONDecodeError, TypeError):
+            entries = []
+
+        created = 0
+        errors = []
+        for entry in entries:
+            case_id = entry.get('case_id')
+            weight = entry.get('weight')
+            height = entry.get('height')
+            muac = entry.get('muac')
+            visit_date = entry.get('visit_date', today.isoformat())
+            notes = entry.get('notes', '')
+
+            try:
+                case = OpcRegistration.objects.get(pk=case_id, facility_id__in=facility_ids)
+                visit_num = case.visits.count() + 1
+                OpcVisit.objects.create(
+                    registration=case,
+                    visit_number=visit_num,
+                    visit_date=visit_date,
+                    visit_type='Routine',
+                    weight_kg=weight,
+                    height_cm=height,
+                    muac_cm=muac,
+                    medical_notes=notes,
+                )
+                created += 1
+            except Exception as e:
+                errors.append(f'Case {case_id}: {str(e)}')
+
+        if created:
+            messages.success(request, f'{created} visit(s) recorded successfully.')
+        if errors:
+            messages.error(request, f'Errors: {"; ".join(errors)}')
+        return redirect('cases:batch_visit')
+
+    context = {'active_cases': active_cases, 'today': today}
+    return render(request, 'cases/batch_visit.html', context)
+
+
+# ==================== CASE TASKS ====================
+
+@login_required
+def case_tasks(request, pk):
+    """View tasks for a case"""
+    case = get_object_or_404(OpcRegistration, pk=pk)
+    tasks = case.tasks.all().order_by('-created_at')
+    context = {'case': case, 'tasks': tasks}
+    return render(request, 'cases/case_tasks.html', context)
