@@ -8,6 +8,24 @@
     <link rel="icon" type="image/png" href="{% static 'img/logo.png' %}">
     <link rel="shortcut icon" type="image/png" href="{% static 'img/logo.png' %}">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' };
+        if (localStorage.getItem('darkMode') === 'true') {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+    <style>
+        .dark body { background-color: #0f172a; color: #e2e8f0; }
+        .dark .bg-white { background-color: #1e293b !important; }
+        .dark .bg-gray-100 { background-color: #1e293b !important; }
+        .dark .text-gray-900 { color: #f1f5f9 !important; }
+        .dark .text-gray-600 { color: #94a3b8 !important; }
+        .dark .text-gray-700 { color: #cbd5e1 !important; }
+        .dark .border-gray-300 { border-color: #475569 !important; }
+        .dark input { background-color: #0f172a !important; color: #e2e8f0 !important; border-color: #334155 !important; }
+        .dark .placeholder-gray-500::placeholder { color: #475569 !important; }
+        .dark .shadow { box-shadow: 0 1px 3px 0 rgba(0,0,0,0.4) !important; }
+    </style>
 </head>
 <body class="bg-gray-100">
     <div class="min-h-screen flex items-center justify-center">
