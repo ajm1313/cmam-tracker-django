@@ -3,7 +3,14 @@ from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth import authenticate
+from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth.tokens import default_token_generator
+from django.contrib.sites.shortcuts import get_current_site
+from django.template.loader import render_to_string
+from django.utils.http import urlsafe_base64_encode
+from django.utils.encoding import force_bytes
+from django.core.mail import send_mail
+from django.conf import settings
 from django.utils import timezone
 from datetime import datetime, timedelta, date
 
@@ -12,7 +19,7 @@ from apps.facilities.models import Facility
 from apps.inventory.models import (
     InventoryItem, StockLevel, StockMovement, StockRequest, StockRequestItem, ItemBatch
 )
-from apps.cases.models import OpcRegistration, OpcVisit
+from apps.cases.models import OpcRegistration, OpcVisit, IpcCase, CaseTask
 from apps.locations.models import Region, District, SubDistrict
 from django.db.models import Q, Count, Max, Sum, F
 from .serializers import (
@@ -709,17 +716,122 @@ def change_password(request):
     return Response({'success': True, 'message': 'Password changed successfully'})
 
 
+@api_view(['POST'])
+@permission_classes([])
+def password_reset_request(request):
+    """Send password reset email to the user if the email exists."""
+    email = request.data.get('email', '').strip().lower()
+    if not email:
+        return Response({'success': False, 'message': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    UserModel = get_user_model()
+    try:
+        user = UserModel.objects.get(email=email)
+    except UserModel.DoesNotExist:
+        # Don't reveal whether the email exists for security
+        return Response({'success': True, 'message': 'If that email exists, a reset link has been sent.'})
+
+    token = default_token_generator.make_token(user)
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+
+    current_site = get_current_site(request)
+    domain = current_site.domain
+    protocol = 'https' if request.is_secure() else 'http'
+
+    reset_url = f"{protocol}://{domain}/password-reset-confirm/{uid}/{token}/"
+
+    subject = 'CMAM Tracker — Password Reset'
+    message = (
+        f"Hello {user.name},\n\n"
+        f"You requested a password reset for your CMAM Tracker account.\n"
+        f"Click the link below to reset your password:\n\n"
+        f"{reset_url}\n\n"
+        f"If you did not request this, you can safely ignore this email.\n\n"
+        f"— CMAM Tracker Team"
+    )
+
+    try:
+        send_mail(
+            subject,
+            message,
+            getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@cmam-tracker.com'),
+            [user.email],
+            fail_silently=False,
+        )
+    except Exception:
+        pass
+
+    return Response({'success': True, 'message': 'If that email exists, a reset link has been sent.'})
+
+
+@api_view(['PUT', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def profile_update(request):
+    """Update the authenticated user's profile (name, phone)."""
+    user = request.user
+    name = request.data.get('name')
+    phone = request.data.get('phone')
+
+    if name is not None:
+        name = str(name).strip()
+        if len(name) < 2:
+            return Response({'success': False, 'message': 'Name must be at least 2 characters'}, status=status.HTTP_400_BAD_REQUEST)
+        user.name = name
+
+    if phone is not None:
+        user.phone = str(phone).strip() or None
+
+    user.save()
+    return Response({'success': True, 'message': 'Profile updated', 'data': UserSerializer(user).data})
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_stats(request):
-    """Get dashboard statistics"""
+    """Get dashboard statistics with optional location/period filters."""
     accessible = request.user.get_accessible_facilities()
     qs = OpcRegistration.objects.all()
     if accessible is not None:
         qs = qs.filter(facility__in=accessible)
-    
-    now = timezone.now()
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # Location filters
+    region_id = request.query_params.get('region')
+    district_id = request.query_params.get('district')
+    sub_district_id = request.query_params.get('sub_district')
+    facility_id = request.query_params.get('facility')
+
+    if facility_id:
+        qs = qs.filter(facility_id=facility_id)
+    elif sub_district_id:
+        qs = qs.filter(facility__sub_district_id=sub_district_id)
+    elif district_id:
+        qs = qs.filter(facility__district_id=district_id)
+    elif region_id:
+        qs = qs.filter(facility__district__region_id=region_id)
+
+    # Period filter
+    month = request.query_params.get('month')
+    year = request.query_params.get('year')
+    if year:
+        try:
+            y = int(year)
+            if month:
+                m = int(month)
+                period_start = date(y, m, 1)
+                period_end = (date(y, m + 1, 1) if m < 12 else date(y + 1, 1, 1))
+            else:
+                period_start = date(y, 1, 1)
+                period_end = date(y + 1, 1, 1)
+            month_start = period_start
+            qs = qs.filter(
+                Q(admission_date__gte=period_start, admission_date__lt=period_end) |
+                Q(status='Active')
+            )
+        except (ValueError, TypeError):
+            pass
+    else:
+        now = timezone.now()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     
     total_sam = qs.filter(malnutrition_type='SAM').count()
     total_mam = qs.filter(malnutrition_type='MAM').count()
@@ -1987,3 +2099,216 @@ def reports_summary_api(request):
             },
         }
     })
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# IPC (INPATIENT CARE) API
+# ═══════════════════════════════════════════════════════════════════════════
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def ipc_cases_api(request):
+    """List and create IPC cases"""
+    accessible = request.user.get_accessible_facilities()
+    qs = IpcCase.objects.all().select_related('facility')
+    if accessible is not None:
+        qs = qs.filter(facility__in=accessible)
+
+    if request.method == 'GET':
+        status_filter = request.query_params.get('status', 'all')
+        if status_filter != 'all':
+            qs = qs.filter(status=status_filter)
+        qs = qs.order_by('-admission_date')
+        data = []
+        for case in qs:
+            data.append({
+                'id': case.id,
+                'patient_name': case.patient_name,
+                'patient_age': case.patient_age,
+                'gender': case.gender,
+                'admission_date': case.admission_date.isoformat() if case.admission_date else None,
+                'weight': float(case.weight) if case.weight else None,
+                'height': float(case.height) if case.height else None,
+                'muac': float(case.muac) if case.muac else None,
+                'status': case.status,
+                'facility': case.facility.name if case.facility else None,
+                'facility_id': case.facility_id,
+                'created_at': case.created_at.isoformat() if case.created_at else None,
+            })
+        return Response({'success': True, 'data': data})
+
+    # POST - create
+    data = request.data
+    required = ['patient_name', 'gender', 'admission_date', 'weight', 'height', 'facility_id']
+    missing = [f for f in required if not data.get(f)]
+    if missing:
+        return Response({'success': False, 'message': f'Missing fields: {", ".join(missing)}'},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    case = IpcCase.objects.create(
+        facility_id=int(data['facility_id']),
+        patient_name=data['patient_name'],
+        patient_age=int(data.get('patient_age', 0)),
+        gender=data['gender'],
+        admission_date=data['admission_date'],
+        weight=data['weight'],
+        height=data['height'],
+        muac=data.get('muac'),
+        status=data.get('status', 'Admitted'),
+    )
+    return Response({
+        'success': True,
+        'data': {
+            'id': case.id,
+            'patient_name': case.patient_name,
+            'status': case.status,
+        }
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def ipc_case_detail_api(request, pk):
+    """Get or update a single IPC case"""
+    try:
+        case = IpcCase.objects.get(pk=pk)
+    except IpcCase.DoesNotExist:
+        return Response({'success': False, 'message': 'IPC case not found'},
+                        status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response({
+            'success': True,
+            'data': {
+                'id': case.id,
+                'patient_name': case.patient_name,
+                'patient_age': case.patient_age,
+                'gender': case.gender,
+                'admission_date': case.admission_date.isoformat() if case.admission_date else None,
+                'weight': float(case.weight) if case.weight else None,
+                'height': float(case.height) if case.height else None,
+                'muac': float(case.muac) if case.muac else None,
+                'status': case.status,
+                'facility': case.facility.name if case.facility else None,
+                'facility_id': case.facility_id,
+                'created_at': case.created_at.isoformat() if case.created_at else None,
+            }
+        })
+
+    # PATCH - update
+    data = request.data
+    for field in ['patient_name', 'patient_age', 'gender', 'admission_date', 'weight', 'height', 'muac', 'status']:
+        if field in data:
+            setattr(case, field, data[field])
+    case.save()
+    return Response({'success': True, 'data': {'id': case.id, 'status': case.status}})
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CASE TRANSFER / REFERRAL API
+# ═══════════════════════════════════════════════════════════════════════════
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def case_transfer_api(request, pk):
+    """Transfer a case to another facility or IPC"""
+    try:
+        case = OpcRegistration.objects.get(pk=pk)
+    except OpcRegistration.DoesNotExist:
+        return Response({'success': False, 'message': 'Case not found'},
+                        status=status.HTTP_404_NOT_FOUND)
+
+    data = request.data
+    transfer_type = data.get('transfer_type', 'facility')  # facility or ipc
+    target_facility_id = data.get('target_facility_id')
+    reason = data.get('reason', '')
+    notes = data.get('notes', '')
+
+    if transfer_type == 'ipc':
+        # Create IPC case
+        ipc_case = IpcCase.objects.create(
+            facility_id=target_facility_id,
+            patient_name=case.child_name,
+            patient_age=case.age_months or 0,
+            gender=case.child_gender or 'Unknown',
+            admission_date=timezone.now().date().isoformat(),
+            weight=case.weight_kg,
+            height=case.height_cm,
+            muac=case.muac_cm,
+            status='Admitted',
+        )
+        case.status = 'Transfer'
+        case.outcome = 'Transferred to IPC'
+        case.outcome_notes = f'Transferred to IPC facility. Reason: {reason}. Notes: {notes}'
+        case.save()
+        return Response({
+            'success': True,
+            'message': 'Case transferred to IPC successfully',
+            'data': {'ipc_case_id': ipc_case.id, 'case_status': case.status}
+        })
+    else:
+        # Facility-to-facility transfer
+        if not target_facility_id:
+            return Response({'success': False, 'message': 'Target facility required'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        old_facility = case.facility.name if case.facility else 'Unknown'
+        case.facility_id = target_facility_id
+        case.outcome_notes = f'Transferred from {old_facility}. Reason: {reason}. Notes: {notes}'
+        case.save()
+        return Response({
+            'success': True,
+            'message': 'Case transferred to new facility successfully',
+            'data': {'case_status': case.status, 'new_facility_id': case.facility_id}
+        })
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CASE TASKS API (for visit scheduling & reminders)
+# ═══════════════════════════════════════════════════════════════════════════
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def case_tasks_api(request, pk):
+    """Get tasks for a case (visit schedule, referrals, etc.)"""
+    try:
+        case = OpcRegistration.objects.get(pk=pk)
+    except OpcRegistration.DoesNotExist:
+        return Response({'success': False, 'message': 'Case not found'},
+                        status=status.HTTP_404_NOT_FOUND)
+
+    tasks = CaseTask.objects.filter(registration=case).order_by('-created_at')
+    data = []
+    for task in tasks:
+        data.append({
+            'id': task.id,
+            'task_type': task.task_type,
+            'title': task.title,
+            'description': task.description,
+            'status': task.status,
+            'due_date': task.due_date.isoformat() if task.due_date else None,
+            'completed_at': task.completed_at.isoformat() if task.completed_at else None,
+            'created_at': task.created_at.isoformat() if task.created_at else None,
+        })
+    return Response({'success': True, 'data': data})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def audit_log_api(request):
+    """Get user activity / audit log"""
+    from apps.users.models import AuditLog
+    qs = AuditLog.objects.all().select_related('user').order_by('-created_at')[:100]
+    data = []
+    for log in qs:
+        data.append({
+            'id': log.id,
+            'user': log.user.name if log.user else 'System',
+            'user_email': log.user.email if log.user else None,
+            'action': log.action,
+            'resource_type': log.resource_type,
+            'resource_id': log.resource_id,
+            'details': log.details,
+            'ip_address': str(log.ip_address) if log.ip_address else None,
+            'created_at': log.created_at.isoformat() if log.created_at else None,
+        })
+    return Response({'success': True, 'data': data})

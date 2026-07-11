@@ -44,6 +44,8 @@ urlpatterns = [
 
     # Password
     path('v1/change-password/', views.change_password, name='change_password'),
+    path('v1/password-reset/', views.password_reset_request, name='password_reset_request'),
+    path('v1/profile/update/', views.profile_update, name='profile_update'),
 
     # Cases
     path('v1/cases/', views.cases_list, name='cases_list'),
@@ -107,4 +109,17 @@ urlpatterns = [
 
     # Health check
     path('health/', views.system_info, name='health'),
+
+    # IPC Cases
+    path('v1/ipc/cases/', views.ipc_cases_api, name='ipc_cases'),
+    path('v1/ipc/cases/<int:pk>/', views.ipc_case_detail_api, name='ipc_case_detail'),
+
+    # Case Transfer / Referral
+    path('v1/cases/<int:pk>/transfer/', views.case_transfer_api, name='case_transfer'),
+
+    # Case Tasks (visit scheduling & reminders)
+    path('v1/cases/<int:pk>/tasks/', views.case_tasks_api, name='case_tasks'),
+
+    # Audit Log
+    path('v1/audit-log/', views.audit_log_api, name='audit_log'),
 ]
