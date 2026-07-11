@@ -866,6 +866,33 @@ def dashboard_analytics(request):
     qs = OpcRegistration.objects.all()
     if accessible is not None:
         qs = qs.filter(facility__in=accessible)
+
+    # Apply dashboard filters from query params
+    selected_region = request.GET.get('region', '')
+    selected_district = request.GET.get('district', '')
+    selected_sub_district = request.GET.get('sub_district', '')
+    selected_facility = request.GET.get('facility', '')
+    selected_month = request.GET.get('month', '')
+    selected_year = request.GET.get('year', '')
+
+    if selected_facility:
+        qs = qs.filter(facility_id=selected_facility)
+    elif selected_sub_district:
+        qs = qs.filter(facility__sub_district_id=selected_sub_district)
+    elif selected_district:
+        qs = qs.filter(facility__district_id=selected_district)
+    elif selected_region:
+        qs = qs.filter(facility__district__region_id=selected_region)
+
+    # Apply date filter if month/year provided
+    date_qs = qs
+    if selected_month and selected_year:
+        try:
+            m = int(selected_month)
+            y = int(selected_year)
+            date_qs = qs.filter(registration_date__year=y, registration_date__month=m)
+        except (ValueError, TypeError):
+            pass
     
     # Monthly case trends (last 6 months)
     now = timezone.now()
@@ -884,7 +911,7 @@ def dashboard_analytics(request):
             'mam': mam_count
         })
     
-    # Case outcomes distribution
+    # Case outcomes distribution (filtered by location)
     outcomes = {
         'cured': qs.filter(status='Discharged', outcome='Cured').count(),
         'defaulted': qs.filter(status='Defaulted').count(),
@@ -892,10 +919,18 @@ def dashboard_analytics(request):
         'transferred': qs.filter(status='Transfer').count(),
         'active': qs.filter(status='Active').count()
     }
-    
-    # Stock levels by facility (top 10)
+
+    # Stock levels by facility (top 10) — scoped to filtered facilities
     stock_data = []
-    if accessible is not None:
+    if selected_facility:
+        facilities = Facility.objects.filter(id=selected_facility)[:10]
+    elif selected_sub_district:
+        facilities = Facility.objects.filter(sub_district_id=selected_sub_district)[:10]
+    elif selected_district:
+        facilities = Facility.objects.filter(district_id=selected_district)[:10]
+    elif selected_region:
+        facilities = Facility.objects.filter(district__region_id=selected_region)[:10]
+    elif accessible is not None:
         facilities = accessible[:10]
     else:
         facilities = Facility.objects.all()[:10]

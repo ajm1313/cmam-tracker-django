@@ -121,6 +121,19 @@ def dashboard(request):
             malnutrition_type='MAM',
             facility_id__in=facility_ids,
         ).count(),
+        'total_cases': OpcRegistration.objects.filter(
+            date_filter,
+            facility_id__in=facility_ids,
+        ).count(),
+        'total_active': OpcRegistration.objects.filter(
+            facility_id__in=facility_ids,
+            status='Active',
+        ).count(),
+        'total_discharged': OpcRegistration.objects.filter(
+            date_filter,
+            facility_id__in=facility_ids,
+            status='Discharged',
+        ).count(),
     }
     
     # Build months/years lists for the time filter dropdowns
