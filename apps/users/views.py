@@ -164,6 +164,7 @@ def dashboard(request):
                 'case': c,
                 'next_due': next_due,
                 'days_until': days_until,
+                'abs_days_until': abs(days_until),
                 'is_overdue': days_until < 0,
             })
     due_reminders.sort(key=lambda x: x['days_until'])

@@ -309,7 +309,7 @@
                 <div class="flex items-center gap-3 flex-shrink-0">
                     <div class="text-right">
                         {% if reminder.is_overdue %}
-                        <span class="text-xs font-bold text-red-600">{{ reminder.days_until|abs }} day{{ reminder.days_until|abs|pluralize }} overdue</span>
+                        <span class="text-xs font-bold text-red-600">{{ reminder.abs_days_until }} day{{ reminder.abs_days_until|pluralize }} overdue</span>
                         {% else %}
                         <span class="text-xs font-bold text-amber-600">Due in {{ reminder.days_until }} day{{ reminder.days_until|pluralize }}</span>
                         {% endif %}
