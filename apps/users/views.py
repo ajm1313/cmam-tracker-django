@@ -108,8 +108,18 @@ def dashboard(request):
     date_filter = Q(registration_date__year=year, registration_date__month=month)
     
     # Get statistics scoped to filtered facilities and selected month/year
+    # Count users who have active roles at the filtered facilities
+    if facility_ids:
+        scoped_user_count = User.objects.filter(
+            is_active=True,
+            user_roles__is_active=True,
+            user_roles__facility_id__in=facility_ids,
+        ).distinct().count()
+    else:
+        scoped_user_count = User.objects.filter(is_active=True).count()
+
     stats = {
-        'total_users': User.objects.filter(is_active=True).count(),
+        'total_users': scoped_user_count,
         'total_facilities': len(facility_ids),
         'active_sam_cases': OpcRegistration.objects.filter(
             date_filter,
