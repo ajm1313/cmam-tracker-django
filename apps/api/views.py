@@ -22,6 +22,100 @@ from .serializers import (
 )
 
 
+def _detailed_case_stats(cases_qs, date_from, date_to, prev_period_end=None):
+    """Compute detailed case statistics matching the web monthly/weekly report.
+
+    Returns a dict with B1-B3, C, D, E, F1a-F4b, F, G, H, I, J,
+    gender breakdowns, and start_of_period — all the fields the
+    mobile report screens need instead of hardcoded dashes.
+    """
+    # ── New cases in period (by registration_date, matching web view) ──
+    new_cases = cases_qs.filter(
+        registration_date__gte=date_from,
+        registration_date__lte=date_to
+    )
+
+    b1 = new_cases.filter(age_months__lt=6).count()
+    b2 = new_cases.filter(
+        age_months__gte=6, age_months__lte=59
+    ).exclude(oedema__in=['+', '++', '+++']).count()
+    b3 = new_cases.filter(
+        age_months__gte=6, age_months__lte=59,
+        oedema__in=['+', '++', '+++']
+    ).count()
+    c = new_cases.filter(age_months__gte=60).count()
+    d = new_cases.filter(
+        Q(admission_type='Transfer In') | Q(admission_type='Readmission')
+    ).count()
+    e = b1 + b2 + b3 + c + d
+
+    # ── Start of period (A) ──
+    if prev_period_end:
+        start_of_period = cases_qs.filter(
+            registration_date__lte=prev_period_end
+        ).filter(
+            Q(status='Active') | Q(discharge_date__gte=date_from)
+        ).count()
+    else:
+        start_of_period = cases_qs.filter(status='Active').count()
+
+    # ── Discharges in period ──
+    discharges = cases_qs.filter(
+        discharge_date__gte=date_from,
+        discharge_date__lte=date_to
+    )
+
+    f1a = discharges.filter(outcome='Cured', age_months__lt=6).count()
+    f1b = discharges.filter(outcome='Cured', age_months__gte=6, age_months__lte=59).count()
+    f2a = discharges.filter(status='Death', age_months__lt=6).count()
+    f2b = discharges.filter(status='Death', age_months__gte=6, age_months__lte=59).count()
+    f3a = discharges.filter(status='Defaulted', age_months__lt=6).count()
+    f3b = discharges.filter(status='Defaulted', age_months__gte=6, age_months__lte=59).count()
+    f4a = discharges.filter(outcome='Non-Response', age_months__lt=6).count()
+    f4b = discharges.filter(outcome='Non-Response', age_months__gte=6, age_months__lte=59).count()
+    f_total = f1a + f1b + f2a + f2b + f3a + f3b + f4a + f4b
+
+    g = discharges.filter(status='Transfer').count()
+    h = discharges.filter(age_months__gte=60).count()
+    i_total = f_total + g + h
+
+    # J: End of period = A + E - I
+    j = start_of_period + e - i_total
+
+    # ── Gender breakdowns ──
+    new_males_under6 = new_cases.filter(child_gender='Male', age_months__lt=6).count()
+    new_females_under6 = new_cases.filter(child_gender='Female', age_months__lt=6).count()
+    new_males_6_59 = new_cases.filter(child_gender='Male', age_months__gte=6, age_months__lte=59).count()
+    new_females_6_59 = new_cases.filter(child_gender='Female', age_months__gte=6, age_months__lte=59).count()
+
+    return {
+        'start_of_period': start_of_period,
+        'new_cases_under6_at_risk': b1,
+        'new_cases_6_59_muac': b2,
+        'new_cases_6_59_oedema': b3,
+        'other_new_cases': c,
+        'old_cases': d,
+        'total_enrolment': e,
+        'cured_under6': f1a,
+        'cured_6_59': f1b,
+        'died_under6': f2a,
+        'died_6_59': f2b,
+        'defaulted_under6': f3a,
+        'defaulted_6_59': f3b,
+        'non_recovered_under6': f4a,
+        'non_recovered_6_59': f4b,
+        'total_discharges': f_total,
+        'referrals': g,
+        'other_exits': h,
+        'total_exits': i_total,
+        'end_of_period': j,
+        'new_males_under6': new_males_under6,
+        'new_females_under6': new_females_under6,
+        'new_males_6_59': new_males_6_59,
+        'new_females_6_59': new_females_6_59,
+    }
+
+
 @api_view(['POST'])
 @permission_classes([])
 def login(request):
@@ -1663,11 +1757,18 @@ def weekly_report_api(request):
     deaths = cases.filter(status='Death', discharge_date__gte=date_from, discharge_date__lte=date_to).count()
     transfers = cases.filter(status='Transfer', discharge_date__gte=date_from, discharge_date__lte=date_to).count()
 
+    # Detailed breakdown (B1-B3, C, D, F1a-F4b, gender)
+    from datetime import datetime as _dt
+    _df = _dt.fromisoformat(date_from).date() if isinstance(date_from, str) else date_from
+    _dt_to = _dt.fromisoformat(date_to).date() if isinstance(date_to, str) else date_to
+    detailed = _detailed_case_stats(cases, _df, _dt_to)
+
     # Per-facility breakdown
     facility_data = []
     for fac in accessible:
         fac_cases = cases.filter(facility=fac)
         fac_visits = visits.filter(registration__facility=fac)
+        fac_detailed = _detailed_case_stats(fac_cases, _df, _dt_to)
         facility_data.append({
             'facility_name': fac.name, 'facility_code': fac.code,
             'new_admissions': fac_cases.filter(admission_date__gte=date_from, admission_date__lte=date_to).count(),
@@ -1676,6 +1777,7 @@ def weekly_report_api(request):
             'cured': fac_cases.filter(status='Discharged', outcome='Cured', discharge_date__gte=date_from, discharge_date__lte=date_to).count(),
             'defaulted': fac_cases.filter(status='Defaulted', discharge_date__gte=date_from, discharge_date__lte=date_to).count(),
             'deaths': fac_cases.filter(status='Death', discharge_date__gte=date_from, discharge_date__lte=date_to).count(),
+            **fac_detailed,
         })
 
     return Response({'success': True, 'data': {
@@ -1684,6 +1786,7 @@ def weekly_report_api(request):
             'new_admissions': new_admissions, 'total_visits': total_visits,
             'active_cases': active_cases, 'cured': cured, 'defaulted': defaulted,
             'deaths': deaths, 'transfers': transfers,
+            **detailed,
         },
         'facilities': facility_data,
     }})
@@ -1709,6 +1812,12 @@ def monthly_report_api(request):
     date_from = date(year, month, 1)
     date_to = date(year, month, last_day)
 
+    # Previous month end for start-of-month (A) calculation
+    if month == 1:
+        prev_period_end = date(year - 1, 12, 31)
+    else:
+        prev_period_end = date(year, month, 1) - timedelta(days=1)
+
     accessible = request.user.get_accessible_facilities()
     if facility_id:
         accessible = accessible.filter(id=facility_id)
@@ -1720,6 +1829,7 @@ def monthly_report_api(request):
         mam_cases = fac_cases.filter(malnutrition_type='MAM')
 
         def period_stats(qs):
+            detailed = _detailed_case_stats(qs, date_from, date_to, prev_period_end)
             return {
                 'new_admissions': qs.filter(admission_date__gte=date_from, admission_date__lte=date_to).count(),
                 'active': qs.filter(status='Active').count(),
@@ -1728,6 +1838,7 @@ def monthly_report_api(request):
                 'deaths': qs.filter(status='Death', discharge_date__gte=date_from, discharge_date__lte=date_to).count(),
                 'transfers': qs.filter(status='Transfer', discharge_date__gte=date_from, discharge_date__lte=date_to).count(),
                 'total': qs.count(),
+                **detailed,
             }
 
         facility_reports.append({
