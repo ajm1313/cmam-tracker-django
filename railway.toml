@@ -1,0 +1,15 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "gunicorn cmam_tracker.wsgi:application --bind 0.0.0.0:$PORT"
+healthcheckPath = "/health/"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+[[crons]]
+name = "overdue-visit-notifications"
+schedule = "0 7 * * *"
+command = "python manage.py send_overdue_notifications"
