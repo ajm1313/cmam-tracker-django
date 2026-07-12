@@ -29,6 +29,10 @@ urlpatterns = [
     
     # Case Tasks
     path('manage/cases/<int:pk>/tasks/', views.case_tasks, name='case_tasks'),
+
+    # IPC Management
+    path('manage/ipc/', views.ipc_list, name='ipc_list'),
+    path('manage/ipc/<int:pk>/discharge/', views.ipc_discharge, name='ipc_discharge'),
     
     # API
     path('api/next-registration-number/', views.api_next_registration_number, name='api_next_registration_number'),

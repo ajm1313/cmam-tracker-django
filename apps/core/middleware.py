@@ -235,7 +235,7 @@ class AuditLogMiddleware(MiddlewareMixin):
                         sanitized = {k: v for k, v in body.items() 
                                      if k not in ['password', 'token', 'secret']}
                         details['body'] = sanitized
-            except:
+            except Exception:
                 pass
         
         return json.dumps(details, default=str)[:1000]

@@ -259,6 +259,40 @@
         </table>
     </div>
 
+    <!-- Pagination -->
+    {% if page_obj.paginator.num_pages > 1 %}
+    <div class="flex items-center justify-between px-4 py-3 bg-white border border-gray-100 rounded-xl">
+      <p class="text-sm text-gray-500">
+        Showing <span class="font-semibold text-gray-700">{{ page_obj.start_index }}–{{ page_obj.end_index }}</span>
+        of <span class="font-semibold text-gray-700">{{ page_obj.paginator.count }}</span> cases
+      </p>
+      <div class="flex items-center gap-1">
+        {% if page_obj.has_previous %}
+        <a href="?page={{ page_obj.previous_page_number }}&search={{ filters.search }}&status={{ filters.status }}&type={{ filters.type }}&gender={{ filters.gender }}&facility={{ filters.facility }}"
+           class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors">
+          ← Prev
+        </a>
+        {% endif %}
+        {% for num in page_obj.paginator.page_range %}
+          {% if page_obj.number == num %}
+          <span class="inline-flex items-center px-3 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-lg">{{ num }}</span>
+          {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+          <a href="?page={{ num }}&search={{ filters.search }}&status={{ filters.status }}&type={{ filters.type }}&gender={{ filters.gender }}&facility={{ filters.facility }}"
+             class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors">
+            {{ num }}
+          </a>
+          {% endif %}
+        {% endfor %}
+        {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&search={{ filters.search }}&status={{ filters.status }}&type={{ filters.type }}&gender={{ filters.gender }}&facility={{ filters.facility }}"
+           class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors">
+          Next →
+        </a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
 </div>
 
 <!-- Import Modal -->

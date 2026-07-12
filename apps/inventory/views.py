@@ -873,13 +873,13 @@ def distribute_stock(request):
             def _loc_label(loc_type, region_id, district_id, facility_id):
                 if facility_id:
                     try: return Facility.objects.get(id=facility_id).name
-                    except: pass
+                    except Exception: pass
                 if district_id:
                     try: return District.objects.get(id=district_id).name + ' District'
-                    except: pass
+                    except Exception: pass
                 if region_id:
                     try: return Region.objects.get(id=region_id).name + ' Region'
-                    except: pass
+                    except Exception: pass
                 return 'National'
             
             src_label = _loc_label(source_type, source_region_id, source_district_id, source_facility_id)

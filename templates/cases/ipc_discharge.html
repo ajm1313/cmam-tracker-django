@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% block title %}Discharge IPC Case - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto space-y-6">
+
+  <div class="flex items-center gap-3">
+    <a href="{% url 'cases:ipc_list' %}" class="text-gray-400 hover:text-gray-600">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+    </a>
+    <h1 class="text-xl font-bold text-gray-900">Discharge IPC Case</h1>
+  </div>
+
+  <div class="bg-purple-50 border border-purple-200 rounded-xl p-4">
+    <p class="text-sm font-semibold text-purple-800">{{ case.patient_name }}</p>
+    <p class="text-xs text-purple-600 mt-0.5">{{ case.patient_age }} months · {{ case.gender }} · {{ case.facility.name }}</p>
+    <p class="text-xs text-purple-600 mt-0.5">Admitted: {{ case.admission_date }} · Wt: {{ case.weight }}kg · Ht: {{ case.height }}cm</p>
+  </div>
+
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+    <form method="post">
+      {% csrf_token %}
+      <div class="mb-6">
+        <label class="block text-sm font-semibold text-gray-700 mb-3">Discharge Outcome</label>
+        <div class="grid grid-cols-2 gap-3">
+          {% for outcome in outcomes %}
+          <label class="flex items-center gap-2 p-3 border-2 rounded-xl cursor-pointer hover:bg-gray-50 has-[:checked]:border-purple-500 has-[:checked]:bg-purple-50">
+            <input type="radio" name="outcome" value="{{ outcome }}" class="text-purple-600" {% if forloop.first %}checked{% endif %}>
+            <span class="text-sm font-medium text-gray-700">{{ outcome }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <button type="submit" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 rounded-xl transition-colors">
+        Confirm Discharge
+      </button>
+    </form>
+  </div>
+
+</div>
+{% endblock %}

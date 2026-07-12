@@ -38,6 +38,9 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     email_verified_at = models.DateTimeField(null=True, blank=True)
+    notify_visits = models.BooleanField(default=True)
+    notify_discharge = models.BooleanField(default=True)
+    notify_stock = models.BooleanField(default=False)
     
     objects = UserManager()
     

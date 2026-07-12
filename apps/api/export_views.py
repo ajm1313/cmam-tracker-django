@@ -103,7 +103,7 @@ def _export_cases_excel(qs):
             try:
                 if len(str(cell.value)) > max_length:
                     max_length = len(str(cell.value))
-            except:
+            except (TypeError, AttributeError):
                 pass
         adjusted_width = min(max_length + 2, 50)
         ws.column_dimensions[column].width = adjusted_width
@@ -221,7 +221,7 @@ def _export_inventory_excel(qs):
             try:
                 if len(str(cell.value)) > max_length:
                     max_length = len(str(cell.value))
-            except:
+            except (TypeError, AttributeError):
                 pass
         adjusted_width = min(max_length + 2, 50)
         ws.column_dimensions[column].width = adjusted_width

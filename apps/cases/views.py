@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.db.models import Q, Count, Max, F
 from django.db.models.functions import Coalesce
 from django.utils import timezone
+from django.core.paginator import Paginator
 from datetime import timedelta, date
 from .models import OpcRegistration, OpcVisit, SamCase, MamCase, IpcCase, CaseTask
 
@@ -63,9 +64,15 @@ def case_list(request):
         qs = qs.filter(facility_id=facility_id)
     
     filter_active = any([search, status, case_type, gender, age_min, age_max, muac_max, date_from, date_to, facility_id])
-    
+
+    paginator = Paginator(qs.order_by('-registration_date'), 25)
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+
     context = {
-        'opc_registrations': qs,
+        'opc_registrations': page_obj,
+        'page_obj': page_obj,
+        'paginator': paginator,
         'facilities': facilities,
         'filter_active': filter_active,
         'filters': {
@@ -79,27 +86,101 @@ def case_list(request):
 
 @login_required
 def case_manage(request):
-    """Case management dashboard"""
+    """Case management dashboard with WHO Sphere indicators, trends, and location filters"""
+    from datetime import date
+    from django.db.models.functions import TruncMonth
     user = request.user
-    facilities = user.get_accessible_facilities()
-    
+    all_facilities = user.get_accessible_facilities()
+
+    # --- Location filters ---
+    facility_id = request.GET.get('facility')
+    if facility_id:
+        try:
+            facilities = all_facilities.filter(id=int(facility_id))
+        except (ValueError, TypeError):
+            facilities = all_facilities
+    else:
+        facilities = all_facilities
+
     opc_qs = OpcRegistration.objects.filter(facility__in=facilities)
-    
-    stats = {
-        'total_sam_cases': opc_qs.filter(malnutrition_type='SAM').count(),
-        'active_sam_cases': opc_qs.filter(malnutrition_type='SAM', status='Active').count(),
-        'total_mam_cases': opc_qs.filter(malnutrition_type='MAM').count(),
-        'active_mam_cases': opc_qs.filter(malnutrition_type='MAM', status='Active').count(),
-        'total_ipc_cases': IpcCase.objects.filter(facility__in=facilities).count(),
-        'active_ipc_cases': IpcCase.objects.filter(
-            facility__in=facilities,
-            status='active'
-        ).count(),
-        'discharged_cases': opc_qs.filter(status='Discharged').count(),
-        'defaulted_cases': opc_qs.filter(status='Defaulted').count(),
+
+    # --- Core counts ---
+    total_sam = opc_qs.filter(malnutrition_type='SAM').count()
+    active_sam = opc_qs.filter(malnutrition_type='SAM', status='Active').count()
+    total_mam = opc_qs.filter(malnutrition_type='MAM').count()
+    active_mam = opc_qs.filter(malnutrition_type='MAM', status='Active').count()
+    discharged = opc_qs.filter(status='Discharged').count()
+    defaulted = opc_qs.filter(status='Defaulted').count()
+    deaths = opc_qs.filter(status='Death').count()
+    closed = discharged + defaulted + deaths
+
+    # --- WHO Sphere indicators ---
+    cure_rate = round(discharged * 100 / closed, 1) if closed > 0 else 0
+    defaulter_rate = round(defaulted * 100 / closed, 1) if closed > 0 else 0
+    death_rate = round(deaths * 100 / closed, 1) if closed > 0 else 0
+
+    # --- Outcome breakdown for chart ---
+    outcomes = {
+        'Discharged': discharged,
+        'Defaulted': defaulted,
+        'Death': deaths,
+        'Active': opc_qs.filter(status='Active').count(),
+        'Transfer': opc_qs.filter(status='Transferred').count(),
     }
-    
-    context = {'stats': stats}
+
+    # --- Monthly admissions trend (last 6 months) ---
+    from collections import OrderedDict
+    today = date.today()
+    trend_months = []
+    trend_sam = []
+    trend_mam = []
+    for i in range(5, -1, -1):
+        m = today.month - i
+        y = today.year
+        while m <= 0:
+            m += 12
+            y -= 1
+        label = date(y, m, 1).strftime('%b %Y')
+        sam_count = opc_qs.filter(malnutrition_type='SAM', registration_date__year=y, registration_date__month=m).count()
+        mam_count = opc_qs.filter(malnutrition_type='MAM', registration_date__year=y, registration_date__month=m).count()
+        trend_months.append(label)
+        trend_sam.append(sam_count)
+        trend_mam.append(mam_count)
+
+    stats = {
+        'total_sam_cases': total_sam,
+        'active_sam_cases': active_sam,
+        'total_mam_cases': total_mam,
+        'active_mam_cases': active_mam,
+        'total_ipc_cases': IpcCase.objects.filter(facility__in=facilities).count(),
+        'active_ipc_cases': IpcCase.objects.filter(facility__in=facilities, status='active').count(),
+        'discharged_cases': discharged,
+        'defaulted_cases': defaulted,
+        'death_cases': deaths,
+        'cure_rate': cure_rate,
+        'defaulter_rate': defaulter_rate,
+        'death_rate': death_rate,
+    }
+
+    import json
+    kpi_cards = [
+        {'label': 'SAM Cases', 'value': total_sam, 'sub': f'{active_sam} active', 'color': '#ef4444'},
+        {'label': 'MAM Cases', 'value': total_mam, 'sub': f'{active_mam} active', 'color': '#f59e0b'},
+        {'label': 'IPC Cases', 'value': stats['total_ipc_cases'], 'sub': f'{stats["active_ipc_cases"]} active', 'color': '#8b5cf6'},
+        {'label': 'Discharged', 'value': discharged, 'sub': None, 'color': '#22c55e'},
+        {'label': 'Defaulted', 'value': defaulted, 'sub': None, 'color': '#f97316'},
+    ]
+
+    context = {
+        'stats': stats,
+        'kpi_cards': kpi_cards,
+        'outcomes': json.dumps(outcomes),
+        'trend_months': json.dumps(trend_months),
+        'trend_sam': json.dumps(trend_sam),
+        'trend_mam': json.dumps(trend_mam),
+        'all_facilities': all_facilities,
+        'selected_facility': facility_id,
+    }
     return render(request, 'cases/case_manage.html', context)
 
 
@@ -656,12 +737,20 @@ def discharge_management(request):
         'cure_rate': cure_rate,
     }
     
+    # Search filter
+    search = request.GET.get('q', '').strip()
+
     # Get cases ready for discharge (active cases with good progress)
     today = timezone.now().date()
-    active_cases = OpcRegistration.objects.filter(
+    active_qs = OpcRegistration.objects.filter(
         facility_id__in=facility_ids,
         status='Active'
-    ).select_related('facility').annotate(
+    )
+    if search:
+        active_qs = active_qs.filter(
+            Q(child_name__icontains=search) | Q(registration_number__icontains=search)
+        )
+    active_cases = active_qs.select_related('facility').annotate(
         visit_count=Count('visits'),
         last_visit_date=Max('visits__visit_date')
     )
@@ -708,6 +797,7 @@ def discharge_management(request):
         'ready_for_discharge': ready_for_discharge,
         'defaulters': defaulters,
         'discharge_history': discharge_history,
+        'search': search,
     }
     return render(request, 'cases/discharge_management.html', context)
 
@@ -776,9 +866,10 @@ def case_transfer(request, pk):
                 messages.error(request, 'Invalid destination facility.')
                 return redirect('cases:case_transfer', pk=case.pk)
 
+            source_facility_name = case.facility.name
             case.facility = dest_facility
             case.admission_type = 'Transfer In'
-            case.outcome_notes = f'Transferred from {case.facility.name}: {reason}. {notes}'
+            case.outcome_notes = f'Transferred from {source_facility_name}: {reason}. {notes}'
             case.save()
             messages.success(request, f'Case {case.child_name} transferred to {dest_facility.name}.')
             return redirect('cases:case_detail', pk=case.pk)
@@ -863,3 +954,58 @@ def case_tasks(request, pk):
     tasks = case.tasks.all().order_by('-created_at')
     context = {'case': case, 'tasks': tasks}
     return render(request, 'cases/case_tasks.html', context)
+
+
+# ==================== IPC MANAGEMENT ====================
+
+@login_required
+def ipc_list(request):
+    """IPC (Inpatient Care) case list with filters"""
+    user = request.user
+    facilities = user.get_accessible_facilities()
+
+    qs = IpcCase.objects.filter(facility__in=facilities).select_related('facility')
+
+    status_filter = request.GET.get('status', '')
+    search = request.GET.get('q', '').strip()
+    facility_filter = request.GET.get('facility', '')
+
+    if status_filter:
+        qs = qs.filter(status=status_filter)
+    if facility_filter:
+        qs = qs.filter(facility_id=facility_filter)
+    if search:
+        qs = qs.filter(patient_name__icontains=search)
+
+    stats = {
+        'total': IpcCase.objects.filter(facility__in=facilities).count(),
+        'active': IpcCase.objects.filter(facility__in=facilities, status='Admitted').count(),
+        'discharged': IpcCase.objects.filter(facility__in=facilities, status='Discharged').count(),
+    }
+
+    context = {
+        'ipc_cases': qs,
+        'stats': stats,
+        'all_facilities': facilities,
+        'status_filter': status_filter,
+        'facility_filter': facility_filter,
+        'search': search,
+    }
+    return render(request, 'cases/ipc_list.html', context)
+
+
+@login_required
+def ipc_discharge(request, pk):
+    """Discharge an IPC case"""
+    facilities = request.user.get_accessible_facilities()
+    case = get_object_or_404(IpcCase, pk=pk, facility__in=facilities)
+
+    if request.method == 'POST':
+        outcome = request.POST.get('outcome', 'Discharged')
+        case.status = outcome
+        case.save()
+        messages.success(request, f'{case.patient_name} discharged: {outcome}.')
+        return redirect('cases:ipc_list')
+
+    outcomes = ['Discharged', 'Death', 'Defaulted', 'Transfer']
+    return render(request, 'cases/ipc_discharge.html', {'case': case, 'outcomes': outcomes})

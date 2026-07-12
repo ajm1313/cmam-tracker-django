@@ -1,0 +1,115 @@
+{% extends 'base.html' %}
+{% block title %}IPC Management - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">IPC Case Management</h1>
+      <p class="text-sm text-gray-500 mt-0.5">Inpatient Care — Stabilization Centre</p>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-3 gap-4">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-center">
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Total</p>
+      <p class="text-3xl font-extrabold text-purple-600 mt-1">{{ stats.total }}</p>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-center">
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Active</p>
+      <p class="text-3xl font-extrabold text-blue-600 mt-1">{{ stats.active }}</p>
+    </div>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-center">
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Discharged</p>
+      <p class="text-3xl font-extrabold text-green-600 mt-1">{{ stats.discharged }}</p>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+    <form method="get" class="flex flex-wrap gap-3 items-end">
+      <div>
+        <label class="block text-xs font-semibold text-gray-500 mb-1">Search</label>
+        <input type="text" name="q" value="{{ search }}" placeholder="Patient name..." class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 w-48">
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-500 mb-1">Status</label>
+        <select name="status" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+          <option value="">All</option>
+          <option value="Admitted" {% if status_filter == 'Admitted' %}selected{% endif %}>Admitted</option>
+          <option value="Discharged" {% if status_filter == 'Discharged' %}selected{% endif %}>Discharged</option>
+          <option value="Death" {% if status_filter == 'Death' %}selected{% endif %}>Death</option>
+          <option value="Defaulted" {% if status_filter == 'Defaulted' %}selected{% endif %}>Defaulted</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-gray-500 mb-1">Facility</label>
+        <select name="facility" class="border border-gray-300 rounded-lg px-3 py-2 text-sm">
+          <option value="">All Facilities</option>
+          {% for f in all_facilities %}
+          <option value="{{ f.id }}" {% if facility_filter == f.id|stringformat:"s" %}selected{% endif %}>{{ f.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white font-semibold px-4 py-2 rounded-lg text-sm">Filter</button>
+      {% if search or status_filter or facility_filter %}
+      <a href="{% url 'cases:ipc_list' %}" class="text-sm text-gray-500 hover:text-gray-700 py-2">Clear</a>
+      {% endif %}
+    </form>
+  </div>
+
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+    {% if ipc_cases %}
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-gray-100">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Patient</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Age / Gender</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Facility</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Admission</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Wt / Ht / MUAC</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50">
+          {% for c in ipc_cases %}
+          <tr class="hover:bg-gray-50 transition-colors">
+            <td class="px-4 py-3 font-semibold text-gray-900">{{ c.patient_name }}</td>
+            <td class="px-4 py-3 text-sm text-gray-600">{{ c.patient_age }}m / {{ c.gender }}</td>
+            <td class="px-4 py-3 text-sm text-gray-600">{{ c.facility.name }}</td>
+            <td class="px-4 py-3 text-sm text-gray-600">{{ c.admission_date }}</td>
+            <td class="px-4 py-3 text-sm text-gray-600">{{ c.weight }}kg / {{ c.height }}cm{% if c.muac %} / {{ c.muac }}cm{% endif %}</td>
+            <td class="px-4 py-3">
+              {% if c.status == 'Admitted' %}
+              <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">Admitted</span>
+              {% elif c.status == 'Discharged' %}
+              <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Discharged</span>
+              {% elif c.status == 'Death' %}
+              <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">Death</span>
+              {% else %}
+              <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">{{ c.status }}</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3">
+              {% if c.status == 'Admitted' %}
+              <a href="{% url 'cases:ipc_discharge' c.pk %}" class="text-xs font-semibold text-purple-600 hover:text-purple-800">Discharge</a>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-16">
+      <p class="text-4xl mb-3">🏥</p>
+      <p class="text-gray-500 font-medium">No IPC cases found</p>
+      <p class="text-sm text-gray-400 mt-1">Try adjusting your filters</p>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

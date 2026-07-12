@@ -170,14 +170,14 @@ def update_registration_after_visit(sender, instance, created, **kwargs):
             try:
                 wfa_value = float(instance.z_score_wfa.replace('SD', '').replace('<', '').replace('>', '').strip())
                 registration.wfa_above_minus_2 = wfa_value > -2.0
-            except:
+            except (ValueError, AttributeError):
                 pass
         
         if instance.z_score_wfh:
             try:
                 wfl_value = float(instance.z_score_wfh.replace('SD', '').replace('<', '').replace('>', '').strip())
                 registration.wfl_above_minus_2 = wfl_value > -2.0
-            except:
+            except (ValueError, AttributeError):
                 pass
     
     # Update weight trend counters

@@ -1,196 +1,183 @@
 {% extends 'base.html' %}
-
 {% block title %}Case Management - CMAM Tracker{% endblock %}
 
 {% block content %}
 <div class="space-y-6">
-    <div class="flex justify-between items-center">
-        <h1 class="text-2xl font-bold text-gray-900">Case Management Dashboard</h1>
-        <a href="{% url 'cases:case_create' %}" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-            New Registration
-        </a>
+
+  <!-- Header + Filter -->
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Case Management Dashboard</h1>
+      <p class="text-sm text-gray-500 mt-0.5">Performance indicators &amp; admission trends</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <form method="get" class="flex items-center gap-2">
+        <select name="facility" onchange="this.form.submit()" class="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500">
+          <option value="">All Facilities</option>
+          {% for f in all_facilities %}
+          <option value="{{ f.id }}" {% if selected_facility == f.id|stringformat:"s" %}selected{% endif %}>{{ f.name }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      <a href="{% url 'cases:case_create' %}" class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg text-sm transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+        New Registration
+      </a>
+    </div>
+  </div>
+
+  <!-- KPI Cards Row 1: Case Counts -->
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+    {% for card in kpi_cards %}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">{{ card.label }}</p>
+      <p class="text-3xl font-extrabold mt-1" style="color:{{ card.color }}">{{ card.value }}</p>
+      {% if card.sub %}<p class="text-xs text-gray-500 mt-0.5">{{ card.sub }}</p>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- WHO Sphere Performance Indicators -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+    <h2 class="text-base font-bold text-gray-800 mb-4">WHO Sphere Performance Indicators</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+
+      {% with rate=stats.cure_rate threshold=75 %}
+      <div>
+        <div class="flex justify-between items-center mb-1">
+          <span class="text-sm font-semibold text-gray-600">Cure Rate</span>
+          <span class="text-sm font-extrabold {% if rate >= threshold %}text-green-600{% else %}text-red-500{% endif %}">{{ rate }}%</span>
+        </div>
+        <div class="w-full bg-gray-100 rounded-full h-3">
+          <div class="h-3 rounded-full {% if rate >= threshold %}bg-green-500{% else %}bg-red-500{% endif %}" style="width:{{ rate }}%"></div>
+        </div>
+        <p class="text-xs text-gray-400 mt-1">Sphere target ≥75%</p>
+      </div>
+      {% endwith %}
+
+      {% with rate=stats.defaulter_rate threshold=15 %}
+      <div>
+        <div class="flex justify-between items-center mb-1">
+          <span class="text-sm font-semibold text-gray-600">Defaulter Rate</span>
+          <span class="text-sm font-extrabold {% if rate <= threshold %}text-green-600{% else %}text-red-500{% endif %}">{{ rate }}%</span>
+        </div>
+        <div class="w-full bg-gray-100 rounded-full h-3">
+          <div class="h-3 rounded-full {% if rate <= threshold %}bg-green-500{% else %}bg-red-500{% endif %}" style="width:{{ rate }}%"></div>
+        </div>
+        <p class="text-xs text-gray-400 mt-1">Sphere target &lt;15%</p>
+      </div>
+      {% endwith %}
+
+      {% with rate=stats.death_rate threshold=10 %}
+      <div>
+        <div class="flex justify-between items-center mb-1">
+          <span class="text-sm font-semibold text-gray-600">Death Rate</span>
+          <span class="text-sm font-extrabold {% if rate <= threshold %}text-green-600{% else %}text-red-500{% endif %}">{{ rate }}%</span>
+        </div>
+        <div class="w-full bg-gray-100 rounded-full h-3">
+          <div class="h-3 rounded-full {% if rate <= threshold %}bg-green-500{% else %}bg-red-500{% endif %}" style="width:{{ rate }}%"></div>
+        </div>
+        <p class="text-xs text-gray-400 mt-1">Sphere target &lt;10%</p>
+      </div>
+      {% endwith %}
+
+    </div>
+  </div>
+
+  <!-- Charts Row -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+    <!-- Admission Trends -->
+    <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+      <h2 class="text-base font-bold text-gray-800 mb-4">Monthly Admissions (Last 6 Months)</h2>
+      <canvas id="trendChart" height="100"></canvas>
     </div>
 
-    <!-- Statistics Cards -->
-    <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        <!-- SAM Cases -->
-        <div class="bg-white overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-12 h-12 bg-red-500 rounded-md flex items-center justify-center">
-                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 truncate">SAM Cases</dt>
-                            <dd class="flex items-baseline">
-                                <div class="text-2xl font-semibold text-gray-900">{{ stats.total_sam_cases }}</div>
-                                <div class="ml-2 flex items-baseline text-sm font-semibold text-green-600">
-                                    {{ stats.active_sam_cases }} active
-                                </div>
-                            </dd>
-                        </dl>
-                    </div>
-                </div>
-            </div>
-            <div class="bg-gray-50 px-5 py-3">
-                <div class="text-sm">
-                    <a href="{% url 'cases:case_list' %}" class="font-medium text-red-700 hover:text-red-900">View SAM cases →</a>
-                </div>
-            </div>
-        </div>
-
-        <!-- MAM Cases -->
-        <div class="bg-white overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-12 h-12 bg-yellow-500 rounded-md flex items-center justify-center">
-                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 truncate">MAM Cases</dt>
-                            <dd class="flex items-baseline">
-                                <div class="text-2xl font-semibold text-gray-900">{{ stats.total_mam_cases }}</div>
-                                <div class="ml-2 flex items-baseline text-sm font-semibold text-green-600">
-                                    {{ stats.active_mam_cases }} active
-                                </div>
-                            </dd>
-                        </dl>
-                    </div>
-                </div>
-            </div>
-            <div class="bg-gray-50 px-5 py-3">
-                <div class="text-sm">
-                    <a href="{% url 'cases:case_list' %}" class="font-medium text-yellow-700 hover:text-yellow-900">View MAM cases →</a>
-                </div>
-            </div>
-        </div>
-
-        <!-- IPC Cases -->
-        <div class="bg-white overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-12 h-12 bg-purple-500 rounded-md flex items-center justify-center">
-                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 truncate">IPC Cases</dt>
-                            <dd class="flex items-baseline">
-                                <div class="text-2xl font-semibold text-gray-900">{{ stats.total_ipc_cases }}</div>
-                                <div class="ml-2 flex items-baseline text-sm font-semibold text-green-600">
-                                    {{ stats.active_ipc_cases }} active
-                                </div>
-                            </dd>
-                        </dl>
-                    </div>
-                </div>
-            </div>
-            <div class="bg-gray-50 px-5 py-3">
-                <div class="text-sm">
-                    <a href="{% url 'cases:case_list' %}" class="font-medium text-purple-700 hover:text-purple-900">View IPC cases →</a>
-                </div>
-            </div>
-        </div>
-
-        <!-- Discharged -->
-        <div class="bg-white overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-12 h-12 bg-green-500 rounded-md flex items-center justify-center">
-                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 truncate">Discharged</dt>
-                            <dd class="text-2xl font-semibold text-gray-900">{{ stats.discharged_cases }}</dd>
-                        </dl>
-                    </div>
-                </div>
-            </div>
-            <div class="bg-gray-50 px-5 py-3">
-                <div class="text-sm">
-                    <a href="{% url 'cases:discharge_management' %}" class="font-medium text-green-700 hover:text-green-900">Discharge management →</a>
-                </div>
-            </div>
-        </div>
-
-        <!-- Defaulted -->
-        <div class="bg-white overflow-hidden shadow rounded-lg">
-            <div class="p-5">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <div class="w-12 h-12 bg-orange-500 rounded-md flex items-center justify-center">
-                            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
-                            </svg>
-                        </div>
-                    </div>
-                    <div class="ml-5 w-0 flex-1">
-                        <dl>
-                            <dt class="text-sm font-medium text-gray-500 truncate">Defaulted</dt>
-                            <dd class="text-2xl font-semibold text-gray-900">{{ stats.defaulted_cases }}</dd>
-                        </dl>
-                    </div>
-                </div>
-            </div>
-            <div class="bg-gray-50 px-5 py-3">
-                <div class="text-sm">
-                    <a href="{% url 'cases:due_visits' %}" class="font-medium text-orange-700 hover:text-orange-900">View due visits →</a>
-                </div>
-            </div>
-        </div>
+    <!-- Outcome Donut -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+      <h2 class="text-base font-bold text-gray-800 mb-4">Case Outcomes</h2>
+      <canvas id="outcomeChart" height="180"></canvas>
+      <div class="flex flex-wrap gap-x-4 gap-y-1 mt-3 justify-center text-xs">
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-green-500"></span>Discharged</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-blue-500"></span>Active</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-yellow-500"></span>Defaulted</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-red-500"></span>Death</span>
+        <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-full bg-purple-500"></span>Transfer</span>
+      </div>
     </div>
 
-    <!-- Quick Actions -->
-    <div class="bg-white shadow rounded-lg p-6">
-        <h2 class="text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <a href="{% url 'cases:case_create' %}" class="block p-4 border-2 border-blue-200 rounded-lg hover:bg-blue-50 text-center">
-                <div class="text-blue-600 mb-2">
-                    <svg class="w-8 h-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-                    </svg>
-                </div>
-                <h3 class="font-medium text-gray-900">New SAM Registration</h3>
-                <p class="text-sm text-gray-500">Register a new SAM case</p>
-            </a>
-            <a href="{% url 'cases:case_create' %}" class="block p-4 border-2 border-yellow-200 rounded-lg hover:bg-yellow-50 text-center">
-                <div class="text-yellow-600 mb-2">
-                    <svg class="w-8 h-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-                    </svg>
-                </div>
-                <h3 class="font-medium text-gray-900">New MAM Registration</h3>
-                <p class="text-sm text-gray-500">Register a new MAM case</p>
-            </a>
-            <a href="{% url 'cases:case_list' %}" class="block p-4 border-2 border-gray-200 rounded-lg hover:bg-gray-50 text-center">
-                <div class="text-gray-600 mb-2">
-                    <svg class="w-8 h-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
-                    </svg>
-                </div>
-                <h3 class="font-medium text-gray-900">View All Cases</h3>
-                <p class="text-sm text-gray-500">Browse all registered cases</p>
-            </a>
-        </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+    <h2 class="text-base font-bold text-gray-800 mb-4">Quick Actions</h2>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <a href="{% url 'cases:case_create' %}" class="flex flex-col items-center p-4 border-2 border-red-100 rounded-xl hover:bg-red-50 transition-colors text-center">
+        <span class="text-2xl mb-1">🩺</span>
+        <span class="text-sm font-semibold text-gray-800">SAM Registration</span>
+      </a>
+      <a href="{% url 'cases:case_create' %}" class="flex flex-col items-center p-4 border-2 border-yellow-100 rounded-xl hover:bg-yellow-50 transition-colors text-center">
+        <span class="text-2xl mb-1">🥗</span>
+        <span class="text-sm font-semibold text-gray-800">MAM Registration</span>
+      </a>
+      <a href="{% url 'cases:due_visits' %}" class="flex flex-col items-center p-4 border-2 border-blue-100 rounded-xl hover:bg-blue-50 transition-colors text-center">
+        <span class="text-2xl mb-1">📅</span>
+        <span class="text-sm font-semibold text-gray-800">Due Visits</span>
+      </a>
+      <a href="{% url 'cases:discharge_management' %}" class="flex flex-col items-center p-4 border-2 border-green-100 rounded-xl hover:bg-green-50 transition-colors text-center">
+        <span class="text-2xl mb-1">✅</span>
+        <span class="text-sm font-semibold text-gray-800">Discharge Mgmt</span>
+      </a>
     </div>
+  </div>
+
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  const trendMonths = {{ trend_months|safe }};
+  const trendSAM   = {{ trend_sam|safe }};
+  const trendMAM   = {{ trend_mam|safe }};
+  const outcomes   = {{ outcomes|safe }};
+
+  // Admission trends bar chart
+  new Chart(document.getElementById('trendChart'), {
+    type: 'bar',
+    data: {
+      labels: trendMonths,
+      datasets: [
+        { label: 'SAM', data: trendSAM, backgroundColor: 'rgba(239,68,68,0.75)', borderRadius: 6 },
+        { label: 'MAM', data: trendMAM, backgroundColor: 'rgba(245,158,11,0.75)', borderRadius: 6 },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'top' } },
+      scales: { x: { grid: { display: false } }, y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+    },
+  });
+
+  // Outcome donut chart
+  new Chart(document.getElementById('outcomeChart'), {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(outcomes),
+      datasets: [{
+        data: Object.values(outcomes),
+        backgroundColor: ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#a855f7'],
+        borderWidth: 2,
+        borderColor: '#fff',
+      }],
+    },
+    options: {
+      responsive: true,
+      cutout: '65%',
+      plugins: { legend: { display: false } },
+    },
+  });
+})();
+</script>
 {% endblock %}

@@ -646,7 +646,7 @@ def reports(request):
                 current_stock__lte=F('reorder_point')
             ).exclude(current_stock=0).count()
             inventory_summary['out_of_stock'] = stock_levels.filter(current_stock=0).count()
-        except:
+        except Exception:
             pass
     
     # Get user level description
@@ -996,7 +996,7 @@ def weekly_sam_report(request):
                     district_name = facility.sub_district.district.name
                     if facility.sub_district.district.region:
                         region_name = facility.sub_district.district.region.name
-        except:
+        except Exception:
             pass
     
     # Build months list
@@ -1244,7 +1244,7 @@ def weekly_mam_report(request):
                     district_name = facility.sub_district.district.name
                     if facility.sub_district.district.region:
                         region_name = facility.sub_district.district.region.name
-        except:
+        except Exception:
             pass
     
     # Build months list
@@ -1655,7 +1655,7 @@ def monthly_facility_report(request):
             )
             
             commodity['rutf_received'] += sum(m.quantity for m in movements.filter(movement_type='IN'))
-    except:
+    except Exception:
         pass
     
     # Get RUTF issued from visits
@@ -1690,7 +1690,7 @@ def monthly_facility_report(request):
                     district_name = facility.sub_district.district.name
                     if facility.sub_district.district.region:
                         region_name = facility.sub_district.district.region.name
-        except:
+        except Exception:
             pass
     
     # Build months list
@@ -1991,10 +1991,10 @@ def settings(request):
                 messages.success(request, 'Password changed successfully.')
         
         elif action == 'update_notifications':
-            # Notification preferences (stored in session for now)
-            request.session['notify_visits'] = request.POST.get('notify_visits') == 'on'
-            request.session['notify_discharge'] = request.POST.get('notify_discharge') == 'on'
-            request.session['notify_stock'] = request.POST.get('notify_stock') == 'on'
+            user.notify_visits = request.POST.get('notify_visits') == 'on'
+            user.notify_discharge = request.POST.get('notify_discharge') == 'on'
+            user.notify_stock = request.POST.get('notify_stock') == 'on'
+            user.save()
             messages.success(request, 'Notification preferences saved.')
         
         return redirect('users:settings')
@@ -2002,8 +2002,8 @@ def settings(request):
     context = {
         'user_obj': user,
         'user_role': user_role,
-        'notify_visits': request.session.get('notify_visits', True),
-        'notify_discharge': request.session.get('notify_discharge', True),
-        'notify_stock': request.session.get('notify_stock', False),
+        'notify_visits': user.notify_visits,
+        'notify_discharge': user.notify_discharge,
+        'notify_stock': user.notify_stock,
     }
     return render(request, 'users/settings.html', context)
