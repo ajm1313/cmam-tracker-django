@@ -28,6 +28,10 @@ if _RAILWAY_DOMAIN and _RAILWAY_DOMAIN not in ALLOWED_HOSTS:
 if '.up.railway.app' not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append('.up.railway.app')
 
+# Railway's healthcheck uses this hostname
+if 'healthcheck.railway.app' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append('healthcheck.railway.app')
+
 # CSRF Trusted Origins (for browser preview proxy)
 # ponytail: Use .env or wildcard middleware instead of hardcoding ports
 CSRF_TRUSTED_ORIGINS = [
