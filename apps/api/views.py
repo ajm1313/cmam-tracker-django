@@ -19,6 +19,7 @@ from apps.facilities.models import Facility
 from apps.inventory.models import (
     InventoryItem, StockLevel, StockMovement, StockRequest, StockRequestItem, ItemBatch
 )
+from apps.inventory.stock_utils import deduct_stock_for_registration, deduct_stock_for_visit
 from apps.cases.models import OpcRegistration, OpcVisit, IpcCase, CaseTask
 from apps.locations.models import Region, District, SubDistrict
 from django.db.models import Q, Count, Max, Sum, F
@@ -585,6 +586,13 @@ def case_create_api(request):
         created_by=request.user,
     )
     
+    # Auto-deduct stock for commodities given at enrollment
+    try:
+        deduct_stock_for_registration(case, user=request.user)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Stock deduction failed for registration {case.id}: {e}")
+    
     serializer = OpcRegistrationDetailSerializer(case)
     return Response({'success': True, 'message': 'Case created successfully', 'data': serializer.data},
                     status=status.HTTP_201_CREATED)
@@ -658,6 +666,13 @@ def record_visit_api(request, registration_id):
         conducted_by=request.user,
         created_by=request.user,
     )
+    
+    # Auto-deduct stock for commodities given during visit
+    try:
+        deduct_stock_for_visit(visit, user=request.user)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Stock deduction failed for visit {visit.id}: {e}")
     
     serializer = OpcVisitSerializer(visit)
     return Response({'success': True, 'message': 'Visit recorded successfully', 'data': serializer.data},

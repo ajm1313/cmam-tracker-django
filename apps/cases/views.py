@@ -7,6 +7,7 @@ from django.utils import timezone
 from django.core.paginator import Paginator
 from datetime import timedelta, date
 from .models import OpcRegistration, OpcVisit, SamCase, MamCase, IpcCase, CaseTask
+from apps.inventory.stock_utils import deduct_stock_for_registration, deduct_stock_for_visit
 
 
 @login_required
@@ -231,6 +232,12 @@ def case_create(request):
                     status='Active',
                     created_by=request.user,
                 )
+                
+                # Auto-deduct stock for commodities given at enrollment
+                try:
+                    deduct_stock_for_registration(registration, user=request.user)
+                except Exception:
+                    pass
                 
                 messages.success(request, f'Case registered successfully — {reg_number}')
                 return redirect('cases:case_detail', pk=registration.pk)
@@ -575,6 +582,12 @@ def visit_form(request, registration_id):
                 case.outcome_notes = f'Automatically discharged after {weeks_since_enrollment} weeks in program.'
                 case.save()
                 messages.warning(request, f'Case auto-discharged after {weeks_since_enrollment} weeks in program.')
+            
+            # Auto-deduct stock for commodities given during visit
+            try:
+                deduct_stock_for_visit(visit, user=request.user)
+            except Exception:
+                pass
             
             messages.success(request, f'Visit #{next_visit_number} recorded successfully!')
             return redirect('cases:due_visits')
