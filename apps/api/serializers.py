@@ -60,6 +60,8 @@ class FacilitySerializer(serializers.ModelSerializer):
     opc_day_display = serializers.SerializerMethodField()
     expected_sam_cases = serializers.SerializerMethodField()
     sam_target = serializers.SerializerMethodField()
+    expected_mam_cases = serializers.SerializerMethodField()
+    mam_target = serializers.SerializerMethodField()
     # Aliases expected by mobile app
     facility_type = serializers.CharField(source='type', read_only=True)
     contact_phone = serializers.CharField(source='phone', read_only=True, allow_null=True)
@@ -81,6 +83,7 @@ class FacilitySerializer(serializers.ModelSerializer):
             'capacity',
             'opc_day', 'opc_day_display',
             'expected_sam_cases', 'sam_target',
+            'expected_mam_cases', 'mam_target',
         ]
 
     def get_district_name(self, obj):
@@ -122,6 +125,18 @@ class FacilitySerializer(serializers.ModelSerializer):
     def get_sam_target(self, obj):
         try:
             return obj.sam_target
+        except Exception:
+            return None
+
+    def get_expected_mam_cases(self, obj):
+        try:
+            return obj.expected_mam_cases
+        except Exception:
+            return None
+
+    def get_mam_target(self, obj):
+        try:
+            return obj.mam_target
         except Exception:
             return None
 

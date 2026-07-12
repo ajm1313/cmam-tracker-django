@@ -89,3 +89,22 @@ class Facility(TimeStampedModel):
         if expected is not None:
             return math.ceil(expected * self.COVERAGE_TARGET)
         return None
+
+    # MAM prevalence is typically ~2× SAM prevalence (WHO/UNICEF approximation)
+    MAM_TO_SAM_RATIO = 2.0
+
+    @property
+    def expected_mam_cases(self):
+        """UNICEF estimate: MAM burden ≈ 2× SAM burden (MAM prevalence ~2× SAM prevalence)"""
+        sam_expected = self.expected_sam_cases
+        if sam_expected is not None:
+            return math.ceil(sam_expected * self.MAM_TO_SAM_RATIO)
+        return None
+
+    @property
+    def mam_target(self):
+        """80% programme coverage of expected MAM cases"""
+        expected = self.expected_mam_cases
+        if expected is not None:
+            return math.ceil(expected * self.COVERAGE_TARGET)
+        return None
