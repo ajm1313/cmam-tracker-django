@@ -104,6 +104,7 @@ MIDDLEWARE = [
     'apps.core.middleware.AuditLogMiddleware',  # Audit logging
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'apps.core.middleware.OverdueVisitSchedulerMiddleware',  # Daily overdue visit push notifications
 ]
 
 ROOT_URLCONF = 'config.urls'

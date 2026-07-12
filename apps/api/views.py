@@ -19,7 +19,7 @@ from apps.facilities.models import Facility
 from apps.inventory.models import (
     InventoryItem, StockLevel, StockMovement, StockRequest, StockRequestItem, ItemBatch
 )
-from apps.inventory.stock_utils import deduct_stock_for_registration, deduct_stock_for_visit
+from apps.inventory.stock_utils import deduct_stock_for_registration, deduct_stock_for_visit, reverse_stock_for_registration, reverse_stock_for_visit
 from apps.cases.models import OpcRegistration, OpcVisit, IpcCase, CaseTask
 from apps.locations.models import Region, District, SubDistrict
 from django.db.models import Q, Count, Max, Sum, F
@@ -1072,6 +1072,15 @@ def case_delete_api(request, pk):
     except OpcRegistration.DoesNotExist:
         return Response({'success': False, 'message': 'Case not found'}, status=status.HTTP_404_NOT_FOUND)
 
+    # Reverse stock deductions for registration and all its visits
+    try:
+        reverse_stock_for_registration(case, user=request.user)
+        for visit in case.visits.all():
+            reverse_stock_for_visit(visit, user=request.user)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Stock reversal failed for case {case.id}: {e}")
+
     case.status = 'Discharged'
     case.outcome = 'Closed'
     case.discharge_date = timezone.now().date()
@@ -1240,6 +1249,17 @@ def visit_edit_api(request, registration_id, visit_id):
             pass
 
     data = request.data
+    # Capture old commodity values for stock adjustment
+    old_rutf = visit.rutf_sachets_given or 0
+    old_csb = float(visit.csb_plus_given or 0)
+    old_oil = float(visit.oil_given or 0)
+    old_fp_qty = 0
+    if visit.food_product_quantity:
+        try:
+            old_fp_qty = int(float(visit.food_product_quantity))
+        except (ValueError, TypeError):
+            old_fp_qty = 0
+
     fields = [
         'visit_date', 'visit_type', 'weight_kg', 'height_cm', 'muac_cm',
         'z_score_wfh', 'oedema', 'visit_outcome', 'outcome_notes',
@@ -1261,6 +1281,73 @@ def visit_edit_api(request, registration_id, visit_id):
 
     visit.updated_by = request.user
     visit.save()
+
+    # Adjust stock for changed commodity quantities
+    try:
+        from apps.inventory.stock_utils import _find_rutf_item, _find_item_by_category, _find_item_by_name, _deduct_stock, _reverse_stock
+        facility = visit.registration.facility
+        visit_date = visit.visit_date or timezone.now().date()
+        reg_num = visit.registration.registration_number or str(visit.registration_id)
+        ref = f"VISIT-EDIT-{reg_num}-V{visit.visit_number}"
+
+        new_rutf = visit.rutf_sachets_given or 0
+        rutf_diff = new_rutf - old_rutf
+        if rutf_diff != 0:
+            rutf_item = _find_rutf_item()
+            if rutf_item:
+                if rutf_diff > 0:
+                    _deduct_stock(rutf_item, facility, rutf_diff, request.user, visit_date, ref,
+                                  f"RUTF adjusted up on edit for {reg_num} V{visit.visit_number}")
+                else:
+                    _reverse_stock(rutf_item, facility, abs(rutf_diff), request.user, visit_date, ref,
+                                   f"RUTF adjusted down on edit for {reg_num} V{visit.visit_number}")
+
+        new_csb = float(visit.csb_plus_given or 0)
+        csb_diff = new_csb - old_csb
+        if csb_diff != 0:
+            csb_item = _find_item_by_category('CSB') or _find_item_by_name('CSB')
+            if csb_item:
+                if csb_diff > 0:
+                    _deduct_stock(csb_item, facility, int(csb_diff), request.user, visit_date, ref,
+                                  f"CSB+ adjusted up on edit for {reg_num} V{visit.visit_number}")
+                else:
+                    _reverse_stock(csb_item, facility, int(abs(csb_diff)), request.user, visit_date, ref,
+                                   f"CSB+ adjusted down on edit for {reg_num} V{visit.visit_number}")
+
+        new_oil = float(visit.oil_given or 0)
+        oil_diff = new_oil - old_oil
+        if oil_diff != 0:
+            oil_item = _find_item_by_category('Oil') or _find_item_by_name('Oil')
+            if oil_item:
+                if oil_diff > 0:
+                    _deduct_stock(oil_item, facility, int(oil_diff), request.user, visit_date, ref,
+                                  f"Oil adjusted up on edit for {reg_num} V{visit.visit_number}")
+                else:
+                    _reverse_stock(oil_item, facility, int(abs(oil_diff)), request.user, visit_date, ref,
+                                   f"Oil adjusted down on edit for {reg_num} V{visit.visit_number}")
+
+        new_fp_qty = 0
+        if visit.food_product_quantity:
+            try:
+                new_fp_qty = int(float(visit.food_product_quantity))
+            except (ValueError, TypeError):
+                new_fp_qty = 0
+        fp_diff = new_fp_qty - old_fp_qty
+        if fp_diff != 0 and visit.food_product_type:
+            fp_item = _find_item_by_category(visit.food_product_type) or _find_item_by_name(visit.food_product_type)
+            if not fp_item:
+                fp_item = _find_item_by_category('RUSF') or _find_item_by_name('RUSF')
+            if fp_item:
+                if fp_diff > 0:
+                    _deduct_stock(fp_item, facility, fp_diff, request.user, visit_date, ref,
+                                  f"Food product adjusted up on edit for {reg_num} V{visit.visit_number}")
+                else:
+                    _reverse_stock(fp_item, facility, abs(fp_diff), request.user, visit_date, ref,
+                                   f"Food product adjusted down on edit for {reg_num} V{visit.visit_number}")
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Stock adjustment on visit edit failed: {e}")
+
     serializer = OpcVisitSerializer(visit)
     return Response({'success': True, 'message': 'Visit updated', 'data': serializer.data})
 
@@ -2124,6 +2211,60 @@ def weekly_report_api(request):
             **fac_detailed,
         })
 
+    # ── Commodity (RUTF) data for the week ──
+    facility_ids = list(accessible.values_list('id', flat=True))
+    commodity = {
+        'rutf_start': 0,
+        'rutf_received': 0,
+        'rutf_issued_sam': 0,
+        'rutf_issued_mam': 0,
+        'rutf_balance': 0,
+    }
+    try:
+        rutf_items = InventoryItem.objects.filter(category='RUTF')
+        for item in rutf_items:
+            stock_levels = StockLevel.objects.filter(
+                inventory_item=item,
+                facility_id__in=facility_ids
+            )
+            commodity['rutf_balance'] += sum(sl.current_stock for sl in stock_levels)
+
+            received = sum(m.quantity for m in StockMovement.objects.filter(
+                inventory_item=item,
+                destination_facility_id__in=facility_ids,
+                movement_type__in=['IN', 'TRANSFER'],
+                movement_date__gte=date_from,
+                movement_date__lte=date_to
+            ))
+            commodity['rutf_received'] += received
+
+            issued = sum(m.quantity for m in StockMovement.objects.filter(
+                inventory_item=item,
+                source_facility_id__in=facility_ids,
+                movement_type__in=['CONSUMPTION', 'OUT', 'TRANSFER'],
+                movement_date__gte=date_from,
+                movement_date__lte=date_to
+            ))
+            commodity['rutf_start'] += (commodity['rutf_balance'] + issued - received)
+    except Exception:
+        pass
+
+    sam_visits_w = OpcVisit.objects.filter(
+        registration__facility_id__in=facility_ids,
+        registration__malnutrition_type='SAM',
+        visit_date__gte=date_from,
+        visit_date__lte=date_to
+    )
+    commodity['rutf_issued_sam'] = sum(v.rutf_sachets_given or 0 for v in sam_visits_w)
+
+    mam_visits_w = OpcVisit.objects.filter(
+        registration__facility_id__in=facility_ids,
+        registration__malnutrition_type='MAM',
+        visit_date__gte=date_from,
+        visit_date__lte=date_to
+    )
+    commodity['rutf_issued_mam'] = sum(v.rutf_sachets_given or 0 for v in mam_visits_w)
+
     return Response({'success': True, 'data': {
         'report_type': report_type, 'date_from': date_from, 'date_to': date_to,
         'summary': {
@@ -2133,6 +2274,7 @@ def weekly_report_api(request):
             **detailed,
         },
         'facilities': facility_data,
+        'commodity': commodity,
     }})
 
 
@@ -2221,6 +2363,11 @@ def monthly_report_api(request):
         'rutf_issued_sam': 0,
         'rutf_issued_mam': 0,
         'rutf_balance': 0,
+        'others_start': 0,
+        'others_received': 0,
+        'others_issued_sam': 0,
+        'others_issued_mam': 0,
+        'others_balance': 0,
     }
 
     try:
@@ -2238,7 +2385,32 @@ def monthly_report_api(request):
                 movement_date__gte=date_from,
                 movement_date__lte=date_to
             )
-            commodity['rutf_received'] += sum(m.quantity for m in movements.filter(movement_type='IN'))
+            received = sum(m.quantity for m in movements.filter(movement_type='IN'))
+            received += sum(m.quantity for m in StockMovement.objects.filter(
+                inventory_item=item,
+                destination_facility_id__in=facility_ids,
+                movement_type='TRANSFER',
+                movement_date__gte=date_from,
+                movement_date__lte=date_to
+            ))
+            commodity['rutf_received'] += received
+
+            issued = sum(m.quantity for m in StockMovement.objects.filter(
+                inventory_item=item,
+                source_facility_id__in=facility_ids,
+                movement_type__in=['CONSUMPTION', 'OUT'],
+                movement_date__gte=date_from,
+                movement_date__lte=date_to
+            ))
+            issued += sum(m.quantity for m in StockMovement.objects.filter(
+                inventory_item=item,
+                source_facility_id__in=facility_ids,
+                movement_type='TRANSFER',
+                movement_date__gte=date_from,
+                movement_date__lte=date_to
+            ))
+
+            commodity['rutf_start'] += (commodity['rutf_balance'] + issued - received)
     except Exception:
         pass
 
@@ -2257,6 +2429,46 @@ def monthly_report_api(request):
         visit_date__lte=date_to
     )
     commodity['rutf_issued_mam'] = sum(v.rutf_sachets_given or 0 for v in mam_visits)
+
+    # Other commodities (CSB+, oil, RUSF) from visits
+    commodity['others_issued_sam'] = sum(
+        (float(v.csb_plus_given or 0) + float(v.oil_given or 0))
+        for v in sam_visits
+    )
+    commodity['others_issued_mam'] = sum(
+        (float(v.csb_plus_given or 0) + float(v.oil_given or 0))
+        for v in mam_visits
+    )
+
+    # Other commodities stock movements
+    try:
+        other_items = InventoryItem.objects.filter(category__in=['CSB', 'Oil', 'RUSF', 'CSB++'])
+        for item in other_items:
+            stock_levels = StockLevel.objects.filter(
+                inventory_item=item,
+                facility_id__in=facility_ids
+            )
+            commodity['others_balance'] += sum(sl.current_stock for sl in stock_levels)
+
+            received = sum(m.quantity for m in StockMovement.objects.filter(
+                inventory_item=item,
+                destination_facility_id__in=facility_ids,
+                movement_type__in=['IN', 'TRANSFER'],
+                movement_date__gte=date_from,
+                movement_date__lte=date_to
+            ))
+            commodity['others_received'] += received
+
+            issued = sum(m.quantity for m in StockMovement.objects.filter(
+                inventory_item=item,
+                source_facility_id__in=facility_ids,
+                movement_type__in=['CONSUMPTION', 'OUT', 'TRANSFER'],
+                movement_date__gte=date_from,
+                movement_date__lte=date_to
+            ))
+            commodity['others_start'] += (commodity['others_balance'] + issued - received)
+    except Exception:
+        pass
 
     return Response({'success': True, 'data': {
         'month': month, 'year': year,

@@ -7,7 +7,7 @@ from django.utils import timezone
 from django.core.paginator import Paginator
 from datetime import timedelta, date
 from .models import OpcRegistration, OpcVisit, SamCase, MamCase, IpcCase, CaseTask
-from apps.inventory.stock_utils import deduct_stock_for_registration, deduct_stock_for_visit
+from apps.inventory.stock_utils import deduct_stock_for_registration, deduct_stock_for_visit, reverse_stock_for_registration, reverse_stock_for_visit
 
 
 @login_required
@@ -209,19 +209,19 @@ def case_create(request):
                     child_name=request.POST.get('child_name', '').strip(),
                     child_gender=request.POST.get('gender', ''),
                     date_of_birth=request.POST.get('date_of_birth'),
-                    age_months=request.POST.get('child_age_months', 0),
+                    age_months=request.POST.get('child_age_months', 0) or request.POST.get('age_months', 0),
                     caregiver_name=request.POST.get('caregiver_name', '').strip(),
                     caregiver_phone=request.POST.get('caregiver_phone', '').strip() or None,
                     caregiver_relationship=request.POST.get('caregiver_relationship') or None,
                     address=request.POST.get('community', '').strip() or None,
-                    admission_criteria=request.POST.get('enrolment_criteria') or None,
+                    admission_criteria=request.POST.get('enrolment_criteria') or request.POST.get('entry_criteria') or None,
                     admission_type='New Admission',
                     admission_date=request.POST.get('admission_date'),
                     registration_date=request.POST.get('admission_date'),
                     weight_kg=request.POST.get('weight_kg'),
                     height_cm=request.POST.get('height_cm'),
                     muac_cm=request.POST.get('muac_cm') or None,
-                    z_score_wfh=request.POST.get('z_score_wfh') or None,
+                    z_score_wfh=request.POST.get('z_score_wfh') or request.POST.get('z_score_value') or None,
                     z_score_wfa=request.POST.get('z_score_wfa') or None,
                     z_score_hfa=request.POST.get('z_score_hfa') or None,
                     oedema=request.POST.get('oedema') or None,
@@ -229,6 +229,69 @@ def case_create(request):
                     medical_complications=False,
                     registration_latitude=request.POST.get('registration_latitude') or None,
                     registration_longitude=request.POST.get('registration_longitude') or None,
+                    # Demographic/social fields
+                    father_alive=request.POST.get('father_alive') or None,
+                    mother_alive=request.POST.get('mother_alive') or None,
+                    house_location=request.POST.get('house_location') or None,
+                    travel_time=request.POST.get('travel_time') or None,
+                    referral_source=request.POST.get('referral_source') or None,
+                    # Medical History
+                    diarrhoea=request.POST.get('diarrhoea') or None,
+                    stool_frequency=request.POST.get('stool_frequency') or None,
+                    vomiting=request.POST.get('vomiting') or None,
+                    cough=request.POST.get('cough') or None,
+                    passing_urine=request.POST.get('passing_urine') or None,
+                    oedema_duration_days=request.POST.get('oedema_duration_days') or None,
+                    breastfeeding_status=request.POST.get('breastfeeding_status') or None,
+                    breastfeeding_prospect=request.POST.get('breastfeeding_prospect') or None,
+                    immunization_status=request.POST.get('immunization_status') or None,
+                    g6pd_status=request.POST.get('g6pd_status') or None,
+                    additional_medical_history=request.POST.get('additional_medical_history') or None,
+                    # Physical Examination
+                    respiratory_rate=request.POST.get('respiratory_rate') or None,
+                    temperature_celsius=request.POST.get('temperature_celsius') or request.POST.get('temperature') or None,
+                    chest_indrawing=request.POST.get('chest_indrawing') or None,
+                    eyes_condition=request.POST.get('eyes_condition') or None,
+                    conjunctiva=request.POST.get('conjunctiva') or None,
+                    ears_condition=request.POST.get('ears_condition') or None,
+                    mouth_condition=request.POST.get('mouth_condition') or None,
+                    lymph_nodes=request.POST.get('lymph_nodes') or None,
+                    hands_feet=request.POST.get('hands_feet') or None,
+                    skin_changes=request.POST.get('skin_changes') or None,
+                    disability=request.POST.get('disability') or None,
+                    disability_details=request.POST.get('disability_details') or None,
+                    physical_exam_notes=request.POST.get('physical_exam_notes') or None,
+                    # Medicines at Enrollment
+                    amoxicillin_date=request.POST.get('amoxicillin_date') or None,
+                    amoxicillin_dosage=request.POST.get('amoxicillin_dosage') or None,
+                    vitamin_a_date=request.POST.get('vitamin_a_date') or None,
+                    vitamin_a_dosage=request.POST.get('vitamin_a_dosage') or None,
+                    folic_acid_date=request.POST.get('folic_acid_date') or None,
+                    folic_acid_dosage=request.POST.get('folic_acid_dosage') or None,
+                    deworming_date=request.POST.get('deworming_date') or None,
+                    deworming_dosage=request.POST.get('deworming_dosage') or None,
+                    measles_vaccine_date=request.POST.get('measles_vaccine_date') or None,
+                    measles_vaccine_dosage=request.POST.get('measles_vaccine_dosage') or None,
+                    malaria_test_date=request.POST.get('malaria_test_date') or None,
+                    malaria_test_result=request.POST.get('malaria_test_result') or None,
+                    antimalarial_date=request.POST.get('antimalarial_date') or None,
+                    antimalarial_dosage=request.POST.get('antimalarial_dosage') or None,
+                    # RUTF and Other Supplies
+                    rutf_sachets_given=request.POST.get('rutf_sachets_given') or None,
+                    rutf_ration_per_day=request.POST.get('rutf_ration_per_day') or None,
+                    next_visit_date=request.POST.get('next_visit_date') or None,
+                    # Other Medicines
+                    other_drug_1=request.POST.get('other_drug_1') or None,
+                    other_drug_1_date=request.POST.get('other_drug_1_date') or None,
+                    other_drug_1_dosage=request.POST.get('other_drug_1_dosage') or None,
+                    other_drug_2=request.POST.get('other_drug_2') or None,
+                    other_drug_2_date=request.POST.get('other_drug_2_date') or None,
+                    other_drug_2_dosage=request.POST.get('other_drug_2_dosage') or None,
+                    other_drug_3=request.POST.get('other_drug_3') or None,
+                    other_drug_3_date=request.POST.get('other_drug_3_date') or None,
+                    other_drug_3_dosage=request.POST.get('other_drug_3_dosage') or None,
+                    # Additional Notes
+                    additional_notes=request.POST.get('additional_notes') or None,
                     status='Active',
                     created_by=request.user,
                 )
@@ -323,7 +386,7 @@ def case_edit(request, pk):
             case.child_name = request.POST.get('child_name', '').strip() or case.child_name
             case.child_gender = request.POST.get('gender', '') or case.child_gender
             case.date_of_birth = request.POST.get('date_of_birth') or case.date_of_birth
-            case.age_months = request.POST.get('child_age_months') or case.age_months
+            case.age_months = request.POST.get('child_age_months') or request.POST.get('age_months') or case.age_months
             case.caregiver_name = request.POST.get('caregiver_name', '').strip() or case.caregiver_name
             case.caregiver_phone = request.POST.get('caregiver_phone', '').strip() or None
             case.caregiver_relationship = request.POST.get('caregiver_relationship') or None
@@ -334,14 +397,77 @@ def case_edit(request, pk):
             case.weight_kg = request.POST.get('weight_kg') or case.weight_kg
             case.height_cm = request.POST.get('height_cm') or case.height_cm
             case.muac_cm = request.POST.get('muac_cm') or None
-            case.z_score_wfh = request.POST.get('z_score_wfh') or None
+            case.z_score_wfh = request.POST.get('z_score_wfh') or request.POST.get('z_score_value') or None
             case.z_score_wfa = request.POST.get('z_score_wfa') or None
             case.z_score_hfa = request.POST.get('z_score_hfa') or None
             case.oedema = request.POST.get('oedema') or None
             case.appetite_test = request.POST.get('appetite_test') or None
-            case.admission_criteria = request.POST.get('enrolment_criteria') or request.POST.get('referral_source') or case.admission_criteria
+            case.admission_criteria = request.POST.get('enrolment_criteria') or request.POST.get('entry_criteria') or case.admission_criteria
             case.registration_latitude = request.POST.get('registration_latitude') or None
             case.registration_longitude = request.POST.get('registration_longitude') or None
+            # Demographic/social fields
+            case.father_alive = request.POST.get('father_alive') or None
+            case.mother_alive = request.POST.get('mother_alive') or None
+            case.house_location = request.POST.get('house_location') or None
+            case.travel_time = request.POST.get('travel_time') or None
+            case.referral_source = request.POST.get('referral_source') or None
+            # Medical History
+            case.diarrhoea = request.POST.get('diarrhoea') or None
+            case.stool_frequency = request.POST.get('stool_frequency') or None
+            case.vomiting = request.POST.get('vomiting') or None
+            case.cough = request.POST.get('cough') or None
+            case.passing_urine = request.POST.get('passing_urine') or None
+            case.oedema_duration_days = request.POST.get('oedema_duration_days') or None
+            case.breastfeeding_status = request.POST.get('breastfeeding_status') or None
+            case.breastfeeding_prospect = request.POST.get('breastfeeding_prospect') or None
+            case.immunization_status = request.POST.get('immunization_status') or None
+            case.g6pd_status = request.POST.get('g6pd_status') or None
+            case.additional_medical_history = request.POST.get('additional_medical_history') or None
+            # Physical Examination
+            case.respiratory_rate = request.POST.get('respiratory_rate') or None
+            case.temperature_celsius = request.POST.get('temperature_celsius') or request.POST.get('temperature') or None
+            case.chest_indrawing = request.POST.get('chest_indrawing') or None
+            case.eyes_condition = request.POST.get('eyes_condition') or None
+            case.conjunctiva = request.POST.get('conjunctiva') or None
+            case.ears_condition = request.POST.get('ears_condition') or None
+            case.mouth_condition = request.POST.get('mouth_condition') or None
+            case.lymph_nodes = request.POST.get('lymph_nodes') or None
+            case.hands_feet = request.POST.get('hands_feet') or None
+            case.skin_changes = request.POST.get('skin_changes') or None
+            case.disability = request.POST.get('disability') or None
+            case.disability_details = request.POST.get('disability_details') or None
+            case.physical_exam_notes = request.POST.get('physical_exam_notes') or None
+            # Medicines at Enrollment
+            case.amoxicillin_date = request.POST.get('amoxicillin_date') or None
+            case.amoxicillin_dosage = request.POST.get('amoxicillin_dosage') or None
+            case.vitamin_a_date = request.POST.get('vitamin_a_date') or None
+            case.vitamin_a_dosage = request.POST.get('vitamin_a_dosage') or None
+            case.folic_acid_date = request.POST.get('folic_acid_date') or None
+            case.folic_acid_dosage = request.POST.get('folic_acid_dosage') or None
+            case.deworming_date = request.POST.get('deworming_date') or None
+            case.deworming_dosage = request.POST.get('deworming_dosage') or None
+            case.measles_vaccine_date = request.POST.get('measles_vaccine_date') or None
+            case.measles_vaccine_dosage = request.POST.get('measles_vaccine_dosage') or None
+            case.malaria_test_date = request.POST.get('malaria_test_date') or None
+            case.malaria_test_result = request.POST.get('malaria_test_result') or None
+            case.antimalarial_date = request.POST.get('antimalarial_date') or None
+            case.antimalarial_dosage = request.POST.get('antimalarial_dosage') or None
+            # RUTF and Other Supplies
+            case.rutf_sachets_given = request.POST.get('rutf_sachets_given') or None
+            case.rutf_ration_per_day = request.POST.get('rutf_ration_per_day') or None
+            case.next_visit_date = request.POST.get('next_visit_date') or None
+            # Other Medicines
+            case.other_drug_1 = request.POST.get('other_drug_1') or None
+            case.other_drug_1_date = request.POST.get('other_drug_1_date') or None
+            case.other_drug_1_dosage = request.POST.get('other_drug_1_dosage') or None
+            case.other_drug_2 = request.POST.get('other_drug_2') or None
+            case.other_drug_2_date = request.POST.get('other_drug_2_date') or None
+            case.other_drug_2_dosage = request.POST.get('other_drug_2_dosage') or None
+            case.other_drug_3 = request.POST.get('other_drug_3') or None
+            case.other_drug_3_date = request.POST.get('other_drug_3_date') or None
+            case.other_drug_3_dosage = request.POST.get('other_drug_3_dosage') or None
+            # Additional Notes
+            case.additional_notes = request.POST.get('additional_notes') or None
             case.updated_by = request.user
             
             # Handle photo upload
@@ -370,6 +496,13 @@ def case_delete(request, pk):
     case = get_object_or_404(OpcRegistration, pk=pk)
     
     if request.method == 'POST':
+        # Reverse stock deductions for registration and all its visits
+        try:
+            reverse_stock_for_registration(case, user=request.user)
+            for visit in case.visits.all():
+                reverse_stock_for_visit(visit, user=request.user)
+        except Exception:
+            pass
         case.status = 'Discharged'
         case.save()
         messages.success(request, 'Case closed successfully')

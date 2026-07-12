@@ -250,3 +250,28 @@ class AuditLogMiddleware(MiddlewareMixin):
                 pass
         
         return json.dumps(details, default=str)[:1000]
+
+
+class OverdueVisitSchedulerMiddleware:
+    """
+    Lightweight daily scheduler for overdue visit notifications.
+    Runs once per day (on first request after midnight) to send push
+    notifications for overdue cases. This is a fallback for deployments
+    without Railway cron (e.g., Docker, local).
+    """
+    _last_run_date = None
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        from datetime import date
+        today = date.today()
+        if OverdueVisitSchedulerMiddleware._last_run_date != today:
+            OverdueVisitSchedulerMiddleware._last_run_date = today
+            try:
+                from django.core.management import call_command
+                call_command('send_overdue_notifications')
+            except Exception:
+                pass
+        return self.get_response(request)

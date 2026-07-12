@@ -940,6 +940,35 @@ def weekly_sam_report(request):
         )
         rutf_issued = sum(v.rutf_sachets_given or 0 for v in sam_visits)
         data['rutf_issued_sam'][week_idx] = rutf_issued
+        
+        # RUTF stock movements for this week
+        try:
+            from apps.inventory.models import InventoryItem, StockLevel, StockMovement
+            rutf_items = InventoryItem.objects.filter(category='RUTF')
+            for rutf_item in rutf_items:
+                # Received this week (IN + TRANSFER in)
+                received_w = sum(m.quantity for m in StockMovement.objects.filter(
+                    inventory_item=rutf_item,
+                    destination_facility_id__in=facility_ids,
+                    movement_type__in=['IN', 'TRANSFER'],
+                    movement_date__gte=week_start,
+                    movement_date__lte=week_end
+                ))
+                data['rutf_received'][week_idx] += received_w
+                
+                # Issued this week (CONSUMPTION + OUT + TRANSFER out)
+                issued_w = sum(m.quantity for m in StockMovement.objects.filter(
+                    inventory_item=rutf_item,
+                    source_facility_id__in=facility_ids,
+                    movement_type__in=['CONSUMPTION', 'OUT', 'TRANSFER'],
+                    movement_date__gte=week_start,
+                    movement_date__lte=week_end
+                ))
+                # rutf_issued_sam already calculated from visits above; add stock-based issued
+            # Balance at end of week = current stock (latest known)
+            # Start of week = balance + issued - received (back-calculated)
+        except Exception:
+            pass
     
     # Calculate start of week (A) with continuity (CMAM guide)
     # Week 1: Calculate from previous month end
@@ -976,6 +1005,35 @@ def weekly_sam_report(request):
     for key in list(data.keys()):
         if isinstance(data[key], list):
             data[f'{key}_total'] = sum(data[key])
+    
+    # Calculate RUTF balance and start for each week
+    try:
+        from apps.inventory.models import InventoryItem, StockLevel
+        rutf_items = InventoryItem.objects.filter(category='RUTF')
+        current_balance = 0
+        for rutf_item in rutf_items:
+            stock_levels = StockLevel.objects.filter(
+                inventory_item=rutf_item,
+                facility_id__in=facility_ids
+            )
+            current_balance += sum(sl.current_stock for sl in stock_levels)
+        
+        # Last week balance = current stock
+        data['rutf_balance'][4] = current_balance
+        # Back-calculate: balance[w] = balance[w+1] - received[w+1] + issued[w+1]
+        for w in range(3, -1, -1):
+            data['rutf_balance'][w] = data['rutf_balance'][w + 1] - data['rutf_received'][w + 1] + data['rutf_issued_sam'][w + 1]
+        
+        # start[w] = balance[w] + issued[w] - received[w]
+        for w in range(5):
+            data['rutf_start'][w] = data['rutf_balance'][w] + data['rutf_issued_sam'][w] - data['rutf_received'][w]
+        
+        # Recalculate totals
+        data['rutf_start_total'] = sum(data['rutf_start'])
+        data['rutf_received_total'] = sum(data['rutf_received'])
+        data['rutf_balance_total'] = sum(data['rutf_balance'])
+    except Exception:
+        pass
     
     # Validate report data (CMAM guide compliance)
     errors, warnings = validate_weekly_sam_report(data)
@@ -1205,6 +1263,24 @@ def weekly_mam_report(request):
         # Sum RUTF sachets or food product quantity
         rutf_issued = sum(v.rutf_sachets_given or 0 for v in mam_visits)
         data['rutf_issued_mam'][week_idx] = rutf_issued
+        
+        # RUTF received this week
+        try:
+            from apps.inventory.models import InventoryItem, StockMovement
+            rutf_items = InventoryItem.objects.filter(category='RUTF')
+            for rutf_item in rutf_items:
+                received_w = sum(m.quantity for m in StockMovement.objects.filter(
+                    inventory_item=rutf_item,
+                    destination_facility_id__in=facility_ids,
+                    movement_type__in=['IN', 'TRANSFER'],
+                    movement_date__gte=week_start,
+                    movement_date__lte=week_end
+                ))
+                # Store in a reusable field — MAM report doesn't have rutf_received array
+                # We'll use other_commodities as a proxy for received
+                data['other_commodities'][week_idx] += received_w
+        except Exception:
+            pass
     
     # Calculate start of week (A) - active MAM cases at start of each week
     for week_idx, (week_start, week_end) in enumerate(week_ranges):
@@ -1662,7 +1738,35 @@ def monthly_facility_report(request):
                 movement_date__lte=last_day
             )
             
-            commodity['rutf_received'] += sum(m.quantity for m in movements.filter(movement_type='IN'))
+            received = sum(m.quantity for m in movements.filter(movement_type='IN'))
+            # Also count transfers in
+            received += sum(m.quantity for m in StockMovement.objects.filter(
+                inventory_item=item,
+                destination_facility_id__in=facility_ids,
+                movement_type='TRANSFER',
+                movement_date__gte=first_day,
+                movement_date__lte=last_day
+            ))
+            commodity['rutf_received'] += received
+            
+            # Calculate issued (CONSUMPTION + OUT + TRANSFER out)
+            issued = sum(m.quantity for m in StockMovement.objects.filter(
+                inventory_item=item,
+                source_facility_id__in=facility_ids,
+                movement_type__in=['CONSUMPTION', 'OUT'],
+                movement_date__gte=first_day,
+                movement_date__lte=last_day
+            ))
+            issued += sum(m.quantity for m in StockMovement.objects.filter(
+                inventory_item=item,
+                source_facility_id__in=facility_ids,
+                movement_type='TRANSFER',
+                movement_date__gte=first_day,
+                movement_date__lte=last_day
+            ))
+            
+            # Opening stock = current balance + issued - received
+            commodity['rutf_start'] += (commodity['rutf_balance'] + issued - received)
     except Exception:
         pass
     
@@ -1682,6 +1786,46 @@ def monthly_facility_report(request):
         visit_date__lte=last_day
     )
     commodity['rutf_issued_mam'] = sum(v.rutf_sachets_given or 0 for v in mam_visits)
+    
+    # Other commodities (CSB+, oil, RUSF) from visits
+    commodity['others_issued_sam'] = sum(
+        (float(v.csb_plus_given or 0) + float(v.oil_given or 0))
+        for v in sam_visits
+    )
+    commodity['others_issued_mam'] = sum(
+        (float(v.csb_plus_given or 0) + float(v.oil_given or 0))
+        for v in mam_visits
+    )
+    
+    # Other commodities stock movements
+    try:
+        other_items = InventoryItem.objects.filter(category__in=['CSB', 'Oil', 'RUSF', 'CSB++'])
+        for item in other_items:
+            stock_levels = StockLevel.objects.filter(
+                inventory_item=item,
+                facility_id__in=facility_ids
+            )
+            commodity['others_balance'] += sum(sl.current_stock for sl in stock_levels)
+            
+            received = sum(m.quantity for m in StockMovement.objects.filter(
+                inventory_item=item,
+                destination_facility_id__in=facility_ids,
+                movement_type__in=['IN', 'TRANSFER'],
+                movement_date__gte=first_day,
+                movement_date__lte=last_day
+            ))
+            commodity['others_received'] += received
+            
+            issued = sum(m.quantity for m in StockMovement.objects.filter(
+                inventory_item=item,
+                source_facility_id__in=facility_ids,
+                movement_type__in=['CONSUMPTION', 'OUT', 'TRANSFER'],
+                movement_date__gte=first_day,
+                movement_date__lte=last_day
+            ))
+            commodity['others_start'] += (commodity['others_balance'] + issued - received)
+    except Exception:
+        pass
     
     # ============== FACILITY INFO ==============
     facility_name = "All Facilities"
