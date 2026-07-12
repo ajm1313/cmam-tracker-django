@@ -46,6 +46,7 @@ urlpatterns = [
     path('v1/change-password/', views.change_password, name='change_password'),
     path('v1/password-reset/', views.password_reset_request, name='password_reset_request'),
     path('v1/profile/update/', views.profile_update, name='profile_update'),
+    path('v1/push-token/', views.register_push_token, name='register_push_token'),
 
     # Cases
     path('v1/cases/', views.cases_list, name='cases_list'),

@@ -41,6 +41,7 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     notify_visits = models.BooleanField(default=True)
     notify_discharge = models.BooleanField(default=True)
     notify_stock = models.BooleanField(default=False)
+    push_token = models.CharField(max_length=255, null=True, blank=True)
     
     objects = UserManager()
     

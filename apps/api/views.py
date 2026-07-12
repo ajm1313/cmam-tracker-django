@@ -304,6 +304,25 @@ def record_consumption(request):
         movement_date=timezone.now()
     )
     
+    # Check if stock level is now low/critical and push a notification
+    try:
+        from apps.inventory.models import StockLevel
+        sl = StockLevel.objects.filter(inventory_item=inventory_item, facility=facility).first()
+        if sl:
+            item = inventory_item
+            if sl.current_stock <= item.min_stock_level:
+                from apps.api.push_service import notify_facility_staff, notify_admins
+                msg = f"CRITICAL: {item.name} stock at {sl.current_stock} {item.unit_of_measure} at {facility.name}."
+                push_data = {'type': 'stock_critical', 'facilityId': facility.pk}
+                notify_facility_staff(facility, 'Critical Stock Level', msg, push_data)
+                notify_admins('Critical Stock Level', msg, push_data)
+            elif sl.current_stock <= item.reorder_level:
+                from apps.api.push_service import notify_admins
+                msg = f"Low stock: {item.name} at {sl.current_stock} {item.unit_of_measure} ({facility.name})."
+                notify_admins('Low Stock Alert', msg, {'type': 'stock_low', 'facilityId': facility.pk})
+    except Exception:
+        pass
+
     return Response({
         'success': True,
         'message': 'Consumption recorded successfully',
@@ -785,6 +804,18 @@ def profile_update(request):
     return Response({'success': True, 'message': 'Profile updated', 'data': UserSerializer(user).data})
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def register_push_token(request):
+    """Register or update the Expo push token for the authenticated user."""
+    token = request.data.get('push_token', '').strip()
+    if not token:
+        return Response({'success': False, 'message': 'push_token is required'}, status=status.HTTP_400_BAD_REQUEST)
+    request.user.push_token = token
+    request.user.save(update_fields=['push_token'])
+    return Response({'success': True, 'message': 'Push token registered'})
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_stats(request):
@@ -968,6 +999,20 @@ def case_edit_api(request, pk):
         case = OpcRegistration.objects.get(pk=pk)
     except OpcRegistration.DoesNotExist:
         return Response({'success': False, 'message': 'Case not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Conflict detection: reject if client's copy is stale
+    client_updated_at = request.data.get('_updated_at')
+    if client_updated_at:
+        try:
+            from django.utils.dateparse import parse_datetime
+            client_ts = parse_datetime(client_updated_at)
+            if client_ts and case.updated_at and client_ts < case.updated_at:
+                return Response(
+                    {'success': False, 'message': 'This record was modified by someone else. Please refresh and try again.', 'conflict': True},
+                    status=status.HTTP_409_CONFLICT,
+                )
+        except Exception:
+            pass
 
     data = request.data
     field_map = {
@@ -1160,6 +1205,20 @@ def visit_edit_api(request, registration_id, visit_id):
         visit = OpcVisit.objects.get(pk=visit_id, registration_id=registration_id)
     except OpcVisit.DoesNotExist:
         return Response({'success': False, 'message': 'Visit not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Conflict detection
+    client_updated_at = request.data.get('_updated_at')
+    if client_updated_at:
+        try:
+            from django.utils.dateparse import parse_datetime
+            client_ts = parse_datetime(client_updated_at)
+            if client_ts and visit.updated_at and client_ts < visit.updated_at:
+                return Response(
+                    {'success': False, 'message': 'This visit was modified by someone else. Please refresh and try again.', 'conflict': True},
+                    status=status.HTTP_409_CONFLICT,
+                )
+        except Exception:
+            pass
 
     data = request.data
     fields = [
