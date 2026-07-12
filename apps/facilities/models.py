@@ -45,6 +45,10 @@ class Facility(TimeStampedModel):
     UNDER5_PROPORTION = 0.17  # 17% of total population
     INCIDENCE_CORRECTION_FACTOR = 2.6  # Converts point prevalence to annual incidence
     COVERAGE_TARGET = 0.80  # 80% programme coverage target
+
+    # Fallback defaults when facility-level data is missing (WHO/UNICEF Sub-Saharan Africa estimates)
+    DEFAULT_POPULATION = 50000
+    DEFAULT_SAM_PREVALENCE = 2.5  # 2.5% typical SAM prevalence
     
     class Meta:
         db_table = 'facilities'
@@ -72,23 +76,21 @@ class Facility(TimeStampedModel):
 
     @property
     def expected_sam_cases(self):
-        """UNICEF estimate: Population × U5% × SAM prevalence × incidence correction factor (2.6)"""
-        if self.population and self.sam_prevalence:
-            return math.ceil(
-                self.population
-                * self.UNDER5_PROPORTION
-                * (float(self.sam_prevalence) / 100)
-                * self.INCIDENCE_CORRECTION_FACTOR
-            )
-        return None
+        """UNICEF estimate: Population × U5% × SAM prevalence × incidence correction factor (2.6)
+        Falls back to WHO/UNICEF defaults when facility data is missing."""
+        population = self.population or self.DEFAULT_POPULATION
+        sam_prevalence = float(self.sam_prevalence) if self.sam_prevalence else self.DEFAULT_SAM_PREVALENCE
+        return math.ceil(
+            population
+            * self.UNDER5_PROPORTION
+            * (sam_prevalence / 100)
+            * self.INCIDENCE_CORRECTION_FACTOR
+        )
 
     @property
     def sam_target(self):
         """80% programme coverage of expected SAM cases"""
-        expected = self.expected_sam_cases
-        if expected is not None:
-            return math.ceil(expected * self.COVERAGE_TARGET)
-        return None
+        return math.ceil(self.expected_sam_cases * self.COVERAGE_TARGET)
 
     # MAM prevalence is typically ~2× SAM prevalence (WHO/UNICEF approximation)
     MAM_TO_SAM_RATIO = 2.0
@@ -96,15 +98,9 @@ class Facility(TimeStampedModel):
     @property
     def expected_mam_cases(self):
         """UNICEF estimate: MAM burden ≈ 2× SAM burden (MAM prevalence ~2× SAM prevalence)"""
-        sam_expected = self.expected_sam_cases
-        if sam_expected is not None:
-            return math.ceil(sam_expected * self.MAM_TO_SAM_RATIO)
-        return None
+        return math.ceil(self.expected_sam_cases * self.MAM_TO_SAM_RATIO)
 
     @property
     def mam_target(self):
         """80% programme coverage of expected MAM cases"""
-        expected = self.expected_mam_cases
-        if expected is not None:
-            return math.ceil(expected * self.COVERAGE_TARGET)
-        return None
+        return math.ceil(self.expected_mam_cases * self.COVERAGE_TARGET)

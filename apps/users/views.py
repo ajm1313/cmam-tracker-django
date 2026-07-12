@@ -1605,17 +1605,18 @@ def monthly_facility_report(request):
     
     # ============== COVERAGE ==============
     # Calculate estimated targets from facility data (population, SAM prevalence)
+    # Uses WHO/UNICEF defaults when facility-level data is missing
     # These respect the same location filtering as all other report fields
     facilities_in_scope = Facility.objects.filter(id__in=facility_ids, is_active=True)
     
-    total_sam_target = sum(f.sam_target or 0 for f in facilities_in_scope)
-    total_mam_target = sum(f.mam_target or 0 for f in facilities_in_scope)
+    total_sam_target = sum(f.sam_target for f in facilities_in_scope)
+    total_mam_target = sum(f.mam_target for f in facilities_in_scope)
     
     coverage = {
-        'sam_target': total_sam_target if total_sam_target > 0 else '-',
+        'sam_target': total_sam_target,
         'sam_total': sam['end_of_month'],
         'sam_coverage': (sam['end_of_month'] / total_sam_target * 100) if total_sam_target > 0 else 0,
-        'mam_target': total_mam_target if total_mam_target > 0 else '-',
+        'mam_target': total_mam_target,
         'mam_total': mam['high_risk_end'] + mam['other_end'],
         'mam_coverage': ((mam['high_risk_end'] + mam['other_end']) / total_mam_target * 100) if total_mam_target > 0 else 0,
     }
