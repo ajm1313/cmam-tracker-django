@@ -1304,10 +1304,44 @@ def user_create_api(request):
     if role_id:
         try:
             role = Role.objects.get(pk=role_id)
+            # Resolve location hierarchy: auto-populate parent IDs from child
+            region_id = data.get('region_id')
+            district_id = data.get('district_id')
+            sub_district_id = data.get('sub_district_id')
+            facility_id = data.get('facility_id')
+
+            if facility_id:
+                try:
+                    fac = Facility.objects.get(pk=facility_id)
+                    sub_district_id = sub_district_id or fac.sub_district_id
+                    district_id = district_id or fac.district_id
+                    region_id = region_id or (fac.district.region_id if fac.district_id else None)
+                except Facility.DoesNotExist:
+                    pass
+            if sub_district_id:
+                try:
+                    sd = SubDistrict.objects.get(pk=sub_district_id)
+                    district_id = district_id or sd.district_id
+                    region_id = region_id or (sd.district.region_id if sd.district_id else None)
+                except SubDistrict.DoesNotExist:
+                    pass
+            if district_id:
+                try:
+                    d = District.objects.get(pk=district_id)
+                    region_id = region_id or d.region_id
+                except District.DoesNotExist:
+                    pass
+
+            # Filter by role level (matching webapp logic)
+            region_id = region_id if role.level >= 2 else None
+            district_id = district_id if role.level >= 3 else None
+            sub_district_id = sub_district_id if role.level >= 4 else None
+            facility_id = facility_id if role.level >= 5 else None
+
             UserRole.objects.create(
                 user=user, role=role,
-                region_id=data.get('region_id'), district_id=data.get('district_id'),
-                sub_district_id=data.get('sub_district_id'), facility_id=data.get('facility_id'),
+                region_id=region_id, district_id=district_id,
+                sub_district_id=sub_district_id, facility_id=facility_id,
                 is_active=True,
             )
         except Role.DoesNotExist:
@@ -1367,10 +1401,44 @@ def user_edit_api(request, pk):
         if role_id:
             try:
                 role = Role.objects.get(pk=role_id)
+                # Resolve location hierarchy: auto-populate parent IDs from child
+                region_id = data.get('region_id')
+                district_id = data.get('district_id')
+                sub_district_id = data.get('sub_district_id')
+                facility_id = data.get('facility_id')
+
+                if facility_id:
+                    try:
+                        fac = Facility.objects.get(pk=facility_id)
+                        sub_district_id = sub_district_id or fac.sub_district_id
+                        district_id = district_id or fac.district_id
+                        region_id = region_id or (fac.district.region_id if fac.district_id else None)
+                    except Facility.DoesNotExist:
+                        pass
+                if sub_district_id:
+                    try:
+                        sd = SubDistrict.objects.get(pk=sub_district_id)
+                        district_id = district_id or sd.district_id
+                        region_id = region_id or (sd.district.region_id if sd.district_id else None)
+                    except SubDistrict.DoesNotExist:
+                        pass
+                if district_id:
+                    try:
+                        d = District.objects.get(pk=district_id)
+                        region_id = region_id or d.region_id
+                    except District.DoesNotExist:
+                        pass
+
+                # Filter by role level (matching webapp logic)
+                region_id = region_id if role.level >= 2 else None
+                district_id = district_id if role.level >= 3 else None
+                sub_district_id = sub_district_id if role.level >= 4 else None
+                facility_id = facility_id if role.level >= 5 else None
+
                 UserRole.objects.create(
                     user=u, role=role,
-                    region_id=data.get('region_id'), district_id=data.get('district_id'),
-                    sub_district_id=data.get('sub_district_id'), facility_id=data.get('facility_id'),
+                    region_id=region_id, district_id=district_id,
+                    sub_district_id=sub_district_id, facility_id=facility_id,
                     is_active=True,
                 )
             except Role.DoesNotExist:
@@ -1400,11 +1468,29 @@ def user_delete_api(request, pk):
 def facility_create_api(request):
     """Create a new facility"""
     data = request.data
-    required = ['name', 'code', 'type', 'district_id']
+    # Accept both webapp and mobile field names
+    facility_type = data.get('type') or data.get('facility_type')
+    phone = data.get('phone') or data.get('contact_phone')
+    email = data.get('email') or data.get('contact_email')
+    code = data.get('code')
+    if not code:
+        # Auto-generate code from name if not provided (mobile app doesn't send code)
+        import re
+        base = re.sub(r'[^A-Za-z0-9]', '', data.get('name', '')).upper()[:6]
+        if not base:
+            base = 'FAC'
+        suffix = 1
+        while Facility.objects.filter(code=f"{base}{suffix:03d}").exists():
+            suffix += 1
+        code = f"{base}{suffix:03d}"
+
+    required = ['name', 'district_id']
     missing = [f for f in required if not data.get(f)]
+    if not facility_type:
+        missing.append('type')
     if missing:
         return Response({'success': False, 'message': f'Missing: {", ".join(missing)}'}, status=status.HTTP_400_BAD_REQUEST)
-    if Facility.objects.filter(code=data['code']).exists():
+    if Facility.objects.filter(code=code).exists():
         return Response({'success': False, 'message': 'Facility code already exists'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
@@ -1413,12 +1499,13 @@ def facility_create_api(request):
         return Response({'success': False, 'message': 'District not found'}, status=status.HTTP_404_NOT_FOUND)
 
     f = Facility.objects.create(
-        name=data['name'], code=data['code'], type=data['type'], district=district,
+        name=data['name'], code=code, type=facility_type, district=district,
         sub_district_id=data.get('sub_district_id'),
         address=data.get('address', ''), contact_person=data.get('contact_person', ''),
-        phone=data.get('phone', ''), email=data.get('email', ''),
+        phone=phone or '', email=email or '',
         capacity=data.get('capacity'), latitude=data.get('latitude'), longitude=data.get('longitude'),
         population=data.get('population'), sam_prevalence=data.get('sam_prevalence'),
+        opc_day=data.get('opc_day'),
     )
     return Response({'success': True, 'message': 'Facility created', 'data': FacilitySerializer(f).data},
                     status=status.HTTP_201_CREATED)

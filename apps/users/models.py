@@ -193,6 +193,8 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
     def get_accessible_users(self):
         """Get users accessible based on role hierarchy"""
         from apps.users.models import UserRole
+        from apps.facilities.models import Facility
+        from apps.locations.models import District, SubDistrict
         
         if self.is_superuser or self.is_staff:
             return User.objects.filter(is_active=True)
@@ -208,11 +210,46 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
                 return User.objects.filter(is_active=True)
             elif not user_role.district_id:
                 # Regional access - users in this region
+                # Find users whose UserRole has this region_id, OR whose
+                # district/sub_district/facility belongs to this region
                 region_user_ids = UserRole.objects.filter(
                     region_id=user_role.region_id,
                     is_active=True
                 ).values_list('user_id', flat=True)
                 user_ids.update(region_user_ids)
+                # Also find users with districts in this region but no region_id set
+                district_ids_in_region = District.objects.filter(
+                    region_id=user_role.region_id
+                ).values_list('id', flat=True)
+                district_user_ids = UserRole.objects.filter(
+                    district_id__in=district_ids_in_region,
+                    region_id__isnull=True,
+                    is_active=True
+                ).values_list('user_id', flat=True)
+                user_ids.update(district_user_ids)
+                # Also find users with sub_districts in this region but no region/district
+                sub_district_ids_in_region = SubDistrict.objects.filter(
+                    district__region_id=user_role.region_id
+                ).values_list('id', flat=True)
+                sub_district_user_ids = UserRole.objects.filter(
+                    sub_district_id__in=sub_district_ids_in_region,
+                    region_id__isnull=True,
+                    district_id__isnull=True,
+                    is_active=True
+                ).values_list('user_id', flat=True)
+                user_ids.update(sub_district_user_ids)
+                # Also find users with facilities in this region but no region/district/sub_district
+                facility_ids_in_region = Facility.objects.filter(
+                    district__region_id=user_role.region_id
+                ).values_list('id', flat=True)
+                facility_user_ids = UserRole.objects.filter(
+                    facility_id__in=facility_ids_in_region,
+                    region_id__isnull=True,
+                    district_id__isnull=True,
+                    sub_district_id__isnull=True,
+                    is_active=True
+                ).values_list('user_id', flat=True)
+                user_ids.update(facility_user_ids)
             elif not user_role.sub_district_id:
                 # District access - users in this district
                 district_user_ids = UserRole.objects.filter(
@@ -220,6 +257,27 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
                     is_active=True
                 ).values_list('user_id', flat=True)
                 user_ids.update(district_user_ids)
+                # Also find users with sub_districts in this district but no district_id
+                sub_district_ids_in_district = SubDistrict.objects.filter(
+                    district_id=user_role.district_id
+                ).values_list('id', flat=True)
+                sub_district_user_ids = UserRole.objects.filter(
+                    sub_district_id__in=sub_district_ids_in_district,
+                    district_id__isnull=True,
+                    is_active=True
+                ).values_list('user_id', flat=True)
+                user_ids.update(sub_district_user_ids)
+                # Also find users with facilities in this district but no district/sub_district
+                facility_ids_in_district = Facility.objects.filter(
+                    district_id=user_role.district_id
+                ).values_list('id', flat=True)
+                facility_user_ids = UserRole.objects.filter(
+                    facility_id__in=facility_ids_in_district,
+                    district_id__isnull=True,
+                    sub_district_id__isnull=True,
+                    is_active=True
+                ).values_list('user_id', flat=True)
+                user_ids.update(facility_user_ids)
             elif not user_role.facility_id:
                 # Sub-district access - users in this sub-district
                 sub_district_user_ids = UserRole.objects.filter(
@@ -227,6 +285,16 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
                     is_active=True
                 ).values_list('user_id', flat=True)
                 user_ids.update(sub_district_user_ids)
+                # Also find users with facilities in this sub-district but no sub_district_id
+                facility_ids_in_sd = Facility.objects.filter(
+                    sub_district_id=user_role.sub_district_id
+                ).values_list('id', flat=True)
+                facility_user_ids = UserRole.objects.filter(
+                    facility_id__in=facility_ids_in_sd,
+                    sub_district_id__isnull=True,
+                    is_active=True
+                ).values_list('user_id', flat=True)
+                user_ids.update(facility_user_ids)
             else:
                 # Facility access - only users at this facility
                 facility_user_ids = UserRole.objects.filter(
