@@ -10,6 +10,17 @@ from django.utils.deprecation import MiddlewareMixin
 from apps.users.models import AuditLog
 
 
+class HealthCheckMiddleware:
+    """Bypass SecurityMiddleware SSL redirect for healthcheck endpoint."""
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if request.path == '/health/':
+            return JsonResponse({'status': 'healthy'})
+        return self.get_response(request)
+
+
 class RateLimitMiddleware(MiddlewareMixin):
     """
     Rate limiting middleware for API endpoints.
