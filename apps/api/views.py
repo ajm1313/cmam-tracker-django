@@ -694,8 +694,12 @@ def facility_detail_api(request, facility_id):
         'latitude': float(facility.latitude) if facility.latitude else None,
         'longitude': float(facility.longitude) if facility.longitude else None,
         'is_active': facility.is_active,
+        'opc_day': facility.opc_day,
+        'district_id': facility.district_id,
         'district_name': facility.district.name if facility.district else None,
+        'region_id': facility.district.region_id if facility.district else None,
         'region_name': facility.district.region.name if facility.district and facility.district.region else None,
+        'sub_district_id': facility.sub_district_id,
         'sub_district_name': facility.sub_district.name if facility.sub_district else None,
         'stats': {
             'total_cases': cases_qs.count(),
@@ -1349,7 +1353,7 @@ def user_edit_api(request, pk):
         return Response({'success': False, 'message': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
     data = request.data
-    for field in ('name', 'phone', 'is_active'):
+    for field in ('name', 'email', 'phone', 'is_active'):
         if field in data:
             setattr(u, field, data[field])
     if 'password' in data and data['password']:
@@ -1430,14 +1434,46 @@ def facility_edit_api(request, facility_id):
         return Response({'success': False, 'message': 'Facility not found'}, status=status.HTTP_404_NOT_FOUND)
 
     data = request.data
-    for field in ('name', 'type', 'address', 'contact_person', 'phone', 'email', 'capacity',
+
+    # Direct model-field matches
+    for field in ('name', 'address', 'contact_person', 'capacity',
                   'latitude', 'longitude', 'population', 'sam_prevalence'):
         if field in data:
             setattr(f, field, data[field] if data[field] != '' else None)
+
+    # Mobile sends 'facility_type'; model field is 'type'
+    if 'facility_type' in data:
+        f.type = data['facility_type'] or f.type
+    elif 'type' in data:
+        f.type = data['type'] or f.type
+
+    # Mobile sends 'contact_phone'; model field is 'phone'
+    if 'contact_phone' in data:
+        f.phone = data['contact_phone'] if data['contact_phone'] != '' else None
+    elif 'phone' in data:
+        f.phone = data['phone'] if data['phone'] != '' else None
+
+    # Mobile sends 'contact_email'; model field is 'email'
+    if 'contact_email' in data:
+        f.email = data['contact_email'] if data['contact_email'] != '' else None
+    elif 'email' in data:
+        f.email = data['email'] if data['email'] != '' else None
+
+    # OPC schedule day
+    if 'opc_day' in data:
+        opc_val = data['opc_day']
+        f.opc_day = int(opc_val) if opc_val is not None and opc_val != '' else None
+
+    # Active status
+    if 'is_active' in data:
+        f.is_active = bool(data['is_active'])
+
+    # Location FK updates
     if 'district_id' in data:
-        f.district_id = data['district_id']
+        f.district_id = data['district_id'] or None
     if 'sub_district_id' in data:
-        f.sub_district_id = data['sub_district_id']
+        f.sub_district_id = data['sub_district_id'] or None
+
     f.save()
     return Response({'success': True, 'message': 'Facility updated', 'data': FacilitySerializer(f).data})
 

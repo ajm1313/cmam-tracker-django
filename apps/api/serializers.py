@@ -63,6 +63,8 @@ class FacilitySerializer(serializers.ModelSerializer):
     # Aliases expected by mobile app
     facility_type = serializers.CharField(source='type', read_only=True)
     contact_phone = serializers.CharField(source='phone', read_only=True, allow_null=True)
+    contact_email = serializers.CharField(source='email', read_only=True, allow_null=True)
+    region_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Facility
@@ -70,9 +72,12 @@ class FacilitySerializer(serializers.ModelSerializer):
             'id', 'name', 'code',
             'type', 'facility_type',          # both for compat
             'is_active',
-            'district', 'district_name', 'region_name', 'sub_district_name',
+            'district', 'district_id', 'district_name',
+            'region_id', 'region_name',
+            'sub_district', 'sub_district_id', 'sub_district_name',
             'address', 'contact_person',
             'phone', 'contact_phone',          # both for compat
+            'email', 'contact_email',          # both for compat
             'capacity',
             'opc_day', 'opc_day_display',
             'expected_sam_cases', 'sam_target',
@@ -87,6 +92,12 @@ class FacilitySerializer(serializers.ModelSerializer):
     def get_region_name(self, obj):
         try:
             return obj.district.region.name if obj.district_id else None
+        except Exception:
+            return None
+
+    def get_region_id(self, obj):
+        try:
+            return obj.district.region_id if obj.district_id else None
         except Exception:
             return None
 
