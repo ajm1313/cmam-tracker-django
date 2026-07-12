@@ -2175,10 +2175,80 @@ def monthly_report_api(request):
             'sam': period_stats(sam_cases), 'mam': period_stats(mam_cases),
         })
 
+    # ── Coverage / Target Estimation ──
+    facilities_in_scope = accessible
+    total_sam_target = sum(f.sam_target for f in facilities_in_scope)
+    total_mam_target = sum(f.mam_target for f in facilities_in_scope)
+    total_expected_sam = sum(f.expected_sam_cases for f in facilities_in_scope)
+    total_expected_mam = sum(f.expected_mam_cases for f in facilities_in_scope)
+
+    # Aggregate end-of-month counts from facility reports
+    sam_end = sum(fr['sam'].get('end_of_period', 0) for fr in facility_reports)
+    mam_end = sum(fr['mam'].get('end_of_period', 0) for fr in facility_reports)
+
+    coverage = {
+        'expected_sam_cases': total_expected_sam,
+        'expected_mam_cases': total_expected_mam,
+        'sam_target': total_sam_target,
+        'mam_target': total_mam_target,
+        'sam_total': sam_end,
+        'mam_total': mam_end,
+        'sam_coverage': round((sam_end / total_sam_target * 100), 1) if total_sam_target > 0 else 0,
+        'mam_coverage': round((mam_end / total_mam_target * 100), 1) if total_mam_target > 0 else 0,
+    }
+
+    # ── Commodity Management (RUTF) ──
+    facility_ids = list(facilities_in_scope.values_list('id', flat=True))
+
+    commodity = {
+        'rutf_start': 0,
+        'rutf_received': 0,
+        'rutf_issued_sam': 0,
+        'rutf_issued_mam': 0,
+        'rutf_balance': 0,
+    }
+
+    try:
+        rutf_items = InventoryItem.objects.filter(category='RUTF')
+        for item in rutf_items:
+            stock_levels = StockLevel.objects.filter(
+                inventory_item=item,
+                facility_id__in=facility_ids
+            )
+            commodity['rutf_balance'] += sum(sl.current_stock for sl in stock_levels)
+
+            movements = StockMovement.objects.filter(
+                inventory_item=item,
+                destination_facility_id__in=facility_ids,
+                movement_date__gte=date_from,
+                movement_date__lte=date_to
+            )
+            commodity['rutf_received'] += sum(m.quantity for m in movements.filter(movement_type='IN'))
+    except Exception:
+        pass
+
+    sam_visits = OpcVisit.objects.filter(
+        registration__facility_id__in=facility_ids,
+        registration__malnutrition_type='SAM',
+        visit_date__gte=date_from,
+        visit_date__lte=date_to
+    )
+    commodity['rutf_issued_sam'] = sum(v.rutf_sachets_given or 0 for v in sam_visits)
+
+    mam_visits = OpcVisit.objects.filter(
+        registration__facility_id__in=facility_ids,
+        registration__malnutrition_type='MAM',
+        visit_date__gte=date_from,
+        visit_date__lte=date_to
+    )
+    commodity['rutf_issued_mam'] = sum(v.rutf_sachets_given or 0 for v in mam_visits)
+
     return Response({'success': True, 'data': {
         'month': month, 'year': year,
         'date_from': date_from.isoformat(), 'date_to': date_to.isoformat(),
         'facilities': facility_reports,
+        'coverage': coverage,
+        'commodity': commodity,
     }})
 
 
