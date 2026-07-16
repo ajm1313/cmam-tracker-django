@@ -247,6 +247,7 @@ class OpcRegistrationDetailSerializer(serializers.ModelSerializer):
     is_visit_due = serializers.SerializerMethodField()
     visits = serializers.SerializerMethodField()
     created_by_name = serializers.CharField(source='created_by.name', read_only=True)
+    child_photo = serializers.SerializerMethodField()
     
     class Meta:
         model = OpcRegistration
@@ -262,7 +263,35 @@ class OpcRegistrationDetailSerializer(serializers.ModelSerializer):
             'status', 'outcome', 'discharge_date', 'outcome_notes',
             'facility_name', 'facility_code', 'created_by_name',
             'visit_count', 'next_visit_date', 'is_visit_due', 'visits',
-            'created_at',
+            # Demographic/social
+            'father_alive', 'mother_alive', 'house_location', 'travel_time', 'referral_source',
+            # Medical History
+            'diarrhoea', 'stool_frequency', 'vomiting', 'cough', 'passing_urine',
+            'oedema_duration_days', 'breastfeeding_status', 'breastfeeding_prospect',
+            'immunization_status', 'g6pd_status', 'additional_medical_history',
+            # Physical Examination
+            'respiratory_rate', 'temperature_celsius', 'chest_indrawing',
+            'eyes_condition', 'conjunctiva', 'ears_condition', 'mouth_condition',
+            'lymph_nodes', 'hands_feet', 'skin_changes',
+            'disability', 'disability_details', 'physical_exam_notes',
+            # Medicines at Enrollment
+            'amoxicillin_date', 'amoxicillin_dosage',
+            'vitamin_a_date', 'vitamin_a_dosage',
+            'folic_acid_date', 'folic_acid_dosage',
+            'deworming_date', 'deworming_dosage',
+            'measles_vaccine_date', 'measles_vaccine_dosage',
+            'malaria_test_date', 'malaria_test_result',
+            'antimalarial_date', 'antimalarial_dosage',
+            # RUTF and Other Supplies
+            'rutf_sachets_given', 'rutf_ration_per_day', 'next_visit_date',
+            # Other Medicines
+            'other_drug_1', 'other_drug_1_date', 'other_drug_1_dosage',
+            'other_drug_2', 'other_drug_2_date', 'other_drug_2_dosage',
+            'other_drug_3', 'other_drug_3_date', 'other_drug_3_dosage',
+            # Additional
+            'additional_notes', 'child_photo',
+            # Timestamps
+            'created_at', 'updated_at',
         ]
     
     def get_visit_count(self, obj):
@@ -283,3 +312,11 @@ class OpcRegistrationDetailSerializer(serializers.ModelSerializer):
     def get_visits(self, obj):
         visits = obj.visits.order_by('visit_number')
         return OpcVisitSerializer(visits, many=True).data
+
+    def get_child_photo(self, obj):
+        if obj.child_photo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.child_photo.url)
+            return obj.child_photo.url
+        return None

@@ -323,6 +323,107 @@
         {% endif %}
     </div>
 
+    <!-- Child Photo -->
+    {% if case.child_photo %}
+    <div class="bg-white shadow rounded-lg overflow-hidden">
+        <div class="px-6 py-4 bg-gray-50 border-b">
+            <h2 class="text-lg font-medium text-gray-900">Child Photo</h2>
+        </div>
+        <div class="p-6">
+            <img src="{{ case.child_photo.url }}" alt="{{ case.child_name }}" class="max-h-64 rounded-lg">
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Medical History -->
+    {% if case.diarrhoea or case.stool_frequency or case.vomiting or case.cough or case.passing_urine or case.oedema_duration_days or case.breastfeeding_status or case.immunization_status or case.g6pd_status or case.additional_medical_history %}
+    <div class="bg-white shadow rounded-lg overflow-hidden">
+        <div class="px-6 py-4 bg-gray-50 border-b">
+            <h2 class="text-lg font-medium text-gray-900">Medical History</h2>
+        </div>
+        <div class="p-6">
+            <dl class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {% if case.diarrhoea %}<div><dt class="text-sm font-medium text-gray-500">Diarrhoea</dt><dd class="mt-1 text-sm text-gray-900">{{ case.diarrhoea }}</dd></div>{% endif %}
+                {% if case.stool_frequency %}<div><dt class="text-sm font-medium text-gray-500">Stool Frequency</dt><dd class="mt-1 text-sm text-gray-900">{{ case.stool_frequency }}</dd></div>{% endif %}
+                {% if case.vomiting %}<div><dt class="text-sm font-medium text-gray-500">Vomiting</dt><dd class="mt-1 text-sm text-gray-900">{{ case.vomiting }}</dd></div>{% endif %}
+                {% if case.cough %}<div><dt class="text-sm font-medium text-gray-500">Cough</dt><dd class="mt-1 text-sm text-gray-900">{{ case.cough }}</dd></div>{% endif %}
+                {% if case.passing_urine %}<div><dt class="text-sm font-medium text-gray-500">Passing Urine</dt><dd class="mt-1 text-sm text-gray-900">{{ case.passing_urine }}</dd></div>{% endif %}
+                {% if case.oedema_duration_days %}<div><dt class="text-sm font-medium text-gray-500">Oedema Duration (days)</dt><dd class="mt-1 text-sm text-gray-900">{{ case.oedema_duration_days }}</dd></div>{% endif %}
+                {% if case.breastfeeding_status %}<div><dt class="text-sm font-medium text-gray-500">Breastfeeding Status</dt><dd class="mt-1 text-sm text-gray-900">{{ case.breastfeeding_status }}</dd></div>{% endif %}
+                {% if case.breastfeeding_prospect %}<div><dt class="text-sm font-medium text-gray-500">Breastfeeding Prospect</dt><dd class="mt-1 text-sm text-gray-900">{{ case.breastfeeding_prospect }}</dd></div>{% endif %}
+                {% if case.immunization_status %}<div><dt class="text-sm font-medium text-gray-500">Immunization Status</dt><dd class="mt-1 text-sm text-gray-900">{{ case.immunization_status }}</dd></div>{% endif %}
+                {% if case.g6pd_status %}<div><dt class="text-sm font-medium text-gray-500">G6PD Status</dt><dd class="mt-1 text-sm text-gray-900">{{ case.g6pd_status }}</dd></div>{% endif %}
+                {% if case.additional_medical_history %}<div class="col-span-2 md:col-span-3"><dt class="text-sm font-medium text-gray-500">Additional Medical History</dt><dd class="mt-1 text-sm text-gray-900">{{ case.additional_medical_history }}</dd></div>{% endif %}
+            </dl>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Physical Examination -->
+    {% if case.respiratory_rate or case.temperature_celsius or case.chest_indrawing or case.eyes_condition or case.conjunctiva or case.ears_condition or case.mouth_condition or case.lymph_nodes or case.hands_feet or case.skin_changes or case.disability or case.physical_exam_notes %}
+    <div class="bg-white shadow rounded-lg overflow-hidden">
+        <div class="px-6 py-4 bg-gray-50 border-b">
+            <h2 class="text-lg font-medium text-gray-900">Physical Examination</h2>
+        </div>
+        <div class="p-6">
+            <dl class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {% if case.respiratory_rate %}<div><dt class="text-sm font-medium text-gray-500">Respiratory Rate</dt><dd class="mt-1 text-sm text-gray-900">{{ case.respiratory_rate }}</dd></div>{% endif %}
+                {% if case.temperature_celsius %}<div><dt class="text-sm font-medium text-gray-500">Temperature (°C)</dt><dd class="mt-1 text-sm text-gray-900">{{ case.temperature_celsius }}</dd></div>{% endif %}
+                {% if case.chest_indrawing %}<div><dt class="text-sm font-medium text-gray-500">Chest Indrawing</dt><dd class="mt-1 text-sm text-gray-900">{{ case.chest_indrawing }}</dd></div>{% endif %}
+                {% if case.eyes_condition %}<div><dt class="text-sm font-medium text-gray-500">Eyes Condition</dt><dd class="mt-1 text-sm text-gray-900">{{ case.eyes_condition }}</dd></div>{% endif %}
+                {% if case.conjunctiva %}<div><dt class="text-sm font-medium text-gray-500">Conjunctiva</dt><dd class="mt-1 text-sm text-gray-900">{{ case.conjunctiva }}</dd></div>{% endif %}
+                {% if case.ears_condition %}<div><dt class="text-sm font-medium text-gray-500">Ears Condition</dt><dd class="mt-1 text-sm text-gray-900">{{ case.ears_condition }}</dd></div>{% endif %}
+                {% if case.mouth_condition %}<div><dt class="text-sm font-medium text-gray-500">Mouth Condition</dt><dd class="mt-1 text-sm text-gray-900">{{ case.mouth_condition }}</dd></div>{% endif %}
+                {% if case.lymph_nodes %}<div><dt class="text-sm font-medium text-gray-500">Lymph Nodes</dt><dd class="mt-1 text-sm text-gray-900">{{ case.lymph_nodes }}</dd></div>{% endif %}
+                {% if case.hands_feet %}<div><dt class="text-sm font-medium text-gray-500">Hands & Feet</dt><dd class="mt-1 text-sm text-gray-900">{{ case.hands_feet }}</dd></div>{% endif %}
+                {% if case.skin_changes %}<div><dt class="text-sm font-medium text-gray-500">Skin Changes</dt><dd class="mt-1 text-sm text-gray-900">{{ case.skin_changes }}</dd></div>{% endif %}
+                {% if case.disability %}<div><dt class="text-sm font-medium text-gray-500">Disability</dt><dd class="mt-1 text-sm text-gray-900">{{ case.disability }}{% if case.disability_details %} — {{ case.disability_details }}{% endif %}</dd></div>{% endif %}
+                {% if case.physical_exam_notes %}<div class="col-span-2 md:col-span-3"><dt class="text-sm font-medium text-gray-500">Physical Exam Notes</dt><dd class="mt-1 text-sm text-gray-900">{{ case.physical_exam_notes }}</dd></div>{% endif %}
+            </dl>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Medicines at Enrollment -->
+    {% if case.amoxicillin_date or case.vitamin_a_date or case.folic_acid_date or case.deworming_date or case.measles_vaccine_date or case.malaria_test_date or case.antimalarial_date or case.other_drug_1 or case.other_drug_2 or case.other_drug_3 %}
+    <div class="bg-white shadow rounded-lg overflow-hidden">
+        <div class="px-6 py-4 bg-gray-50 border-b">
+            <h2 class="text-lg font-medium text-gray-900">Medicines at Enrollment</h2>
+        </div>
+        <div class="p-6">
+            <dl class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {% if case.amoxicillin_date %}<div><dt class="text-sm font-medium text-gray-500">Amoxicillin</dt><dd class="mt-1 text-sm text-gray-900">{{ case.amoxicillin_date|date:"Y-m-d" }}{% if case.amoxicillin_dosage %} — {{ case.amoxicillin_dosage }}{% endif %}</dd></div>{% endif %}
+                {% if case.vitamin_a_date %}<div><dt class="text-sm font-medium text-gray-500">Vitamin A</dt><dd class="mt-1 text-sm text-gray-900">{{ case.vitamin_a_date|date:"Y-m-d" }}{% if case.vitamin_a_dosage %} — {{ case.vitamin_a_dosage }}{% endif %}</dd></div>{% endif %}
+                {% if case.folic_acid_date %}<div><dt class="text-sm font-medium text-gray-500">Folic Acid</dt><dd class="mt-1 text-sm text-gray-900">{{ case.folic_acid_date|date:"Y-m-d" }}{% if case.folic_acid_dosage %} — {{ case.folic_acid_dosage }}{% endif %}</dd></div>{% endif %}
+                {% if case.deworming_date %}<div><dt class="text-sm font-medium text-gray-500">Deworming</dt><dd class="mt-1 text-sm text-gray-900">{{ case.deworming_date|date:"Y-m-d" }}{% if case.deworming_dosage %} — {{ case.deworming_dosage }}{% endif %}</dd></div>{% endif %}
+                {% if case.measles_vaccine_date %}<div><dt class="text-sm font-medium text-gray-500">Measles Vaccine</dt><dd class="mt-1 text-sm text-gray-900">{{ case.measles_vaccine_date|date:"Y-m-d" }}{% if case.measles_vaccine_dosage %} — {{ case.measles_vaccine_dosage }}{% endif %}</dd></div>{% endif %}
+                {% if case.malaria_test_date %}<div><dt class="text-sm font-medium text-gray-500">Malaria Test</dt><dd class="mt-1 text-sm text-gray-900">{{ case.malaria_test_date|date:"Y-m-d" }}{% if case.malaria_test_result %} — {{ case.malaria_test_result }}{% endif %}</dd></div>{% endif %}
+                {% if case.antimalarial_date %}<div><dt class="text-sm font-medium text-gray-500">Antimalarial</dt><dd class="mt-1 text-sm text-gray-900">{{ case.antimalarial_date|date:"Y-m-d" }}{% if case.antimalarial_dosage %} — {{ case.antimalarial_dosage }}{% endif %}</dd></div>{% endif %}
+                {% if case.other_drug_1 %}<div><dt class="text-sm font-medium text-gray-500">{{ case.other_drug_1 }}</dt><dd class="mt-1 text-sm text-gray-900">{{ case.other_drug_1_date|date:"Y-m-d"|default:"" }}{% if case.other_drug_1_dosage %} — {{ case.other_drug_1_dosage }}{% endif %}</dd></div>{% endif %}
+                {% if case.other_drug_2 %}<div><dt class="text-sm font-medium text-gray-500">{{ case.other_drug_2 }}</dt><dd class="mt-1 text-sm text-gray-900">{{ case.other_drug_2_date|date:"Y-m-d"|default:"" }}{% if case.other_drug_2_dosage %} — {{ case.other_drug_2_dosage }}{% endif %}</dd></div>{% endif %}
+                {% if case.other_drug_3 %}<div><dt class="text-sm font-medium text-gray-500">{{ case.other_drug_3 }}</dt><dd class="mt-1 text-sm text-gray-900">{{ case.other_drug_3_date|date:"Y-m-d"|default:"" }}{% if case.other_drug_3_dosage %} — {{ case.other_drug_3_dosage }}{% endif %}</dd></div>{% endif %}
+            </dl>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- RUTF & Other Supplies -->
+    {% if case.rutf_sachets_given or case.rutf_ration_per_day or case.next_visit_date or case.additional_notes %}
+    <div class="bg-white shadow rounded-lg overflow-hidden">
+        <div class="px-6 py-4 bg-gray-50 border-b">
+            <h2 class="text-lg font-medium text-gray-900">RUTF & Other Supplies</h2>
+        </div>
+        <div class="p-6">
+            <dl class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {% if case.rutf_sachets_given %}<div><dt class="text-sm font-medium text-gray-500">RUTF Sachets Given</dt><dd class="mt-1 text-sm text-gray-900">{{ case.rutf_sachets_given }}</dd></div>{% endif %}
+                {% if case.rutf_ration_per_day %}<div><dt class="text-sm font-medium text-gray-500">RUTF Ration/day</dt><dd class="mt-1 text-sm text-gray-900">{{ case.rutf_ration_per_day }}</dd></div>{% endif %}
+                {% if case.next_visit_date %}<div><dt class="text-sm font-medium text-gray-500">Next Visit Date</dt><dd class="mt-1 text-sm text-gray-900">{{ case.next_visit_date|date:"Y-m-d" }}</dd></div>{% endif %}
+                {% if case.additional_notes %}<div class="col-span-2 md:col-span-3"><dt class="text-sm font-medium text-gray-500">Additional Notes</dt><dd class="mt-1 text-sm text-gray-900">{{ case.additional_notes }}</dd></div>{% endif %}
+            </dl>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- WHO Growth Chart -->
     {% include 'cases/partials/growth_chart.html' %}
 

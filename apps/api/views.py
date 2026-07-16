@@ -183,9 +183,10 @@ def login(request):
             }
         elif user.is_superuser:
             user_role_data = {'id': 0, 'name': 'Super Administrator', 'level': 0}
-    except Exception:
-        pass
-    
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to resolve user role during login: {e}")
+
     # Calculate token expiry (1 hour from now)
     expires_at = (timezone.now() + timedelta(hours=1)).isoformat()
     
@@ -321,8 +322,9 @@ def record_consumption(request):
                 from apps.api.push_service import notify_admins
                 msg = f"Low stock: {item.name} at {sl.current_stock} {item.unit_of_measure} ({facility.name})."
                 notify_admins('Low Stock Alert', msg, {'type': 'stock_low', 'facilityId': facility.pk})
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Low stock notification failed: {e}")
 
     return Response({
         'success': True,
@@ -425,9 +427,26 @@ def cases_list(request):
             Q(caregiver_name__icontains=search)
         )
     
-    qs = qs.order_by('-admission_date')[:200]
-    serializer = OpcRegistrationListSerializer(qs, many=True)
-    return Response({'success': True, 'data': serializer.data})
+    qs = qs.order_by('-admission_date')
+    page = int(request.query_params.get('page', 1))
+    page_size = int(request.query_params.get('page_size', 50))
+    page_size = min(page_size, 200)
+    total = qs.count()
+    start = (page - 1) * page_size
+    end = start + page_size
+    serializer = OpcRegistrationListSerializer(qs[start:end], many=True)
+    return Response({
+        'success': True,
+        'data': serializer.data,
+        'pagination': {
+            'page': page,
+            'page_size': page_size,
+            'total': total,
+            'total_pages': (total + page_size - 1) // page_size,
+            'has_next': end < total,
+            'has_previous': page > 1,
+        }
+    })
 
 
 @api_view(['GET'])
@@ -441,7 +460,7 @@ def case_detail_api(request, pk):
     except OpcRegistration.DoesNotExist:
         return Response({'success': False, 'message': 'Case not found'}, status=status.HTTP_404_NOT_FOUND)
     
-    serializer = OpcRegistrationDetailSerializer(case)
+    serializer = OpcRegistrationDetailSerializer(case, context={'request': request})
     return Response({'success': True, 'data': serializer.data})
 
 
@@ -586,6 +605,11 @@ def case_create_api(request):
         created_by=request.user,
     )
     
+    # Handle child photo upload
+    if 'child_photo' in request.FILES:
+        case.child_photo = request.FILES['child_photo']
+        case.save(update_fields=['child_photo'])
+    
     # Auto-deduct stock for commodities given at enrollment
     try:
         deduct_stock_for_registration(case, user=request.user)
@@ -593,7 +617,7 @@ def case_create_api(request):
         import logging
         logging.getLogger(__name__).error(f"Stock deduction failed for registration {case.id}: {e}")
     
-    serializer = OpcRegistrationDetailSerializer(case)
+    serializer = OpcRegistrationDetailSerializer(case, context={'request': request})
     return Response({'success': True, 'message': 'Case created successfully', 'data': serializer.data},
                     status=status.HTTP_201_CREATED)
 
@@ -796,8 +820,9 @@ def password_reset_request(request):
             [user.email],
             fail_silently=False,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Password reset email failed for {email}: {e}")
 
     return Response({'success': True, 'message': 'If that email exists, a reset link has been sent.'})
 
@@ -1030,8 +1055,9 @@ def case_edit_api(request, pk):
                     {'success': False, 'message': 'This record was modified by someone else. Please refresh and try again.', 'conflict': True},
                     status=status.HTTP_409_CONFLICT,
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Conflict detection parse error on case edit: {e}")
 
     data = request.data
     field_map = {
@@ -1046,6 +1072,42 @@ def case_edit_api(request, pk):
         'z_score_wfh': 'z_score_wfh', 'z_score_wfa': 'z_score_wfa', 'z_score_hfa': 'z_score_hfa',
         'oedema': 'oedema', 'appetite_test': 'appetite_test',
         'medical_complications': 'medical_complications', 'complications_notes': 'complications_notes',
+        # Demographic/social
+        'father_alive': 'father_alive', 'mother_alive': 'mother_alive',
+        'house_location': 'house_location', 'travel_time': 'travel_time',
+        'referral_source': 'referral_source',
+        # Medical History
+        'diarrhoea': 'diarrhoea', 'stool_frequency': 'stool_frequency',
+        'vomiting': 'vomiting', 'cough': 'cough', 'passing_urine': 'passing_urine',
+        'oedema_duration_days': 'oedema_duration_days',
+        'breastfeeding_status': 'breastfeeding_status', 'breastfeeding_prospect': 'breastfeeding_prospect',
+        'immunization_status': 'immunization_status', 'g6pd_status': 'g6pd_status',
+        'additional_medical_history': 'additional_medical_history',
+        # Physical Examination
+        'respiratory_rate': 'respiratory_rate', 'temperature_celsius': 'temperature_celsius',
+        'chest_indrawing': 'chest_indrawing', 'eyes_condition': 'eyes_condition',
+        'conjunctiva': 'conjunctiva', 'ears_condition': 'ears_condition',
+        'mouth_condition': 'mouth_condition', 'lymph_nodes': 'lymph_nodes',
+        'hands_feet': 'hands_feet', 'skin_changes': 'skin_changes',
+        'disability': 'disability', 'disability_details': 'disability_details',
+        'physical_exam_notes': 'physical_exam_notes',
+        # Medicines at Enrollment
+        'amoxicillin_date': 'amoxicillin_date', 'amoxicillin_dosage': 'amoxicillin_dosage',
+        'vitamin_a_date': 'vitamin_a_date', 'vitamin_a_dosage': 'vitamin_a_dosage',
+        'folic_acid_date': 'folic_acid_date', 'folic_acid_dosage': 'folic_acid_dosage',
+        'deworming_date': 'deworming_date', 'deworming_dosage': 'deworming_dosage',
+        'measles_vaccine_date': 'measles_vaccine_date', 'measles_vaccine_dosage': 'measles_vaccine_dosage',
+        'malaria_test_date': 'malaria_test_date', 'malaria_test_result': 'malaria_test_result',
+        'antimalarial_date': 'antimalarial_date', 'antimalarial_dosage': 'antimalarial_dosage',
+        # RUTF and Other Supplies
+        'rutf_sachets_given': 'rutf_sachets_given', 'rutf_ration_per_day': 'rutf_ration_per_day',
+        'next_visit_date': 'next_visit_date',
+        # Other Medicines
+        'other_drug_1': 'other_drug_1', 'other_drug_1_date': 'other_drug_1_date', 'other_drug_1_dosage': 'other_drug_1_dosage',
+        'other_drug_2': 'other_drug_2', 'other_drug_2_date': 'other_drug_2_date', 'other_drug_2_dosage': 'other_drug_2_dosage',
+        'other_drug_3': 'other_drug_3', 'other_drug_3_date': 'other_drug_3_date', 'other_drug_3_dosage': 'other_drug_3_dosage',
+        # Additional
+        'additional_notes': 'additional_notes',
     }
     for key, attr in field_map.items():
         if key in data:
@@ -1057,9 +1119,13 @@ def case_edit_api(request, pk):
         except Facility.DoesNotExist:
             return Response({'success': False, 'message': 'Facility not found'}, status=status.HTTP_404_NOT_FOUND)
 
+    # Handle child photo upload
+    if 'child_photo' in request.FILES:
+        case.child_photo = request.FILES['child_photo']
+
     case.updated_by = request.user
     case.save()
-    serializer = OpcRegistrationDetailSerializer(case)
+    serializer = OpcRegistrationDetailSerializer(case, context={'request': request})
     return Response({'success': True, 'message': 'Case updated', 'data': serializer.data})
 
 
@@ -1245,8 +1311,9 @@ def visit_edit_api(request, registration_id, visit_id):
                     {'success': False, 'message': 'This visit was modified by someone else. Please refresh and try again.', 'conflict': True},
                     status=status.HTTP_409_CONFLICT,
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Conflict detection parse error on visit edit: {e}")
 
     data = request.data
     # Capture old commodity values for stock adjustment
@@ -1262,15 +1329,18 @@ def visit_edit_api(request, registration_id, visit_id):
 
     fields = [
         'visit_date', 'visit_type', 'weight_kg', 'height_cm', 'muac_cm',
-        'z_score_wfh', 'oedema', 'visit_outcome', 'outcome_notes',
+        'z_score_wfh', 'z_score_wfa', 'z_score_hfa', 'oedema', 'visit_outcome', 'outcome_notes',
         'diarrhoea_days', 'vomiting_days', 'fever_days', 'cough_days',
         'temperature', 'respiratory_rate', 'appetite', 'rutf_test',
-        'breastfeeding_status', 'rutf_sachets_given', 'other_medication',
+        'breastfeeding_status', 'rutf_sachets_given', 'csb_plus_given', 'oil_given',
+        'other_supplies', 'other_medication',
         'food_product_type', 'food_product_quantity', 'staff_name', 'medical_notes',
+        'general_condition', 'complications_notes', 'counseling_topics',
+        'caregiver_understanding', 'next_visit_date', 'treatment_response',
         'home_visit_notes', 'community_volunteer',
     ]
     bool_fields = ['weight_lost', 'dehydrated', 'anaemia_palmar_pallor', 'skin_infection',
-                   'action_needed', 'home_visit_needed']
+                   'has_complications', 'action_needed', 'home_visit_needed']
 
     for f in fields:
         if f in data:
@@ -1978,7 +2048,12 @@ def stock_movements_api(request):
     if movement_type:
         qs = qs.filter(movement_type=movement_type)
 
-    qs = qs[:100]
+    page = int(request.query_params.get('page', 1))
+    page_size = int(request.query_params.get('page_size', 50))
+    page_size = min(page_size, 200)
+    total = qs.count()
+    start = (page - 1) * page_size
+    end = start + page_size
     data = [{
         'id': m.id, 'item_name': m.inventory_item.name, 'item_code': m.inventory_item.code,
         'movement_type': m.movement_type, 'quantity': m.quantity,
@@ -1986,8 +2061,19 @@ def stock_movements_api(request):
         'notes': m.notes, 'created_by_name': m.created_by.name if m.created_by else None,
         'movement_date': m.movement_date.isoformat() if m.movement_date else None,
         'reference_number': m.reference_number,
-    } for m in qs]
-    return Response({'success': True, 'data': data})
+    } for m in qs[start:end]]
+    return Response({
+        'success': True,
+        'data': data,
+        'pagination': {
+            'page': page,
+            'page_size': page_size,
+            'total': total,
+            'total_pages': (total + page_size - 1) // page_size,
+            'has_next': end < total,
+            'has_previous': page > 1,
+        }
+    })
 
 
 @api_view(['POST'])
@@ -2027,10 +2113,17 @@ def stock_requests_api(request):
     qs = StockRequest.objects.filter(
         Q(requesting_facility__in=accessible) | Q(supplier_facility__in=accessible)
         | Q(requested_by=request.user)
-    ).select_related('requested_by', 'approved_by', 'requesting_facility', 'supplier_facility').prefetch_related('items__inventory_item').distinct().order_by('-created_at')[:50]
+    ).select_related('requested_by', 'approved_by', 'requesting_facility', 'supplier_facility').prefetch_related('items__inventory_item').distinct().order_by('-created_at')
+
+    page = int(request.query_params.get('page', 1))
+    page_size = int(request.query_params.get('page_size', 50))
+    page_size = min(page_size, 200)
+    total = qs.count()
+    start = (page - 1) * page_size
+    end = start + page_size
 
     data = []
-    for sr in qs:
+    for sr in qs[start:end]:
         items_data = [{
             'id': i.id, 'item_name': i.inventory_item.name,
             'quantity_requested': i.quantity_requested,
@@ -2048,7 +2141,18 @@ def stock_requests_api(request):
             'created_at': sr.created_at.isoformat() if sr.created_at else None,
             'items': items_data,
         })
-    return Response({'success': True, 'data': data})
+    return Response({
+        'success': True,
+        'data': data,
+        'pagination': {
+            'page': page,
+            'page_size': page_size,
+            'total': total,
+            'total_pages': (total + page_size - 1) // page_size,
+            'has_next': end < total,
+            'has_previous': page > 1,
+        }
+    })
 
 
 @api_view(['POST'])
@@ -2246,8 +2350,9 @@ def weekly_report_api(request):
                 movement_date__lte=date_to
             ))
             commodity['rutf_start'] += (commodity['rutf_balance'] + issued - received)
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Stock start balance calculation failed (SAM): {e}")
 
     sam_visits_w = OpcVisit.objects.filter(
         registration__facility_id__in=facility_ids,
@@ -2411,8 +2516,9 @@ def monthly_report_api(request):
             ))
 
             commodity['rutf_start'] += (commodity['rutf_balance'] + issued - received)
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Stock start balance calculation failed (SAM detail): {e}")
 
     sam_visits = OpcVisit.objects.filter(
         registration__facility_id__in=facility_ids,
@@ -2467,8 +2573,9 @@ def monthly_report_api(request):
                 movement_date__lte=date_to
             ))
             commodity['others_start'] += (commodity['others_balance'] + issued - received)
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Stock start balance calculation failed (others): {e}")
 
     return Response({'success': True, 'data': {
         'month': month, 'year': year,
@@ -2522,8 +2629,9 @@ def access_control_update_api(request):
                 perm.is_enabled = u.get('is_enabled', perm.is_enabled)
                 perm.access_level = u.get('access_level', perm.access_level)
                 perm.save()
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Permission update failed for user {u.get('user_id')}: {e}")
     return Response({'success': True, 'message': 'Permissions updated'})
 
 
