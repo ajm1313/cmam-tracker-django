@@ -134,7 +134,7 @@
 
                 <!-- TOTAL ENROLMENT (E) -->
                 <tr class="bg-gray-200 font-bold">
-                    <td class="px-3 py-2 border-r">TOTAL ENROLMENT (E=C+D)</td>
+                    <td class="px-3 py-2 border-r">TOTAL ENROLMENT (E=B+C+D)</td>
                     <td class="px-2 py-2 border-r bg-yellow-100"></td>
                     <td class="px-2 py-2 text-center border-r">{{ data.total_enrolment.0 }}</td>
                     <td class="px-2 py-2 text-center border-r">{{ data.total_enrolment.1 }}</td>
@@ -180,9 +180,21 @@
                     <td class="px-2 py-2 text-center bg-yellow-50 font-bold">{{ data.defaulted_total }}</td>
                 </tr>
 
+                <!-- Non-recovered (F4) -->
+                <tr>
+                    <td class="px-3 py-2 border-r">Non-recovered (F4)</td>
+                    <td class="px-2 py-2 border-r bg-yellow-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.non_recovered.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.non_recovered.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.non_recovered.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.non_recovered.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.non_recovered.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-yellow-50 font-bold">{{ data.non_recovered_total }}</td>
+                </tr>
+
                 <!-- Total Discharges (F) -->
                 <tr class="bg-gray-200 font-bold">
-                    <td class="px-3 py-2 border-r">Total Discharges (F=F1+F2+F3)</td>
+                    <td class="px-3 py-2 border-r">Total Discharges (F=F1+F2+F3+F4)</td>
                     <td class="px-2 py-2 border-r bg-yellow-100"></td>
                     <td class="px-2 py-2 text-center border-r">{{ data.total_discharges.0 }}</td>
                     <td class="px-2 py-2 text-center border-r">{{ data.total_discharges.1 }}</td>
@@ -259,6 +271,26 @@
                     <td class="px-2 py-2 text-center bg-yellow-50 font-bold">{{ data.new_females_total }}</td>
                 </tr>
                 <tr>
+                    <td class="px-3 py-2 border-r">RUTF quantity at start of week</td>
+                    <td class="px-2 py-2 border-r bg-yellow-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_start.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_start.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_start.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_start.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_start.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-yellow-50 font-bold">{{ data.rutf_start_total }}</td>
+                </tr>
+                <tr>
+                    <td class="px-3 py-2 border-r">RUTF quantity received</td>
+                    <td class="px-2 py-2 border-r bg-yellow-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_received.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_received.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_received.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_received.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_received.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-yellow-50 font-bold">{{ data.rutf_received_total }}</td>
+                </tr>
+                <tr>
                     <td class="px-3 py-2 border-r">RUTF Quantities (Issued during the week for MAM) - <em>In packets</em></td>
                     <td class="px-2 py-2 border-r bg-yellow-50"></td>
                     <td class="px-2 py-2 text-center border-r">{{ data.rutf_issued_mam.0 }}</td>
@@ -269,7 +301,17 @@
                     <td class="px-2 py-2 text-center bg-yellow-50 font-bold">{{ data.rutf_issued_mam_total }}</td>
                 </tr>
                 <tr>
-                    <td class="px-3 py-2 border-r">Other commodities Quantities (Issued during the week) - <em>In packets</em></td>
+                    <td class="px-3 py-2 border-r">RUTF Quantities (Balance at the end of the week) - <em>In packets</em></td>
+                    <td class="px-2 py-2 border-r bg-yellow-50"></td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_balance.0 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_balance.1 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_balance.2 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_balance.3 }}</td>
+                    <td class="px-2 py-2 text-center border-r">{{ data.rutf_balance.4 }}</td>
+                    <td class="px-2 py-2 text-center bg-yellow-50 font-bold">{{ data.rutf_balance_total }}</td>
+                </tr>
+                <tr>
+                    <td class="px-3 py-2 border-r">Other commodities Quantities (CSB+, oil) - <em>In packets</em></td>
                     <td class="px-2 py-2 border-r bg-yellow-50"></td>
                     <td class="px-2 py-2 text-center border-r">{{ data.other_commodities.0 }}</td>
                     <td class="px-2 py-2 text-center border-r">{{ data.other_commodities.1 }}</td>

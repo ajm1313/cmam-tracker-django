@@ -258,11 +258,19 @@
                         <td class="px-3 py-2 text-right">{{ mam.cured_other }}</td>
                     </tr>
                     <tr>
-                        <td class="px-3 py-2">Number discharge defaulted Other MAM (U2)</td>
+                        <td class="px-3 py-2">Number discharge died Other MAM (U2)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.died_other }}</td>
+                    </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number discharge defaulted Other MAM (U3)</td>
                         <td class="px-3 py-2 text-right">{{ mam.defaulted_other }}</td>
                     </tr>
+                    <tr>
+                        <td class="px-3 py-2">Number discharge non-recovered Other MAM (U4)</td>
+                        <td class="px-3 py-2 text-right">{{ mam.non_recovered_other }}</td>
+                    </tr>
                     <tr class="bg-gray-200 font-bold">
-                        <td class="px-3 py-2">Total Other MAM discharges (U=U1+U2)</td>
+                        <td class="px-3 py-2">Total Other MAM discharges (U=U1+U2+U3+U4)</td>
                         <td class="px-3 py-2 text-right">{{ mam.total_discharges_other }}</td>
                     </tr>
                     <tr class="bg-gray-300 font-bold">

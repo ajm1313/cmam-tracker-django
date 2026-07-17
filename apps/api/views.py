@@ -2390,6 +2390,7 @@ def weekly_report_api(request):
         'rutf_issued_sam': 0,
         'rutf_issued_mam': 0,
         'rutf_balance': 0,
+        'others_issued_mam': 0,
     }
     try:
         rutf_items = InventoryItem.objects.filter(category='RUTF')
@@ -2436,6 +2437,10 @@ def weekly_report_api(request):
         visit_date__lte=date_to
     )
     commodity['rutf_issued_mam'] = sum(v.rutf_sachets_given or 0 for v in mam_visits_w)
+    commodity['others_issued_mam'] = sum(
+        (float(v.csb_plus_given or 0) + float(v.oil_given or 0))
+        for v in mam_visits_w
+    )
 
     return Response({'success': True, 'data': {
         'report_type': report_type, 'date_from': date_from, 'date_to': date_to,

@@ -966,9 +966,16 @@ def weekly_sam_report(request):
                     movement_date__gte=week_start,
                     movement_date__lte=week_end
                 ))
-                # rutf_issued_sam already calculated from visits above; add stock-based issued
-            # Balance at end of week = current stock (latest known)
-            # Start of week = balance + issued - received (back-calculated)
+                
+                # Balance at end of week = current stock
+                stock_levels = StockLevel.objects.filter(
+                    inventory_item=rutf_item,
+                    facility_id__in=facility_ids
+                )
+                balance_w = sum(sl.current_stock or 0 for sl in stock_levels)
+                data['rutf_balance'][week_idx] = balance_w
+                # Start of week = balance + issued - received (back-calculated)
+                data['rutf_start'][week_idx] += (balance_w + issued_w - received_w)
         except Exception:
             pass
     
@@ -1170,13 +1177,17 @@ def weekly_mam_report(request):
         'cured': [0, 0, 0, 0, 0],
         'died': [0, 0, 0, 0, 0],
         'defaulted': [0, 0, 0, 0, 0],
+        'non_recovered': [0, 0, 0, 0, 0],
         'total_discharges': [0, 0, 0, 0, 0],
         'referrals': [0, 0, 0, 0, 0],
         'total_exits': [0, 0, 0, 0, 0],
         'end_of_week': [0, 0, 0, 0, 0],
         'new_males': [0, 0, 0, 0, 0],
         'new_females': [0, 0, 0, 0, 0],
+        'rutf_start': [0, 0, 0, 0, 0],
+        'rutf_received': [0, 0, 0, 0, 0],
         'rutf_issued_mam': [0, 0, 0, 0, 0],
+        'rutf_balance': [0, 0, 0, 0, 0],
         'other_commodities': [0, 0, 0, 0, 0],
     }
     
@@ -1249,8 +1260,12 @@ def weekly_mam_report(request):
         defaulted = mam_discharges.filter(status='Defaulted').count()
         data['defaulted'][week_idx] = defaulted
         
-        # Total discharges (F = F1 + F2 + F3)
-        total_discharges = cured + died + defaulted
+        # Non-recovered (F4)
+        non_recovered = mam_discharges.filter(outcome__icontains='Non-R').count()
+        data['non_recovered'][week_idx] = non_recovered
+        
+        # Total discharges (F = F1 + F2 + F3 + F4)
+        total_discharges = cured + died + defaulted + non_recovered
         data['total_discharges'][week_idx] = total_discharges
         
         # Referrals to SAM (G)
@@ -1272,9 +1287,15 @@ def weekly_mam_report(request):
         rutf_issued = sum(v.rutf_sachets_given or 0 for v in mam_visits)
         data['rutf_issued_mam'][week_idx] = rutf_issued
         
-        # RUTF received this week
+        # Other commodities (CSB+, oil) issued from visits
+        data['other_commodities'][week_idx] = sum(
+            (float(v.csb_plus_given or 0) + float(v.oil_given or 0))
+            for v in mam_visits
+        )
+        
+        # RUTF stock movements for this week
         try:
-            from apps.inventory.models import InventoryItem, StockMovement
+            from apps.inventory.models import InventoryItem, StockLevel, StockMovement
             rutf_items = InventoryItem.objects.filter(category='RUTF')
             for rutf_item in rutf_items:
                 received_w = sum(m.quantity for m in StockMovement.objects.filter(
@@ -1284,16 +1305,30 @@ def weekly_mam_report(request):
                     movement_date__gte=week_start,
                     movement_date__lte=week_end
                 ))
-                # Store in a reusable field — MAM report doesn't have rutf_received array
-                # We'll use other_commodities as a proxy for received
-                data['other_commodities'][week_idx] += received_w
+                data['rutf_received'][week_idx] += received_w
+                
+                issued_w = sum(m.quantity for m in StockMovement.objects.filter(
+                    inventory_item=rutf_item,
+                    source_facility_id__in=facility_ids,
+                    movement_type__in=['CONSUMPTION', 'OUT', 'TRANSFER'],
+                    movement_date__gte=week_start,
+                    movement_date__lte=week_end
+                ))
+                
+                stock_levels = StockLevel.objects.filter(
+                    inventory_item=rutf_item,
+                    facility_id__in=facility_ids
+                )
+                balance_w = sum(sl.current_stock or 0 for sl in stock_levels)
+                data['rutf_balance'][week_idx] = balance_w
+                data['rutf_start'][week_idx] += (balance_w + issued_w - received_w)
         except Exception:
             pass
     
-    # Calculate start of week (A) - active MAM cases at start of each week
-    for week_idx, (week_start, week_end) in enumerate(week_ranges):
-        if week_start is None:
-            continue
+    # Calculate start of week (A) with continuity (matching SAM report)
+    # Week 1: Calculate from previous month end
+    if week_ranges[0][0] is not None:
+        week_start = week_ranges[0][0]
         active_at_start = OpcRegistration.objects.filter(
             facility_id__in=facility_ids,
             malnutrition_type='MAM',
@@ -1301,9 +1336,22 @@ def weekly_mam_report(request):
         ).filter(
             Q(status='Active') | Q(discharge_date__gte=week_start)
         ).count()
-        data['start_of_week'][week_idx] = active_at_start
+        data['start_of_week'][0] = active_at_start
         
-        # End of week (I = A + E - H)
+        # I: End of week 1 = A + E - H
+        data['end_of_week'][0] = (data['start_of_week'][0] + 
+                                   data['total_enrolment'][0] - 
+                                   data['total_exits'][0])
+    
+    # Weeks 2-5: Start of week = Previous week's end (continuity rule)
+    for week_idx in range(1, 5):
+        if week_ranges[week_idx][0] is None:
+            continue
+        
+        # A: Start of this week = End of previous week
+        data['start_of_week'][week_idx] = data['end_of_week'][week_idx - 1]
+        
+        # I: End of week = A + E - H
         data['end_of_week'][week_idx] = (data['start_of_week'][week_idx] + 
                                           data['total_enrolment'][week_idx] - 
                                           data['total_exits'][week_idx])
@@ -1657,10 +1705,13 @@ def monthly_facility_report(request):
     )
     
     mam['cured_other'] = other_discharges.filter(outcome='Cured').count()
+    mam['died_other'] = other_discharges.filter(status='Death').count()
     mam['defaulted_other'] = other_discharges.filter(status='Defaulted').count()
+    mam['non_recovered_other'] = other_discharges.filter(outcome__icontains='Non-R').count()
     
     # U: Total Other MAM discharges
-    mam['total_discharges_other'] = mam['cured_other'] + mam['defaulted_other']
+    mam['total_discharges_other'] = (mam['cured_other'] + mam['died_other'] + 
+                                     mam['defaulted_other'] + mam['non_recovered_other'])
     
     # V: End of month Other MAM
     mam['other_end'] = mam['other_start'] + mam['new_other'] - mam['total_discharges_other']
