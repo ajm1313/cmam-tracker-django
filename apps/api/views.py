@@ -2019,10 +2019,19 @@ def stock_levels_api(request):
 
     item_id = request.query_params.get('item_id')
     facility_id = request.query_params.get('facility_id')
+    region_id = request.query_params.get('region')
+    district_id = request.query_params.get('district')
+    sub_district_id = request.query_params.get('sub_district')
     if item_id:
         qs = qs.filter(inventory_item_id=item_id)
     if facility_id:
         qs = qs.filter(facility_id=facility_id)
+    elif sub_district_id:
+        qs = qs.filter(facility__sub_district_id=sub_district_id)
+    elif district_id:
+        qs = qs.filter(facility__district_id=district_id)
+    elif region_id:
+        qs = qs.filter(facility__district__region_id=region_id)
 
     data = [{
         'id': sl.id, 'item_id': sl.inventory_item_id, 'item_name': sl.inventory_item.name,
@@ -2308,12 +2317,21 @@ def weekly_report_api(request):
     """Weekly SAM/MAM report data"""
     report_type = request.query_params.get('type', 'SAM')
     facility_id = request.query_params.get('facility_id')
+    region_id = request.query_params.get('region')
+    district_id = request.query_params.get('district')
+    sub_district_id = request.query_params.get('sub_district')
     date_from = request.query_params.get('date_from')
     date_to = request.query_params.get('date_to')
 
     accessible = request.user.get_accessible_facilities()
     if facility_id:
         accessible = accessible.filter(id=facility_id)
+    elif sub_district_id:
+        accessible = accessible.filter(sub_district_id=sub_district_id)
+    elif district_id:
+        accessible = accessible.filter(district_id=district_id)
+    elif region_id:
+        accessible = accessible.filter(district__region_id=region_id)
 
     today = timezone.now().date()
     if not date_from:
@@ -2436,6 +2454,9 @@ def weekly_report_api(request):
 def monthly_report_api(request):
     """Monthly facility report"""
     facility_id = request.query_params.get('facility_id')
+    region_id = request.query_params.get('region')
+    district_id = request.query_params.get('district')
+    sub_district_id = request.query_params.get('sub_district')
     month = request.query_params.get('month')
     year = request.query_params.get('year')
 
@@ -2460,6 +2481,12 @@ def monthly_report_api(request):
     accessible = request.user.get_accessible_facilities()
     if facility_id:
         accessible = accessible.filter(id=facility_id)
+    elif sub_district_id:
+        accessible = accessible.filter(sub_district_id=sub_district_id)
+    elif district_id:
+        accessible = accessible.filter(district_id=district_id)
+    elif region_id:
+        accessible = accessible.filter(district__region_id=region_id)
 
     facility_reports = []
     for fac in accessible:
@@ -2729,13 +2756,13 @@ def reports_summary_api(request):
             'active': filtered.filter(status='Active').count(),
             'cured': filtered.filter(outcome='Cured').count(),
             'defaulted': filtered.filter(status='Defaulted').count(),
-            'deaths': filtered.filter(outcome='Died').count(),
-            'transferred': filtered.filter(outcome='Transferred').count(),
+            'deaths': filtered.filter(status='Death').count(),
+            'transferred': filtered.filter(status='Transfer').count(),
             'new_admissions': filtered.filter(admission_date__gte=period_start, admission_date__lt=period_end).count(),
         }
 
-    sam = breakdown(cases, 'SAM')
-    mam = breakdown(cases, 'MAM')
+    sam = breakdown(period_cases, 'SAM')
+    mam = breakdown(period_cases, 'MAM')
 
     # ── Visits ──
     visits = OpcVisit.objects.filter(
@@ -2747,8 +2774,8 @@ def reports_summary_api(request):
     mam_visits = visits.filter(registration__malnutrition_type='MAM').count()
 
     # ── Inventory ──
-    stock_qs = StockLevel.objects.filter(facility__in=fac_qs)
-    total_items = InventoryItem.objects.filter(is_active=True).count()
+    stock_qs = StockLevel.objects.filter(facility__in=fac_qs, location_type='facility')
+    total_items = stock_qs.count()
     total_stock = stock_qs.aggregate(s=Sum('current_stock'))['s'] or 0
     low_stock = stock_qs.filter(current_stock__gt=0, current_stock__lte=F('inventory_item__reorder_level')).count()
     out_of_stock = stock_qs.filter(current_stock=0).count()

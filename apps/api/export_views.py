@@ -61,36 +61,36 @@ def _export_cases_excel(qs):
     ws.title = "Cases"
     
     headers = [
-        'Case ID', 'Child Name', 'Registration Date', 'Birth Date', 'Age (months)',
-        'Gender', 'Guardian Name', 'Guardian Phone', 'Malnutrition Type',
+        'Registration No', 'Child Name', 'Registration Date', 'Date of Birth', 'Age (months)',
+        'Gender', 'Caregiver Name', 'Caregiver Phone', 'Malnutrition Type',
         'Status', 'Facility', 'Region', 'District', 'Admission Weight (kg)',
-        'Current Weight (kg)', 'Height (cm)', 'MUAC (mm)', 'Oedema',
-        'Discharge Date', 'Discharge Reason', 'Notes'
+        'Current Weight (kg)', 'Height (cm)', 'MUAC (cm)', 'Oedema',
+        'Discharge Date', 'Outcome', 'Notes'
     ]
     
     _style_excel_header(ws, headers)
     
     for idx, case in enumerate(qs, 2):
-        visit = OpcVisit.objects.filter(case=case).order_by('-visit_date').first()
+        visit = OpcVisit.objects.filter(registration=case).order_by('-visit_date').first()
         
-        ws.cell(row=idx, column=1, value=case.case_id or case.id)
+        ws.cell(row=idx, column=1, value=case.registration_number or case.id)
         ws.cell(row=idx, column=2, value=case.child_name)
         ws.cell(row=idx, column=3, value=case.registration_date.strftime('%Y-%m-%d') if case.registration_date else '')
-        ws.cell(row=idx, column=4, value=case.birth_date.strftime('%Y-%m-%d') if case.birth_date else '')
-        ws.cell(row=idx, column=5, value=case.age_in_months_at_reg)
-        ws.cell(row=idx, column=6, value=case.gender)
-        ws.cell(row=idx, column=7, value=case.guardian_name)
-        ws.cell(row=idx, column=8, value=case.guardian_phone)
+        ws.cell(row=idx, column=4, value=case.date_of_birth.strftime('%Y-%m-%d') if case.date_of_birth else '')
+        ws.cell(row=idx, column=5, value=case.age_months)
+        ws.cell(row=idx, column=6, value=case.child_gender)
+        ws.cell(row=idx, column=7, value=case.caregiver_name)
+        ws.cell(row=idx, column=8, value=case.caregiver_phone or '')
         ws.cell(row=idx, column=9, value=case.malnutrition_type)
         ws.cell(row=idx, column=10, value=case.status)
         ws.cell(row=idx, column=11, value=case.facility.name if case.facility else '')
-        ws.cell(row=idx, column=12, value=case.facility.region.name if case.facility and case.facility.region else '')
+        ws.cell(row=idx, column=12, value=case.facility.district.region.name if case.facility and case.facility.district and case.facility.district.region else '')
         ws.cell(row=idx, column=13, value=case.facility.district.name if case.facility and case.facility.district else '')
-        ws.cell(row=idx, column=14, value=case.admission_weight)
-        ws.cell(row=idx, column=15, value=visit.weight if visit else case.current_weight)
-        ws.cell(row=idx, column=16, value=visit.height if visit else '')
-        ws.cell(row=idx, column=17, value=visit.muac if visit else case.admission_muac)
-        ws.cell(row=idx, column=18, value='Yes' if case.oedema else 'No')
+        ws.cell(row=idx, column=14, value=float(case.weight_kg) if case.weight_kg else '')
+        ws.cell(row=idx, column=15, value=float(visit.weight_kg) if visit else float(case.weight_kg) if case.weight_kg else '')
+        ws.cell(row=idx, column=16, value=float(visit.height_cm) if visit else float(case.height_cm) if case.height_cm else '')
+        ws.cell(row=idx, column=17, value=float(visit.muac_cm) if visit and visit.muac_cm else float(case.muac_cm) if case.muac_cm else '')
+        ws.cell(row=idx, column=18, value=case.oedema or 'No')
         ws.cell(row=idx, column=19, value=case.discharge_date.strftime('%Y-%m-%d') if case.discharge_date else '')
         ws.cell(row=idx, column=20, value=case.outcome or '')
         ws.cell(row=idx, column=21, value=case.outcome_notes or '')
@@ -127,32 +127,32 @@ def _export_cases_csv(qs):
     writer = csv.writer(output)
     
     headers = [
-        'Case ID', 'Child Name', 'Registration Date', 'Birth Date', 'Age (months)',
-        'Gender', 'Guardian Name', 'Guardian Phone', 'Malnutrition Type',
+        'Registration No', 'Child Name', 'Registration Date', 'Date of Birth', 'Age (months)',
+        'Gender', 'Caregiver Name', 'Caregiver Phone', 'Malnutrition Type',
         'Status', 'Facility', 'Admission Weight (kg)', 'Current Weight (kg)',
-        'Height (cm)', 'MUAC (mm)', 'Oedema', 'Discharge Date', 'Discharge Reason'
+        'Height (cm)', 'MUAC (cm)', 'Oedema', 'Discharge Date', 'Outcome'
     ]
     writer.writerow(headers)
     
     for case in qs:
-        visit = OpcVisit.objects.filter(case=case).order_by('-visit_date').first()
+        visit = OpcVisit.objects.filter(registration=case).order_by('-visit_date').first()
         writer.writerow([
-            case.case_id or case.id,
+            case.registration_number or case.id,
             case.child_name,
             case.registration_date.strftime('%Y-%m-%d') if case.registration_date else '',
-            case.birth_date.strftime('%Y-%m-%d') if case.birth_date else '',
-            case.age_in_months_at_reg,
-            case.gender,
-            case.guardian_name,
-            case.guardian_phone,
+            case.date_of_birth.strftime('%Y-%m-%d') if case.date_of_birth else '',
+            case.age_months,
+            case.child_gender,
+            case.caregiver_name,
+            case.caregiver_phone or '',
             case.malnutrition_type,
             case.status,
             case.facility.name if case.facility else '',
-            case.admission_weight,
-            visit.weight if visit else case.current_weight,
-            visit.height if visit else '',
-            visit.muac if visit else case.muac_cm,
-            'Yes' if case.oedema else 'No',
+            float(case.weight_kg) if case.weight_kg else '',
+            float(visit.weight_kg) if visit else '',
+            float(visit.height_cm) if visit and visit.height_cm else float(case.height_cm) if case.height_cm else '',
+            float(visit.muac_cm) if visit and visit.muac_cm else float(case.muac_cm) if case.muac_cm else '',
+            case.oedema or 'No',
             case.discharge_date.strftime('%Y-%m-%d') if case.discharge_date else '',
             case.outcome or '',
         ])
@@ -192,26 +192,26 @@ def _export_inventory_excel(qs):
     
     headers = [
         'Item Name', 'Category', 'Facility', 'Region', 'District',
-        'Current Quantity', 'Unit', 'Minimum Stock', 'Status',
-        'Last Updated', 'Last Movement', 'Batch Number', 'Expiry Date'
+        'Current Quantity', 'Unit', 'Minimum Stock', 'Reorder Level',
+        'Last Updated', 'Batch Number', 'Expiry Date'
     ]
     
     _style_excel_header(ws, headers)
     
     for idx, stock in enumerate(qs, 2):
-        ws.cell(row=idx, column=1, value=stock.item.name if stock.item else '')
-        ws.cell(row=idx, column=2, value=stock.item.category.name if stock.item and stock.item.category else '')
+        item = stock.inventory_item
+        ws.cell(row=idx, column=1, value=item.name if item else '')
+        ws.cell(row=idx, column=2, value=item.category if item else '')
         ws.cell(row=idx, column=3, value=stock.facility.name if stock.facility else '')
-        ws.cell(row=idx, column=4, value=stock.facility.region.name if stock.facility and stock.facility.region else '')
+        ws.cell(row=idx, column=4, value=stock.facility.district.region.name if stock.facility and stock.facility.district and stock.facility.district.region else '')
         ws.cell(row=idx, column=5, value=stock.facility.district.name if stock.facility and stock.facility.district else '')
-        ws.cell(row=idx, column=6, value=stock.quantity)
-        ws.cell(row=idx, column=7, value=stock.item.unit if stock.item else '')
-        ws.cell(row=idx, column=8, value=stock.item.min_stock_level if stock.item else '')
-        ws.cell(row=idx, column=9, value=stock.status)
+        ws.cell(row=idx, column=6, value=stock.current_stock)
+        ws.cell(row=idx, column=7, value=item.unit_of_measure if item else '')
+        ws.cell(row=idx, column=8, value=item.min_stock_level if item else '')
+        ws.cell(row=idx, column=9, value=item.reorder_level if item else '')
         ws.cell(row=idx, column=10, value=stock.last_updated.strftime('%Y-%m-%d %H:%M') if stock.last_updated else '')
-        ws.cell(row=idx, column=11, value=stock.last_movement_date.strftime('%Y-%m-%d') if stock.last_movement_date else '')
-        ws.cell(row=idx, column=12, value=stock.batch_number or '')
-        ws.cell(row=idx, column=13, value=stock.expiry_date.strftime('%Y-%m-%d') if stock.expiry_date else '')
+        ws.cell(row=idx, column=11, value=item.batch_number or '')
+        ws.cell(row=idx, column=12, value=item.expiry_date.strftime('%Y-%m-%d') if item and item.expiry_date else '')
     
     # Adjust column widths
     for col in ws.columns:
@@ -246,22 +246,23 @@ def _export_inventory_csv(qs):
     
     headers = [
         'Item Name', 'Category', 'Facility', 'Current Quantity', 'Unit',
-        'Minimum Stock', 'Status', 'Last Updated', 'Batch Number', 'Expiry Date'
+        'Minimum Stock', 'Reorder Level', 'Last Updated', 'Batch Number', 'Expiry Date'
     ]
     writer.writerow(headers)
     
     for stock in qs:
+        item = stock.inventory_item
         writer.writerow([
-            stock.item.name if stock.item else '',
-            stock.item.category.name if stock.item and stock.item.category else '',
+            item.name if item else '',
+            item.category if item else '',
             stock.facility.name if stock.facility else '',
-            stock.quantity,
-            stock.item.unit if stock.item else '',
-            stock.item.min_stock_level if stock.item else '',
-            stock.status,
+            stock.current_stock,
+            item.unit_of_measure if item else '',
+            item.min_stock_level if item else '',
+            item.reorder_level if item else '',
             stock.last_updated.strftime('%Y-%m-%d %H:%M') if stock.last_updated else '',
-            stock.batch_number or '',
-            stock.expiry_date.strftime('%Y-%m-%d') if stock.expiry_date else '',
+            item.batch_number or '',
+            item.expiry_date.strftime('%Y-%m-%d') if item and item.expiry_date else '',
         ])
     
     response = HttpResponse(output.getvalue(), content_type='text/csv')
