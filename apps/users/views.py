@@ -360,8 +360,12 @@ def user_create(request):
 @login_required
 def user_detail(request, pk):
     """View user details"""
-    user = get_object_or_404(User, pk=pk)
-    context = {'user_obj': user}
+    user_obj = get_object_or_404(User, pk=pk)
+    # RBAC: verify current user can access this user
+    accessible_users = request.user.get_accessible_users()
+    if accessible_users is not None and user_obj not in accessible_users:
+        return HttpResponseForbidden('You do not have access to this user.')
+    context = {'user_obj': user_obj}
     return render(request, 'users/user_detail.html', context)
 
 
@@ -369,6 +373,10 @@ def user_detail(request, pk):
 def user_edit(request, pk):
     """Edit user"""
     edit_user = get_object_or_404(User, pk=pk)
+    # RBAC: verify current user can access this user
+    accessible_users = request.user.get_accessible_users()
+    if accessible_users is not None and edit_user not in accessible_users:
+        return HttpResponseForbidden('You do not have access to this user.')
     
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
@@ -410,6 +418,10 @@ def user_edit(request, pk):
 def user_delete(request, pk):
     """Delete user"""
     user = get_object_or_404(User, pk=pk)
+    # RBAC: verify current user can access this user
+    accessible_users = request.user.get_accessible_users()
+    if accessible_users is not None and user not in accessible_users:
+        return HttpResponseForbidden('You do not have access to this user.')
     
     if request.method == 'POST':
         user.is_active = False

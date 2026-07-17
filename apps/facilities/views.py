@@ -1,6 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.http import HttpResponseForbidden
 from .models import Facility
 from apps.locations.models import Region, District, SubDistrict
 
@@ -83,6 +84,9 @@ def facility_create(request):
 def facility_detail(request, pk):
     """View facility details"""
     facility = get_object_or_404(Facility, pk=pk)
+    accessible = request.user.get_accessible_facilities()
+    if accessible is not None and facility not in accessible:
+        return HttpResponseForbidden('You do not have access to this facility.')
     context = {'facility': facility}
     return render(request, 'facilities/facility_detail.html', context)
 
@@ -91,6 +95,9 @@ def facility_detail(request, pk):
 def facility_edit(request, pk):
     """Edit facility"""
     facility = get_object_or_404(Facility, pk=pk)
+    accessible = request.user.get_accessible_facilities()
+    if accessible is not None and facility not in accessible:
+        return HttpResponseForbidden('You do not have access to this facility.')
     
     if request.method == 'POST':
         facility.name = request.POST.get('name', '').strip()
@@ -127,6 +134,9 @@ def facility_edit(request, pk):
 def facility_delete(request, pk):
     """Delete facility"""
     facility = get_object_or_404(Facility, pk=pk)
+    accessible = request.user.get_accessible_facilities()
+    if accessible is not None and facility not in accessible:
+        return HttpResponseForbidden('You do not have access to this facility.')
     
     if request.method == 'POST':
         facility.is_active = False
