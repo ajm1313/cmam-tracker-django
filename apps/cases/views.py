@@ -8,6 +8,15 @@ from django.core.paginator import Paginator
 from datetime import timedelta, date
 from .models import OpcRegistration, OpcVisit, SamCase, MamCase, IpcCase, CaseTask
 from apps.inventory.stock_utils import deduct_stock_for_registration, deduct_stock_for_visit, reverse_stock_for_registration, reverse_stock_for_visit
+from django.http import HttpResponseForbidden
+
+
+def _check_case_access(request, case):
+    """Return True if user has access to the case's facility, else False."""
+    accessible = request.user.get_accessible_facilities()
+    if accessible is None:
+        return True
+    return case.facility_id in [f.id for f in accessible]
 
 
 @login_required
@@ -337,6 +346,8 @@ def api_next_registration_number(request):
 def case_detail(request, pk):
     """View case details"""
     case = get_object_or_404(OpcRegistration, pk=pk)
+    if not _check_case_access(request, case):
+        return HttpResponseForbidden('You do not have access to this case.')
     visits = case.visits.all().order_by('visit_date')
     
     # Build growth chart data points
@@ -376,6 +387,8 @@ def case_detail(request, pk):
 def case_edit(request, pk):
     """Edit case"""
     case = get_object_or_404(OpcRegistration, pk=pk)
+    if not _check_case_access(request, case):
+        return HttpResponseForbidden('You do not have access to this case.')
     
     if request.method == 'POST':
         from apps.facilities.models import Facility
@@ -494,6 +507,8 @@ def case_edit(request, pk):
 def case_delete(request, pk):
     """Delete case"""
     case = get_object_or_404(OpcRegistration, pk=pk)
+    if not _check_case_access(request, case):
+        return HttpResponseForbidden('You do not have access to this case.')
     
     if request.method == 'POST':
         # Reverse stock deductions for registration and all its visits
@@ -586,6 +601,8 @@ def due_visits(request):
 def visit_form(request, registration_id):
     """Visit form for recording a visit"""
     case = get_object_or_404(OpcRegistration, pk=registration_id)
+    if not _check_case_access(request, case):
+        return HttpResponseForbidden('You do not have access to this case.')
     visit_type = case.malnutrition_type
     
     # Get last visit
@@ -786,6 +803,8 @@ def visit_form(request, registration_id):
 def view_visits(request, registration_id):
     """View all visits for a case"""
     case = get_object_or_404(OpcRegistration, pk=registration_id)
+    if not _check_case_access(request, case):
+        return HttpResponseForbidden('You do not have access to this case.')
     visits = case.visits.all().order_by('-visit_date')
     
     context = {
@@ -995,6 +1014,8 @@ def discharge_management(request):
 def process_discharge(request, registration_id):
     """Process a case discharge"""
     case = get_object_or_404(OpcRegistration, pk=registration_id)
+    if not _check_case_access(request, case):
+        return HttpResponseForbidden('You do not have access to this case.')
     
     if request.method == 'POST':
         outcome = request.POST.get('outcome')
@@ -1031,6 +1052,8 @@ def process_discharge(request, registration_id):
 def case_transfer(request, pk):
     """Transfer/referral a case to another facility or IPC"""
     case = get_object_or_404(OpcRegistration, pk=pk)
+    if not _check_case_access(request, case):
+        return HttpResponseForbidden('You do not have access to this case.')
     user = request.user
     facilities = user.get_accessible_facilities()
 

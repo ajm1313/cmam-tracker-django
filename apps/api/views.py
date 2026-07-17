@@ -259,6 +259,14 @@ def facility_stock(request, facility_id):
             'message': 'Facility not found'
         }, status=status.HTTP_404_NOT_FOUND)
     
+    # RBAC: verify user has access to this facility
+    accessible = request.user.get_accessible_facilities()
+    if accessible is not None and facility not in accessible:
+        return Response({
+            'success': False,
+            'message': 'You do not have access to this facility'
+        }, status=status.HTTP_403_FORBIDDEN)
+    
     stock_levels = StockLevel.objects.filter(
         facility=facility,
         location_type='facility'
@@ -371,6 +379,17 @@ def facilities_list(request):
             Q(code__icontains=search) |
             Q(district__name__icontains=search)
         )
+
+    # Location filters
+    region_id = request.query_params.get('region')
+    district_id = request.query_params.get('district')
+    sub_district_id = request.query_params.get('sub_district')
+    if sub_district_id:
+        facilities = facilities.filter(sub_district_id=sub_district_id)
+    elif district_id:
+        facilities = facilities.filter(district_id=district_id)
+    elif region_id:
+        facilities = facilities.filter(district__region_id=region_id)
     page = int(request.query_params.get('page', 1))
     page_size = int(request.query_params.get('page_size', 50))
     page_size = min(page_size, 200)
@@ -920,7 +939,7 @@ def dashboard_stats(request):
                 period_end = date(y + 1, 1, 1)
             month_start = period_start
             qs = qs.filter(
-                Q(admission_date__gte=period_start, admission_date__lt=period_end) |
+                Q(registration_date__gte=period_start, registration_date__lt=period_end) |
                 Q(status='Active')
             )
         except (ValueError, TypeError):
@@ -998,8 +1017,8 @@ def dashboard_analytics(request):
         month_end = (month_start + timedelta(days=32)).replace(day=1)
         month_label = month_start.strftime('%b %Y')
         
-        sam_count = qs.filter(malnutrition_type='SAM', admission_date__gte=month_start, admission_date__lt=month_end).count()
-        mam_count = qs.filter(malnutrition_type='MAM', admission_date__gte=month_start, admission_date__lt=month_end).count()
+        sam_count = qs.filter(malnutrition_type='SAM', registration_date__gte=month_start, registration_date__lt=month_end).count()
+        mam_count = qs.filter(malnutrition_type='MAM', registration_date__gte=month_start, registration_date__lt=month_end).count()
         
         months_data.append({
             'month': month_label,

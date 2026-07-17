@@ -18,8 +18,13 @@ def inventory_dashboard(request):
     # Get summary statistics
     total_items = InventoryItem.objects.filter(is_active=True).count()
     
+    # RBAC: filter stock levels to user's accessible facilities
+    accessible = user.get_accessible_facilities()
+    
     # Get stock levels with status
     stock_levels = StockLevel.objects.select_related('inventory_item', 'facility')
+    if accessible is not None:
+        stock_levels = stock_levels.filter(facility__in=accessible)
     
     critical_count = 0
     low_count = 0
@@ -35,12 +40,17 @@ def inventory_dashboard(request):
             normal_count += 1
     
     # Get facilities count
-    facilities_count = Facility.objects.filter(is_active=True).count()
+    facilities_count = accessible.count() if accessible is not None else Facility.objects.filter(is_active=True).count()
     
-    # Recent movements
+    # Recent movements (RBAC-filtered)
     recent_movements = StockMovement.objects.select_related(
         'inventory_item', 'created_by'
-    ).order_by('-movement_date')[:5]
+    )
+    if accessible is not None:
+        recent_movements = recent_movements.filter(
+            Q(source_facility__in=accessible) | Q(destination_facility__in=accessible)
+        )
+    recent_movements = recent_movements.order_by('-movement_date')[:5]
     
     # Inventory items overview
     items = InventoryItem.objects.filter(is_active=True)[:10]
@@ -68,9 +78,16 @@ def inventory_list(request):
 @login_required
 def inventory_track(request):
     """Track inventory movements"""
+    user = request.user
+    accessible = user.get_accessible_facilities()
     movements = StockMovement.objects.select_related(
         'inventory_item', 'created_by'
-    ).order_by('-movement_date')[:100]
+    )
+    if accessible is not None:
+        movements = movements.filter(
+            Q(source_facility__in=accessible) | Q(destination_facility__in=accessible)
+        )
+    movements = movements.order_by('-movement_date')[:100]
     context = {'movements': movements}
     return render(request, 'inventory/inventory_track.html', context)
 
@@ -226,6 +243,11 @@ def stock_levels(request):
         'inventory_item', 'facility', 'region', 'district'
     ).order_by('inventory_item__name')
     
+    # RBAC: filter to user's accessible facilities
+    accessible = user.get_accessible_facilities()
+    if accessible is not None:
+        stock_levels_qs = stock_levels_qs.filter(facility__in=accessible)
+    
     # Apply filters
     if search:
         stock_levels_qs = stock_levels_qs.filter(
@@ -267,7 +289,10 @@ def stock_levels(request):
     
     # Get filter options
     categories = InventoryItem.ITEM_CATEGORIES
-    facilities = Facility.objects.filter(is_active=True).order_by('name')
+    if accessible is not None:
+        facilities = accessible.order_by('name')
+    else:
+        facilities = Facility.objects.filter(is_active=True).order_by('name')
     
     context = {
         'stock_levels': stock_data,
