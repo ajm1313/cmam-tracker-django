@@ -62,6 +62,21 @@
                 <input type="text" name="caregiver_name" required value="{% if case %}{{ case.caregiver_name }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
             </div>
             <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Caregiver's Phone</label>
+                <input type="tel" name="caregiver_phone" value="{% if case %}{{ case.caregiver_phone }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" placeholder="e.g., +234 800 123 4567">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Caregiver's Relationship</label>
+                <select name="caregiver_relationship" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                    <option value="">Select</option>
+                    <option value="Mother" {% if case and case.caregiver_relationship == 'Mother' %}selected{% endif %}>Mother</option>
+                    <option value="Father" {% if case and case.caregiver_relationship == 'Father' %}selected{% endif %}>Father</option>
+                    <option value="Grandparent" {% if case and case.caregiver_relationship == 'Grandparent' %}selected{% endif %}>Grandparent</option>
+                    <option value="Guardian" {% if case and case.caregiver_relationship == 'Guardian' %}selected{% endif %}>Guardian</option>
+                    <option value="Other" {% if case and case.caregiver_relationship == 'Other' %}selected{% endif %}>Other</option>
+                </select>
+            </div>
+            <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Community *</label>
                 <input type="text" name="community" required value="{% if case %}{{ case.address }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
             </div>
@@ -362,6 +377,15 @@
                 <label class="block text-sm font-medium text-gray-700 mb-1">Counselling</label>
                 <input type="text" name="counselling" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" placeholder="e.g., Feeding practices">
             </div>
+        </div>
+    </div>
+
+    <!-- Additional Notes -->
+    <div class="border-b pb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Additional Notes</h3>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+            <textarea name="additional_notes" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" placeholder="Any additional notes about the child or family">{% if case %}{{ case.additional_notes }}{% endif %}</textarea>
         </div>
     </div>
 

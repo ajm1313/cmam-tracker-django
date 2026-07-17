@@ -371,10 +371,20 @@ def facilities_list(request):
             Q(code__icontains=search) |
             Q(district__name__icontains=search)
         )
-    serializer = FacilitySerializer(facilities, many=True)
+    page = int(request.query_params.get('page', 1))
+    page_size = int(request.query_params.get('page_size', 50))
+    page_size = min(page_size, 200)
+    total = facilities.count()
+    start = (page - 1) * page_size
+    end = start + page_size
+    serializer = FacilitySerializer(facilities[start:end], many=True)
     return Response({
         'success': True,
-        'data': serializer.data
+        'data': serializer.data,
+        'pagination': {
+            'page': page, 'page_size': page_size,
+            'total': total, 'total_pages': (total + page_size - 1) // page_size,
+        }
     })
 
 
@@ -386,7 +396,7 @@ def system_info(request):
         'success': True,
         'data': {
             'app_name': 'CMAM Tracker',
-            'version': '1.0.0',
+            'version': '1.2.0',
             'api_version': 'v1',
             'server_time': timezone.now().isoformat(),
         }
@@ -685,6 +695,17 @@ def record_visit_api(request, registration_id):
         food_product_type=data.get('food_product_type', ''),
         food_product_quantity=data.get('food_product_quantity', ''),
         staff_name=data.get('staff_name', ''),
+        z_score_wfa=data.get('z_score_wfa'),
+        z_score_hfa=data.get('z_score_hfa'),
+        counseling_topics=data.get('counseling_topics', ''),
+        caregiver_understanding=data.get('caregiver_understanding', ''),
+        next_visit_date=data.get('next_visit_date'),
+        treatment_response=data.get('treatment_response', ''),
+        action_needed=data.get('action_needed', False),
+        home_visit_needed=data.get('home_visit_needed', False),
+        home_visit_date=data.get('home_visit_date'),
+        home_visit_notes=data.get('home_visit_notes', ''),
+        community_volunteer=data.get('community_volunteer', ''),
         visit_outcome=data.get('visit_outcome', 'Continue'),
         outcome_notes=data.get('outcome_notes', ''),
         conducted_by=request.user,
@@ -1198,11 +1219,22 @@ def due_visits_api(request):
                 today_count += 1
 
     due_list.sort(key=lambda x: x['next_due_date'])
+    
+    page = int(request.query_params.get('page', 1))
+    page_size = int(request.query_params.get('page_size', 50))
+    page_size = min(page_size, 200)
+    total = len(due_list)
+    start = (page - 1) * page_size
+    end = start + page_size
     return Response({
         'success': True,
         'data': {
-            'due_visits': due_list,
-            'stats': {'due_count': len(due_list), 'overdue_count': overdue_count, 'today_count': today_count},
+            'due_visits': due_list[start:end],
+            'stats': {'due_count': total, 'overdue_count': overdue_count, 'today_count': today_count},
+            'pagination': {
+                'page': page, 'page_size': page_size,
+                'total': total, 'total_pages': (total + page_size - 1) // page_size,
+            }
         }
     })
 
@@ -1999,7 +2031,21 @@ def stock_levels_api(request):
         'reorder_level': sl.inventory_item.reorder_level,
         'is_low': sl.current_stock <= sl.inventory_item.reorder_level,
     } for sl in qs]
-    return Response({'success': True, 'data': data})
+    
+    page = int(request.query_params.get('page', 1))
+    page_size = int(request.query_params.get('page_size', 50))
+    page_size = min(page_size, 200)
+    total = len(data)
+    start = (page - 1) * page_size
+    end = start + page_size
+    return Response({
+        'success': True,
+        'data': data[start:end],
+        'pagination': {
+            'page': page, 'page_size': page_size,
+            'total': total, 'total_pages': (total + page_size - 1) // page_size,
+        }
+    })
 
 
 @api_view(['POST'])

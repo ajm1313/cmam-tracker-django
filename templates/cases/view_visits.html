@@ -45,8 +45,13 @@
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Visit #</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Weight</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Height</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">MUAC</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Z-Score</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">RUTF</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Temp</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Appetite</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Condition</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Outcome</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Conducted By</th>
                     </tr>
@@ -59,11 +64,22 @@
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">{{ visit.visit_date|date:"M j, Y" }}</td>
                         <td class="px-6 py-4 whitespace-nowrap">{{ visit.weight_kg }} kg</td>
+                        <td class="px-6 py-4 whitespace-nowrap">{% if visit.height_cm %}{{ visit.height_cm }} cm{% else %}-{% endif %}</td>
                         <td class="px-6 py-4 whitespace-nowrap">{% if visit.muac_cm %}{{ visit.muac_cm }} cm{% else %}-{% endif %}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">{% if visit.z_score_wfh %}{{ visit.z_score_wfh }}{% else %}-{% endif %}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">{% if visit.rutf_sachets_given %}{{ visit.rutf_sachets_given }}{% else %}-{% endif %}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">{% if visit.temperature %}{{ visit.temperature }}°C{% else %}-{% endif %}</td>
                         <td class="px-6 py-4 whitespace-nowrap">
                             {% if visit.appetite %}
                             <span class="px-2 py-1 text-xs rounded-full {% if visit.appetite == 'Good' %}bg-green-100 text-green-800{% elif visit.appetite == 'Fair' %}bg-yellow-100 text-yellow-800{% else %}bg-red-100 text-red-800{% endif %}">
                                 {{ visit.appetite }}
+                            </span>
+                            {% else %}-{% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if visit.general_condition %}
+                            <span class="px-2 py-1 text-xs rounded-full {% if visit.general_condition == 'Good' %}bg-green-100 text-green-800{% elif visit.general_condition == 'Fair' %}bg-yellow-100 text-yellow-800{% else %}bg-red-100 text-red-800{% endif %}">
+                                {{ visit.general_condition }}
                             </span>
                             {% else %}-{% endif %}
                         </td>

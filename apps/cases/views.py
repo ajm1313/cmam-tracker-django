@@ -207,7 +207,7 @@ def case_create(request):
                     malnutrition_type=malnutrition_type,
                     mam_type=request.POST.get('mam_type') or None,
                     child_name=request.POST.get('child_name', '').strip(),
-                    child_gender=request.POST.get('gender', ''),
+                    child_gender=request.POST.get('child_gender') or request.POST.get('gender', ''),
                     date_of_birth=request.POST.get('date_of_birth'),
                     age_months=request.POST.get('child_age_months', 0) or request.POST.get('age_months', 0),
                     caregiver_name=request.POST.get('caregiver_name', '').strip(),
@@ -384,7 +384,7 @@ def case_edit(request, pk):
             if facility_id:
                 case.facility = get_object_or_404(Facility, pk=facility_id)
             case.child_name = request.POST.get('child_name', '').strip() or case.child_name
-            case.child_gender = request.POST.get('gender', '') or case.child_gender
+            case.child_gender = request.POST.get('child_gender') or request.POST.get('gender') or case.child_gender
             case.date_of_birth = request.POST.get('date_of_birth') or case.date_of_birth
             case.age_months = request.POST.get('child_age_months') or request.POST.get('age_months') or case.age_months
             case.caregiver_name = request.POST.get('caregiver_name', '').strip() or case.caregiver_name

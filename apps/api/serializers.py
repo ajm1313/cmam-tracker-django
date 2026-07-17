@@ -4,6 +4,9 @@ from apps.facilities.models import Facility
 from apps.inventory.models import InventoryItem, StockLevel, StockMovement
 from apps.cases.models import OpcRegistration, OpcVisit
 from apps.locations.models import Region, District
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -26,8 +29,8 @@ class UserSerializer(serializers.ModelSerializer):
             ur = UserRole.objects.filter(user=obj, is_active=True).select_related('role').first()
             if ur and ur.role:
                 return {'id': ur.role.id, 'name': ur.role.name, 'level': ur.role.level}
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Error fetching role for user {obj.id}: {e}")
         if obj.is_superuser:
             return {'id': 0, 'name': 'Super Administrator', 'level': 0}
         return {'id': -1, 'name': 'User', 'level': 99}
@@ -48,8 +51,8 @@ class UserSerializer(serializers.ModelSerializer):
                     'facility_name': ur.facility.name if ur.facility else None,
                     'facility_type': ur.facility.type if ur.facility else None,
                 }
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Error fetching location for user {obj.id}: {e}")
         return {}
 
 
@@ -89,55 +92,64 @@ class FacilitySerializer(serializers.ModelSerializer):
     def get_district_name(self, obj):
         try:
             return obj.district.name if obj.district_id else None
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Error fetching district_name for facility {obj.id}: {e}")
             return None
 
     def get_region_name(self, obj):
         try:
             return obj.district.region.name if obj.district_id else None
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Error fetching region_name for facility {obj.id}: {e}")
             return None
 
     def get_region_id(self, obj):
         try:
             return obj.district.region_id if obj.district_id else None
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Error fetching region_id for facility {obj.id}: {e}")
             return None
 
     def get_sub_district_name(self, obj):
         try:
             return obj.sub_district.name if obj.sub_district_id else None
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Error fetching sub_district_name for facility {obj.id}: {e}")
             return None
 
     def get_opc_day_display(self, obj):
         try:
             return obj.opc_day_display
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Error fetching opc_day_display for facility {obj.id}: {e}")
             return None
 
     def get_expected_sam_cases(self, obj):
         try:
             return obj.expected_sam_cases
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Error fetching expected_sam_cases for facility {obj.id}: {e}")
             return None
 
     def get_sam_target(self, obj):
         try:
             return obj.sam_target
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Error fetching sam_target for facility {obj.id}: {e}")
             return None
 
     def get_expected_mam_cases(self, obj):
         try:
             return obj.expected_mam_cases
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Error fetching expected_mam_cases for facility {obj.id}: {e}")
             return None
 
     def get_mam_target(self, obj):
         try:
             return obj.mam_target
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Error fetching mam_target for facility {obj.id}: {e}")
             return None
 
 
@@ -194,9 +206,9 @@ class OpcVisitSerializer(serializers.ModelSerializer):
             'food_product_type', 'food_product_quantity', 'staff_name',
             'counseling_topics', 'caregiver_understanding', 'next_visit_date',
             'treatment_response', 'visit_outcome', 'outcome_notes',
-            'weight_change', 'created_at',
+            'weight_change', 'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'weight_change', 'created_at']
+        read_only_fields = ['id', 'weight_change', 'created_at', 'updated_at']
     
     def get_weight_change(self, obj):
         return obj.get_weight_change()
@@ -229,13 +241,15 @@ class OpcRegistrationListSerializer(serializers.ModelSerializer):
     def get_next_visit_date(self, obj):
         try:
             return obj.get_next_visit_date().isoformat()
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Error fetching next_visit_date for registration {obj.id}: {e}")
             return None
     
     def get_is_visit_due(self, obj):
         try:
             return obj.is_visit_due()
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Error checking is_visit_due for registration {obj.id}: {e}")
             return False
 
 
@@ -300,13 +314,15 @@ class OpcRegistrationDetailSerializer(serializers.ModelSerializer):
     def get_next_visit_date(self, obj):
         try:
             return obj.get_next_visit_date().isoformat()
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Error fetching next_visit_date for registration {obj.id}: {e}")
             return None
     
     def get_is_visit_due(self, obj):
         try:
             return obj.is_visit_due()
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Error checking is_visit_due for registration {obj.id}: {e}")
             return False
     
     def get_visits(self, obj):
