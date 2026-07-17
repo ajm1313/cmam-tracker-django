@@ -30,6 +30,22 @@ from .serializers import (
 )
 
 
+def _check_case_access_api(request, case):
+    """Return Response(403) if user lacks access to the case's facility, else None."""
+    accessible = request.user.get_accessible_facilities()
+    if accessible is not None and case.facility_id not in [f.id for f in accessible]:
+        return Response({'success': False, 'message': 'You do not have access to this case.'}, status=status.HTTP_403_FORBIDDEN)
+    return None
+
+
+def _check_facility_access_api(request, facility):
+    """Return Response(403) if user lacks access to the facility, else None."""
+    accessible = request.user.get_accessible_facilities()
+    if accessible is not None and facility.id not in [f.id for f in accessible]:
+        return Response({'success': False, 'message': 'You do not have access to this facility.'}, status=status.HTTP_403_FORBIDDEN)
+    return None
+
+
 def _detailed_case_stats(cases_qs, date_from, date_to, prev_period_end=None):
     """Compute detailed case statistics matching the web monthly/weekly report.
 
@@ -353,8 +369,13 @@ def facility_movements(request, facility_id):
             'message': 'Facility not found'
         }, status=status.HTTP_404_NOT_FOUND)
     
+    # RBAC: verify user has access to this facility
+    denied = _check_facility_access_api(request, facility)
+    if denied:
+        return denied
+    
     movements = StockMovement.objects.filter(
-        source_facility=facility
+        Q(source_facility=facility) | Q(destination_facility=facility)
     ).select_related('inventory_item', 'created_by').order_by('-movement_date')[:50]
     
     serializer = StockMovementSerializer(movements, many=True)
@@ -456,7 +477,7 @@ def cases_list(request):
             Q(caregiver_name__icontains=search)
         )
     
-    qs = qs.order_by('-admission_date')
+    qs = qs.order_by('-registration_date')
     page = int(request.query_params.get('page', 1))
     page_size = int(request.query_params.get('page_size', 50))
     page_size = min(page_size, 200)
@@ -489,6 +510,11 @@ def case_detail_api(request, pk):
     except OpcRegistration.DoesNotExist:
         return Response({'success': False, 'message': 'Case not found'}, status=status.HTTP_404_NOT_FOUND)
     
+    # RBAC: verify user has access to case's facility
+    denied = _check_case_access_api(request, case)
+    if denied:
+        return denied
+
     serializer = OpcRegistrationDetailSerializer(case, context={'request': request})
     return Response({'success': True, 'data': serializer.data})
 
@@ -662,6 +688,11 @@ def case_visits(request, registration_id):
     except OpcRegistration.DoesNotExist:
         return Response({'success': False, 'message': 'Case not found'}, status=status.HTTP_404_NOT_FOUND)
     
+    # RBAC: verify user has access to case's facility
+    denied = _check_case_access_api(request, case)
+    if denied:
+        return denied
+
     visits = case.visits.order_by('visit_number')
     serializer = OpcVisitSerializer(visits, many=True)
     return Response({'success': True, 'data': serializer.data})
@@ -676,6 +707,11 @@ def record_visit_api(request, registration_id):
     except OpcRegistration.DoesNotExist:
         return Response({'success': False, 'message': 'Case not found'}, status=status.HTTP_404_NOT_FOUND)
     
+    # RBAC: verify user has access to case's facility
+    denied = _check_case_access_api(request, case)
+    if denied:
+        return denied
+
     data = request.data
     next_number = case.visits.count() + 1
     
@@ -1084,6 +1120,11 @@ def case_edit_api(request, pk):
     except OpcRegistration.DoesNotExist:
         return Response({'success': False, 'message': 'Case not found'}, status=status.HTTP_404_NOT_FOUND)
 
+    # RBAC: verify user has access to case's facility
+    denied = _check_case_access_api(request, case)
+    if denied:
+        return denied
+
     # Conflict detection: reject if client's copy is stale
     client_updated_at = request.data.get('_updated_at')
     if client_updated_at:
@@ -1179,6 +1220,11 @@ def case_delete_api(request, pk):
         case = OpcRegistration.objects.get(pk=pk)
     except OpcRegistration.DoesNotExist:
         return Response({'success': False, 'message': 'Case not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    # RBAC: verify user has access to case's facility
+    denied = _check_case_access_api(request, case)
+    if denied:
+        return denied
 
     # Reverse stock deductions for registration and all its visits
     try:
@@ -1325,6 +1371,11 @@ def process_discharge_api(request, pk):
     except OpcRegistration.DoesNotExist:
         return Response({'success': False, 'message': 'Case not found'}, status=status.HTTP_404_NOT_FOUND)
 
+    # RBAC: verify user has access to case's facility
+    denied = _check_case_access_api(request, case)
+    if denied:
+        return denied
+
     outcome = request.data.get('outcome')
     outcome_map = {
         'Cured': ('Discharged', 'Cured'), 'Defaulted': ('Defaulted', 'Defaulted'),
@@ -1352,6 +1403,12 @@ def visit_edit_api(request, registration_id, visit_id):
         visit = OpcVisit.objects.get(pk=visit_id, registration_id=registration_id)
     except OpcVisit.DoesNotExist:
         return Response({'success': False, 'message': 'Visit not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    # RBAC: verify user has access to case's facility
+    case = visit.registration
+    denied = _check_case_access_api(request, case)
+    if denied:
+        return denied
 
     # Conflict detection
     client_updated_at = request.data.get('_updated_at')
@@ -2096,6 +2153,11 @@ def update_stock_api(request):
     except (InventoryItem.DoesNotExist, Facility.DoesNotExist):
         return Response({'success': False, 'message': 'Item or facility not found'}, status=status.HTTP_404_NOT_FOUND)
 
+    # RBAC: verify user has access to this facility
+    denied = _check_facility_access_api(request, facility)
+    if denied:
+        return denied
+
     StockMovement.objects.create(
         inventory_item=item, movement_type=movement_type, quantity=int(quantity),
         source_type='facility', source_facility=facility,
@@ -2166,6 +2228,15 @@ def stock_movement_create_api(request):
         item = InventoryItem.objects.get(pk=data['item_id'])
     except InventoryItem.DoesNotExist:
         return Response({'success': False, 'message': 'Item not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    # RBAC: verify user has access to source or destination facility
+    accessible = request.user.get_accessible_facilities()
+    if accessible is not None:
+        accessible_ids = [f.id for f in accessible]
+        src_fac = data.get('source_facility_id')
+        dst_fac = data.get('destination_facility_id')
+        if src_fac and int(src_fac) not in accessible_ids and dst_fac and int(dst_fac) not in accessible_ids:
+            return Response({'success': False, 'message': 'You do not have access to the source or destination facility.'}, status=status.HTTP_403_FORBIDDEN)
 
     m = StockMovement.objects.create(
         inventory_item=item, movement_type=data['movement_type'], quantity=int(data['quantity']),
@@ -2886,7 +2957,7 @@ def ipc_cases_api(request):
         status_filter = request.query_params.get('status', 'all')
         if status_filter != 'all':
             qs = qs.filter(status=status_filter)
-        qs = qs.order_by('-admission_date')
+        qs = qs.order_by('-registration_date')
         data = []
         for case in qs:
             data.append({
