@@ -2658,12 +2658,58 @@ def monthly_report_api(request):
         import logging
         logging.getLogger(__name__).warning(f"Stock start balance calculation failed (others): {e}")
 
+    # ── Other MAM aggregate data (matching web monthly facility report) ──
+    mam_other = {}
+    try:
+        other_mam_cases = OpcRegistration.objects.filter(
+            facility__in=accessible,
+            malnutrition_type='MAM',
+            mam_type='Other MAM'
+        )
+        # Start of month
+        mam_other['start'] = other_mam_cases.filter(
+            registration_date__lte=prev_period_end
+        ).filter(
+            Q(status='Active') | Q(discharge_date__gte=date_from)
+        ).count()
+        # New this month
+        new_other = other_mam_cases.filter(
+            registration_date__gte=date_from,
+            registration_date__lte=date_to
+        )
+        mam_other['new'] = new_other.count()
+        # Discharges
+        other_discharges = other_mam_cases.filter(
+            discharge_date__gte=date_from,
+            discharge_date__lte=date_to
+        )
+        mam_other['cured'] = other_discharges.filter(outcome='Cured').count()
+        mam_other['died'] = other_discharges.filter(status='Death').count()
+        mam_other['defaulted'] = other_discharges.filter(status='Defaulted').count()
+        mam_other['non_recovered'] = other_discharges.filter(outcome__icontains='Non-R').count()
+        mam_other['total_discharges'] = (
+            mam_other['cured'] + mam_other['died'] +
+            mam_other['defaulted'] + mam_other['non_recovered']
+        )
+        # End of month
+        mam_other['end'] = mam_other['start'] + mam_other['new'] - mam_other['total_discharges']
+        # Gender
+        mam_other['new_males'] = new_other.filter(child_gender='Male').count()
+        mam_other['new_females'] = new_other.filter(child_gender='Female').count()
+    except Exception:
+        mam_other = {
+            'start': 0, 'new': 0, 'cured': 0, 'died': 0,
+            'defaulted': 0, 'non_recovered': 0, 'total_discharges': 0,
+            'end': 0, 'new_males': 0, 'new_females': 0,
+        }
+
     return Response({'success': True, 'data': {
         'month': month, 'year': year,
         'date_from': date_from.isoformat(), 'date_to': date_to.isoformat(),
         'facilities': facility_reports,
         'coverage': coverage,
         'commodity': commodity,
+        'mam_other': mam_other,
     }})
 
 
@@ -2753,7 +2799,7 @@ def reports_summary_api(request):
 
     # ── Cases queryset (scoped to facilities + period) ──
     cases = OpcRegistration.objects.filter(facility__in=fac_qs)
-    period_cases = cases.filter(admission_date__gte=period_start, admission_date__lt=period_end)
+    period_cases = cases.filter(registration_date__gte=period_start, registration_date__lt=period_end)
 
     def breakdown(qs, mtype):
         filtered = qs.filter(malnutrition_type=mtype)
@@ -2764,7 +2810,7 @@ def reports_summary_api(request):
             'defaulted': filtered.filter(status='Defaulted').count(),
             'deaths': filtered.filter(status='Death').count(),
             'transferred': filtered.filter(status='Transfer').count(),
-            'new_admissions': filtered.filter(admission_date__gte=period_start, admission_date__lt=period_end).count(),
+            'new_admissions': filtered.filter(registration_date__gte=period_start, registration_date__lt=period_end).count(),
         }
 
     sam = breakdown(period_cases, 'SAM')

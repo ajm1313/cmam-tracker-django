@@ -63,7 +63,8 @@ def _export_cases_excel(qs):
     headers = [
         'Registration No', 'Child Name', 'Registration Date', 'Date of Birth', 'Age (months)',
         'Gender', 'Caregiver Name', 'Caregiver Phone', 'Malnutrition Type',
-        'Status', 'Facility', 'Region', 'District', 'Admission Weight (kg)',
+        'Status', 'Facility', 'Region', 'District', 'Admission Type', 'MAM Type',
+        'Admission Weight (kg)',
         'Current Weight (kg)', 'Height (cm)', 'MUAC (cm)', 'Oedema',
         'Discharge Date', 'Outcome', 'Notes'
     ]
@@ -86,14 +87,16 @@ def _export_cases_excel(qs):
         ws.cell(row=idx, column=11, value=case.facility.name if case.facility else '')
         ws.cell(row=idx, column=12, value=case.facility.district.region.name if case.facility and case.facility.district and case.facility.district.region else '')
         ws.cell(row=idx, column=13, value=case.facility.district.name if case.facility and case.facility.district else '')
-        ws.cell(row=idx, column=14, value=float(case.weight_kg) if case.weight_kg else '')
-        ws.cell(row=idx, column=15, value=float(visit.weight_kg) if visit else float(case.weight_kg) if case.weight_kg else '')
-        ws.cell(row=idx, column=16, value=float(visit.height_cm) if visit else float(case.height_cm) if case.height_cm else '')
-        ws.cell(row=idx, column=17, value=float(visit.muac_cm) if visit and visit.muac_cm else float(case.muac_cm) if case.muac_cm else '')
-        ws.cell(row=idx, column=18, value=case.oedema or 'No')
-        ws.cell(row=idx, column=19, value=case.discharge_date.strftime('%Y-%m-%d') if case.discharge_date else '')
-        ws.cell(row=idx, column=20, value=case.outcome or '')
-        ws.cell(row=idx, column=21, value=case.outcome_notes or '')
+        ws.cell(row=idx, column=14, value=case.admission_type or '')
+        ws.cell(row=idx, column=15, value=case.mam_type or '')
+        ws.cell(row=idx, column=16, value=float(case.weight_kg) if case.weight_kg else '')
+        ws.cell(row=idx, column=17, value=float(visit.weight_kg) if visit else float(case.weight_kg) if case.weight_kg else '')
+        ws.cell(row=idx, column=18, value=float(visit.height_cm) if visit else float(case.height_cm) if case.height_cm else '')
+        ws.cell(row=idx, column=19, value=float(visit.muac_cm) if visit and visit.muac_cm else float(case.muac_cm) if case.muac_cm else '')
+        ws.cell(row=idx, column=20, value=case.oedema or 'No')
+        ws.cell(row=idx, column=21, value=case.discharge_date.strftime('%Y-%m-%d') if case.discharge_date else '')
+        ws.cell(row=idx, column=22, value=case.outcome or '')
+        ws.cell(row=idx, column=23, value=case.outcome_notes or '')
     
     # Adjust column widths
     for col in ws.columns:
@@ -129,8 +132,9 @@ def _export_cases_csv(qs):
     headers = [
         'Registration No', 'Child Name', 'Registration Date', 'Date of Birth', 'Age (months)',
         'Gender', 'Caregiver Name', 'Caregiver Phone', 'Malnutrition Type',
-        'Status', 'Facility', 'Admission Weight (kg)', 'Current Weight (kg)',
-        'Height (cm)', 'MUAC (cm)', 'Oedema', 'Discharge Date', 'Outcome'
+        'Status', 'Facility', 'Region', 'District', 'Admission Type', 'MAM Type',
+        'Admission Weight (kg)', 'Current Weight (kg)',
+        'Height (cm)', 'MUAC (cm)', 'Oedema', 'Discharge Date', 'Outcome', 'Notes'
     ]
     writer.writerow(headers)
     
@@ -148,6 +152,10 @@ def _export_cases_csv(qs):
             case.malnutrition_type,
             case.status,
             case.facility.name if case.facility else '',
+            case.facility.district.region.name if case.facility and case.facility.district and case.facility.district.region else '',
+            case.facility.district.name if case.facility and case.facility.district else '',
+            case.admission_type or '',
+            case.mam_type or '',
             float(case.weight_kg) if case.weight_kg else '',
             float(visit.weight_kg) if visit else '',
             float(visit.height_cm) if visit and visit.height_cm else float(case.height_cm) if case.height_cm else '',
@@ -155,6 +163,7 @@ def _export_cases_csv(qs):
             case.oedema or 'No',
             case.discharge_date.strftime('%Y-%m-%d') if case.discharge_date else '',
             case.outcome or '',
+            case.outcome_notes or '',
         ])
     
     response = HttpResponse(output.getvalue(), content_type='text/csv')
