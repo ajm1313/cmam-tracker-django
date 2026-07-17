@@ -559,6 +559,11 @@ def case_create_api(request):
     except Facility.DoesNotExist:
         return Response({'success': False, 'message': 'Facility not found'}, status=status.HTTP_404_NOT_FOUND)
     
+    # RBAC: verify user has access to this facility
+    denied = _check_facility_access_api(request, facility)
+    if denied:
+        return denied
+    
     reg_number = OpcRegistration.generate_registration_number(facility, data['malnutrition_type'])
     
     case = OpcRegistration.objects.create(
@@ -3003,6 +3008,11 @@ def ipc_cases_api(request):
     if missing:
         return Response({'success': False, 'message': f'Missing fields: {", ".join(missing)}'},
                         status=status.HTTP_400_BAD_REQUEST)
+
+    # RBAC: verify user has access to the facility
+    accessible = request.user.get_accessible_facilities()
+    if accessible is not None and int(data['facility_id']) not in [f.id for f in accessible]:
+        return Response({'success': False, 'message': 'You do not have access to this facility.'}, status=status.HTTP_403_FORBIDDEN)
 
     case = IpcCase.objects.create(
         facility_id=int(data['facility_id']),
