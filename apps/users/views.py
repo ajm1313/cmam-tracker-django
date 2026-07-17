@@ -588,10 +588,10 @@ def reports(request):
     
     # Initialize summary data
     sam_summary = {
-        'total': 0, 'active': 0, 'cured': 0, 'defaulted': 0, 'deaths': 0
+        'total': 0, 'active': 0, 'cured': 0, 'defaulted': 0, 'deaths': 0, 'transfers': 0
     }
     mam_summary = {
-        'total': 0, 'active': 0, 'cured': 0, 'defaulted': 0, 'deaths': 0
+        'total': 0, 'active': 0, 'cured': 0, 'defaulted': 0, 'deaths': 0, 'transfers': 0
     }
     visits_summary = {
         'total': 0, 'sam_visits': 0, 'mam_visits': 0
@@ -612,6 +612,7 @@ def reports(request):
         sam_summary['cured'] = sam_cases.filter(status='Discharged', outcome='Cured').count()
         sam_summary['defaulted'] = sam_cases.filter(status='Defaulted').count()
         sam_summary['deaths'] = sam_cases.filter(status='Death').count()
+        sam_summary['transfers'] = sam_cases.filter(status='Transfer').count()
         
         # MAM Cases Summary (filtered by month/year)
         mam_cases = OpcRegistration.objects.filter(
@@ -624,6 +625,7 @@ def reports(request):
         mam_summary['cured'] = mam_cases.filter(status='Discharged', outcome='Cured').count()
         mam_summary['defaulted'] = mam_cases.filter(status='Defaulted').count()
         mam_summary['deaths'] = mam_cases.filter(status='Death').count()
+        mam_summary['transfers'] = mam_cases.filter(status='Transfer').count()
         
         # Visits Summary (filtered by month/year)
         from apps.cases.models import OpcVisit
@@ -1046,14 +1048,14 @@ def weekly_sam_report(request):
     region_name = ""
     if facility_ids and len(facility_ids) == 1:
         try:
-            facility = Facility.objects.get(id=facility_ids[0])
+            facility = Facility.objects.select_related('district', 'district__region', 'sub_district').get(id=facility_ids[0])
             facility_name = facility.name
+            if facility.district:
+                district_name = facility.district.name
+                if facility.district.region:
+                    region_name = facility.district.region.name
             if facility.sub_district:
                 sub_district_name = facility.sub_district.name
-                if facility.sub_district.district:
-                    district_name = facility.sub_district.district.name
-                    if facility.sub_district.district.region:
-                        region_name = facility.sub_district.district.region.name
         except Exception:
             pass
     
@@ -1203,8 +1205,14 @@ def weekly_mam_report(request):
         ).count()
         data['new_cases_high_risk'][week_idx] = new_high_risk
         
-        # Calculate total enrolment (E = C + D, but we include B too)
-        total_enrolment = new_mam + new_high_risk
+        # D: Old MAM cases (returned defaulters / referrals)
+        old_cases = mam_cases.filter(
+            Q(admission_type='Transfer In') | Q(admission_type='Readmission')
+        ).count()
+        data['old_cases'][week_idx] = old_cases
+        
+        # Calculate total enrolment (E = B + C + D)
+        total_enrolment = new_mam + new_high_risk + old_cases
         data['total_enrolment'][week_idx] = total_enrolment
         
         # New males (from high risk cases C)
@@ -1312,14 +1320,14 @@ def weekly_mam_report(request):
     region_name = ""
     if facility_ids and len(facility_ids) == 1:
         try:
-            facility = Facility.objects.get(id=facility_ids[0])
+            facility = Facility.objects.select_related('district', 'district__region', 'sub_district').get(id=facility_ids[0])
             facility_name = facility.name
+            if facility.district:
+                district_name = facility.district.name
+                if facility.district.region:
+                    region_name = facility.district.region.name
             if facility.sub_district:
                 sub_district_name = facility.sub_district.name
-                if facility.sub_district.district:
-                    district_name = facility.sub_district.district.name
-                    if facility.sub_district.district.region:
-                        region_name = facility.sub_district.district.region.name
         except Exception:
             pass
     
@@ -1834,14 +1842,14 @@ def monthly_facility_report(request):
     region_name = ""
     if facility_ids and len(facility_ids) == 1:
         try:
-            facility = Facility.objects.get(id=facility_ids[0])
+            facility = Facility.objects.select_related('district', 'district__region', 'sub_district').get(id=facility_ids[0])
             facility_name = facility.name
+            if facility.district:
+                district_name = facility.district.name
+                if facility.district.region:
+                    region_name = facility.district.region.name
             if facility.sub_district:
                 sub_district_name = facility.sub_district.name
-                if facility.sub_district.district:
-                    district_name = facility.sub_district.district.name
-                    if facility.sub_district.district.region:
-                        region_name = facility.sub_district.district.region.name
         except Exception:
             pass
     

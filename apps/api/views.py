@@ -2362,14 +2362,15 @@ def weekly_report_api(request):
     from datetime import datetime as _dt
     _df = _dt.fromisoformat(date_from).date() if isinstance(date_from, str) else date_from
     _dt_to = _dt.fromisoformat(date_to).date() if isinstance(date_to, str) else date_to
-    detailed = _detailed_case_stats(cases, _df, _dt_to)
+    _prev_end = _df - timedelta(days=1)
+    detailed = _detailed_case_stats(cases, _df, _dt_to, _prev_end)
 
     # Per-facility breakdown
     facility_data = []
     for fac in accessible:
         fac_cases = cases.filter(facility=fac)
         fac_visits = visits.filter(registration__facility=fac)
-        fac_detailed = _detailed_case_stats(fac_cases, _df, _dt_to)
+        fac_detailed = _detailed_case_stats(fac_cases, _df, _dt_to, _prev_end)
         facility_data.append({
             'facility_name': fac.name, 'facility_code': fac.code,
             'new_admissions': fac_cases.filter(admission_date__gte=date_from, admission_date__lte=date_to).count(),
@@ -2754,7 +2755,7 @@ def reports_summary_api(request):
         return {
             'total': filtered.count(),
             'active': filtered.filter(status='Active').count(),
-            'cured': filtered.filter(outcome='Cured').count(),
+            'cured': filtered.filter(status='Discharged', outcome='Cured').count(),
             'defaulted': filtered.filter(status='Defaulted').count(),
             'deaths': filtered.filter(status='Death').count(),
             'transferred': filtered.filter(status='Transfer').count(),
