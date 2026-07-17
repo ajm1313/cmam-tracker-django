@@ -361,6 +361,13 @@ def stock_movements(request):
         'source_district', 'destination_district'
     ).order_by('-movement_date')
     
+    # RBAC: filter to user's accessible facilities
+    accessible = user.get_accessible_facilities()
+    if accessible is not None:
+        movements = movements.filter(
+            Q(source_facility__in=accessible) | Q(destination_facility__in=accessible)
+        )
+    
     # Apply filters
     if search:
         movements = movements.filter(
@@ -481,11 +488,18 @@ def stock_requests(request):
         'supplier_facility', 'supplier_district', 'supplier_region'
     ).prefetch_related('items').order_by('-created_at')
     
+    # RBAC: filter to user's accessible facilities
+    accessible = user.get_accessible_facilities()
+    if accessible is not None:
+        requests = requests.filter(
+            Q(requesting_facility__in=accessible) | Q(supplier_facility__in=accessible)
+        )
+    
     if status:
         requests = requests.filter(status=status)
     
-    # Count by status
-    pending_count = StockRequest.objects.filter(status='pending').count()
+    # Count by status (scoped to accessible facilities)
+    pending_count = requests.filter(status='pending').count()
     
     context = {
         'requests': requests[:50],
@@ -640,6 +654,11 @@ def expiry_management(request):
     batches = ItemBatch.objects.select_related('inventory_item', 'facility').filter(
         is_disposed=False
     )
+    
+    # RBAC: filter to user's accessible facilities
+    accessible = request.user.get_accessible_facilities()
+    if accessible is not None:
+        batches = batches.filter(Q(facility__in=accessible) | Q(facility__isnull=True))
     
     if search:
         batches = batches.filter(

@@ -819,6 +819,8 @@ def visit_edit(request, visit_id):
     """Edit an existing visit"""
     visit = get_object_or_404(OpcVisit, pk=visit_id)
     case = visit.registration
+    if not _check_case_access(request, case):
+        return HttpResponseForbidden('You do not have access to this case.')
     visit_type = case.malnutrition_type
 
     # Reference weight (enrollment weight)
