@@ -1884,6 +1884,8 @@ def regions_api(request):
         return Response({'success': True, 'data': data})
 
     # POST
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        return Response({'success': False, 'message': 'Admin permission required'}, status=status.HTTP_403_FORBIDDEN)
     name = request.data.get('name', '').strip()
     code = request.data.get('code', '').strip()
     if not name or not code:
@@ -1898,6 +1900,8 @@ def regions_api(request):
 @permission_classes([IsAuthenticated])
 def region_detail_api(request, pk):
     """Edit / delete a region"""
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        return Response({'success': False, 'message': 'Admin permission required'}, status=status.HTTP_403_FORBIDDEN)
     try:
         r = Region.objects.get(pk=pk)
     except Region.DoesNotExist:
@@ -1927,6 +1931,8 @@ def districts_api(request):
     name = request.data.get('name', '').strip()
     code = request.data.get('code', '').strip()
     region_id = request.data.get('region_id')
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        return Response({'success': False, 'message': 'Admin permission required'}, status=status.HTTP_403_FORBIDDEN)
     if not name or not code or not region_id:
         return Response({'success': False, 'message': 'Name, code, region_id required'}, status=status.HTTP_400_BAD_REQUEST)
     d = District.objects.create(name=name, code=code, region_id=region_id)
@@ -1937,6 +1943,8 @@ def districts_api(request):
 @permission_classes([IsAuthenticated])
 def district_detail_api(request, pk):
     """Edit / delete a district"""
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        return Response({'success': False, 'message': 'Admin permission required'}, status=status.HTTP_403_FORBIDDEN)
     try:
         d = District.objects.get(pk=pk)
     except District.DoesNotExist:
@@ -1973,6 +1981,8 @@ def sub_districts_api(request):
     name = request.data.get('name', '').strip()
     code = request.data.get('code', '').strip()
     district_id = request.data.get('district_id')
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        return Response({'success': False, 'message': 'Admin permission required'}, status=status.HTTP_403_FORBIDDEN)
     if not name or not code or not district_id:
         return Response({'success': False, 'message': 'Name, code, district_id required'}, status=status.HTTP_400_BAD_REQUEST)
     s = SubDistrict.objects.create(name=name, code=code, district_id=district_id)
@@ -1983,6 +1993,8 @@ def sub_districts_api(request):
 @permission_classes([IsAuthenticated])
 def sub_district_detail_api(request, pk):
     """Edit / delete a sub-district"""
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        return Response({'success': False, 'message': 'Admin permission required'}, status=status.HTTP_403_FORBIDDEN)
     try:
         s = SubDistrict.objects.get(pk=pk)
     except SubDistrict.DoesNotExist:
@@ -2005,6 +2017,8 @@ def sub_district_detail_api(request, pk):
 @permission_classes([IsAuthenticated])
 def inventory_item_create_api(request):
     """Create inventory item"""
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        return Response({'success': False, 'message': 'Admin permission required'}, status=status.HTTP_403_FORBIDDEN)
     data = request.data
     required = ['name', 'code', 'category', 'unit_of_measure']
     missing = [f for f in required if not data.get(f)]
@@ -2860,6 +2874,8 @@ def access_control_api(request):
 @permission_classes([IsAuthenticated])
 def access_control_update_api(request):
     """Update access control permissions"""
+    if not request.user.is_superuser:
+        return Response({'success': False, 'message': 'Super admin permission required'}, status=status.HTTP_403_FORBIDDEN)
     updates = request.data.get('updates', [])
     for u in updates:
         try:
@@ -3180,6 +3196,8 @@ def case_tasks_api(request, pk):
 @permission_classes([IsAuthenticated])
 def audit_log_api(request):
     """Get user activity / audit log"""
+    if not request.user.is_superuser:
+        return Response({'success': False, 'message': 'Super admin permission required'}, status=status.HTTP_403_FORBIDDEN)
     from apps.users.models import AuditLog
     qs = AuditLog.objects.all().select_related('user').order_by('-created_at')[:100]
     data = []

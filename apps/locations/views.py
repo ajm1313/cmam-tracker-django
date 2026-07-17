@@ -1,9 +1,16 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponseForbidden
 from django.db.models import Count
 from .models import Region, District, SubDistrict
+
+
+def _admin_only(request):
+    """Check if user can manage locations (superuser or district-level and above)."""
+    if request.user.is_superuser or request.user.can_create_users_and_facilities():
+        return None
+    return HttpResponseForbidden('You do not have permission to manage locations.')
 
 
 # ==================== REGION VIEWS ====================
@@ -37,6 +44,9 @@ def region_list(request):
 @login_required
 def region_create(request):
     """Create new region"""
+    denied = _admin_only(request)
+    if denied:
+        return denied
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
         code = request.POST.get('code', '').strip().upper()
@@ -59,6 +69,9 @@ def region_create(request):
 @login_required
 def region_edit(request, pk):
     """Edit region"""
+    denied = _admin_only(request)
+    if denied:
+        return denied
     region = get_object_or_404(Region, pk=pk)
     
     if request.method == 'POST':
@@ -85,6 +98,9 @@ def region_edit(request, pk):
 @login_required
 def region_delete(request, pk):
     """Delete (deactivate) region"""
+    denied = _admin_only(request)
+    if denied:
+        return denied
     region = get_object_or_404(Region, pk=pk)
     
     if request.method == 'POST':
@@ -123,6 +139,9 @@ def district_list(request):
 @login_required
 def district_create(request):
     """Create new district"""
+    denied = _admin_only(request)
+    if denied:
+        return denied
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
         code = request.POST.get('code', '').strip().upper()
@@ -156,6 +175,9 @@ def district_create(request):
 @login_required
 def district_edit(request, pk):
     """Edit district"""
+    denied = _admin_only(request)
+    if denied:
+        return denied
     district = get_object_or_404(District, pk=pk)
     
     if request.method == 'POST':
@@ -188,6 +210,9 @@ def district_edit(request, pk):
 @login_required
 def district_delete(request, pk):
     """Delete (deactivate) district"""
+    denied = _admin_only(request)
+    if denied:
+        return denied
     district = get_object_or_404(District, pk=pk)
     
     if request.method == 'POST':
@@ -237,6 +262,9 @@ def sub_district_list(request):
 @login_required
 def sub_district_create(request):
     """Create new sub district"""
+    denied = _admin_only(request)
+    if denied:
+        return denied
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
         code = request.POST.get('code', '').strip().upper()
@@ -282,6 +310,9 @@ def sub_district_create(request):
 @login_required
 def sub_district_edit(request, pk):
     """Edit sub district"""
+    denied = _admin_only(request)
+    if denied:
+        return denied
     sub_district = get_object_or_404(SubDistrict, pk=pk)
     
     if request.method == 'POST':
@@ -317,6 +348,9 @@ def sub_district_edit(request, pk):
 @login_required
 def sub_district_delete(request, pk):
     """Delete (deactivate) sub district"""
+    denied = _admin_only(request)
+    if denied:
+        return denied
     sub_district = get_object_or_404(SubDistrict, pk=pk)
     
     if request.method == 'POST':
