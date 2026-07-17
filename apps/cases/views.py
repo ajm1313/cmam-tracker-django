@@ -1064,6 +1064,10 @@ def batch_visit(request):
             visit_date = entry.get('visit_date', today.isoformat())
             notes = entry.get('notes', '')
 
+            if not weight:
+                errors.append(f'Case {case_id}: Weight is required')
+                continue
+
             try:
                 case = OpcRegistration.objects.get(pk=case_id, facility_id__in=facility_ids)
                 visit_num = case.visits.count() + 1
@@ -1073,9 +1077,11 @@ def batch_visit(request):
                     visit_date=visit_date,
                     visit_type='Routine',
                     weight_kg=weight,
-                    height_cm=height,
-                    muac_cm=muac,
+                    height_cm=height or None,
+                    muac_cm=muac or None,
                     medical_notes=notes,
+                    conducted_by=request.user,
+                    created_by=request.user,
                 )
                 created += 1
             except Exception as e:

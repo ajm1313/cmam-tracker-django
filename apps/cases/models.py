@@ -317,9 +317,9 @@ class OpcVisit(TimeStampedModel):
     weight_lost = models.BooleanField(default=False, null=True, blank=True)
     height_cm = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
     muac_cm = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
-    z_score_wfh = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    z_score_wfa = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    z_score_hfa = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    z_score_wfh = models.CharField(max_length=50, null=True, blank=True, help_text='Z-score category or numeric value')
+    z_score_wfa = models.CharField(max_length=50, null=True, blank=True, help_text='Z-score category or numeric value')
+    z_score_hfa = models.CharField(max_length=50, null=True, blank=True, help_text='Z-score category or numeric value')
     oedema = models.CharField(max_length=10, null=True, blank=True)
     
     # Medical History
