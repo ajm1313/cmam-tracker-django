@@ -1129,6 +1129,8 @@ def case_edit_api(request, pk):
         'other_drug_3': 'other_drug_3', 'other_drug_3_date': 'other_drug_3_date', 'other_drug_3_dosage': 'other_drug_3_dosage',
         # Additional
         'additional_notes': 'additional_notes',
+        'registration_latitude': 'registration_latitude',
+        'registration_longitude': 'registration_longitude',
     }
     for key, attr in field_map.items():
         if key in data:

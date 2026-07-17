@@ -206,6 +206,8 @@ class OpcVisitSerializer(serializers.ModelSerializer):
             'food_product_type', 'food_product_quantity', 'staff_name',
             'counseling_topics', 'caregiver_understanding', 'next_visit_date',
             'treatment_response', 'visit_outcome', 'outcome_notes',
+            'action_needed', 'home_visit_needed', 'home_visit_date',
+            'home_visit_notes', 'community_volunteer',
             'weight_change', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'weight_change', 'created_at', 'updated_at']
@@ -304,6 +306,7 @@ class OpcRegistrationDetailSerializer(serializers.ModelSerializer):
             'other_drug_3', 'other_drug_3_date', 'other_drug_3_dosage',
             # Additional
             'additional_notes', 'child_photo',
+            'registration_latitude', 'registration_longitude',
             # Timestamps
             'created_at', 'updated_at',
         ]

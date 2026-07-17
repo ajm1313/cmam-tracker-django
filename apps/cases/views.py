@@ -625,6 +625,8 @@ def visit_form(request, registration_id):
                     height_cm=request.POST.get('height_cm') or None,
                     muac_cm=request.POST.get('muac_cm') or None,
                     z_score_wfh=request.POST.get('z_score_wfh') or None,
+                    z_score_wfa=request.POST.get('z_score_wfa') or None,
+                    z_score_hfa=request.POST.get('z_score_hfa') or None,
                     oedema=request.POST.get('oedema') or None,
                     # Medical History
                     diarrhoea_days=request.POST.get('diarrhoea_days') or None,
@@ -642,6 +644,20 @@ def visit_form(request, registration_id):
                     rutf_test=request.POST.get('rutf_test') or None,
                     breastfeeding_status=request.POST.get('breastfeeding_status') or None,
                     rutf_sachets_given=request.POST.get('rutf_sachets_given') or None,
+                    # Clinical
+                    general_condition=request.POST.get('general_condition') or None,
+                    has_complications=request.POST.get('has_complications') == 'Y',
+                    complications_notes=request.POST.get('complications_notes') or None,
+                    medical_notes=request.POST.get('medical_notes') or None,
+                    # Commodities
+                    csb_plus_given=request.POST.get('csb_plus_given') or None,
+                    oil_given=request.POST.get('oil_given') or None,
+                    other_supplies=request.POST.get('other_supplies') or None,
+                    # Counseling
+                    counseling_topics=request.POST.get('counseling_topics') or None,
+                    caregiver_understanding=request.POST.get('caregiver_understanding') or None,
+                    treatment_response=request.POST.get('treatment_response') or None,
+                    next_visit_date=request.POST.get('next_visit_date') or None,
                     # Action / Follow-up
                     action_needed=action_needed,
                     other_medication=request.POST.get('other_medication') or None,
@@ -666,12 +682,27 @@ def visit_form(request, registration_id):
                     height_cm=request.POST.get('height_cm') or None,
                     muac_cm=request.POST.get('muac_cm') or None,
                     z_score_wfh=request.POST.get('z_score_wfh') or None,
+                    z_score_wfa=request.POST.get('z_score_wfa') or None,
+                    z_score_hfa=request.POST.get('z_score_hfa') or None,
                     # Appetite Test
                     appetite=request.POST.get('appetite_test') or None,
                     # Food Product
                     food_product_type=request.POST.get('food_product_type') or None,
                     food_product_quantity=request.POST.get('food_product_quantity') or None,
                     staff_name=request.POST.get('staff_name') or None,
+                    # Clinical
+                    general_condition=request.POST.get('general_condition') or None,
+                    has_complications=request.POST.get('has_complications') == 'Y',
+                    complications_notes=request.POST.get('complications_notes') or None,
+                    # Commodities
+                    csb_plus_given=request.POST.get('csb_plus_given') or None,
+                    oil_given=request.POST.get('oil_given') or None,
+                    other_supplies=request.POST.get('other_supplies') or None,
+                    # Counseling
+                    counseling_topics=request.POST.get('counseling_topics') or None,
+                    caregiver_understanding=request.POST.get('caregiver_understanding') or None,
+                    treatment_response=request.POST.get('treatment_response') or None,
+                    next_visit_date=request.POST.get('next_visit_date') or None,
                     # Remarks
                     medical_notes=request.POST.get('remarks') or None,
                     # Outcome
@@ -787,9 +818,22 @@ def visit_edit(request, visit_id):
             visit.height_cm = request.POST.get('height_cm') or None
             visit.muac_cm = request.POST.get('muac_cm') or None
             visit.z_score_wfh = request.POST.get('z_score_wfh') or None
+            visit.z_score_wfa = request.POST.get('z_score_wfa') or None
+            visit.z_score_hfa = request.POST.get('z_score_hfa') or None
             visit.oedema = request.POST.get('oedema') or None
             visit.visit_outcome = request.POST.get('visit_outcome', 'Continue')
             visit.outcome_notes = request.POST.get('outcome_notes') or None
+            visit.general_condition = request.POST.get('general_condition') or None
+            visit.has_complications = request.POST.get('has_complications') == 'Y'
+            visit.complications_notes = request.POST.get('complications_notes') or None
+            visit.medical_notes = request.POST.get('medical_notes') or request.POST.get('remarks') or None
+            visit.csb_plus_given = request.POST.get('csb_plus_given') or None
+            visit.oil_given = request.POST.get('oil_given') or None
+            visit.other_supplies = request.POST.get('other_supplies') or None
+            visit.counseling_topics = request.POST.get('counseling_topics') or None
+            visit.caregiver_understanding = request.POST.get('caregiver_understanding') or None
+            visit.treatment_response = request.POST.get('treatment_response') or None
+            visit.next_visit_date = request.POST.get('next_visit_date') or None
 
             if visit_type == 'SAM':
                 visit.weight_lost = request.POST.get('weight_lost') == 'Y'
@@ -816,7 +860,6 @@ def visit_edit(request, visit_id):
                 visit.food_product_type = request.POST.get('food_product_type') or None
                 visit.food_product_quantity = request.POST.get('food_product_quantity') or None
                 visit.staff_name = request.POST.get('staff_name') or None
-                visit.medical_notes = request.POST.get('remarks') or None
 
             visit.updated_by = request.user
             visit.save()
