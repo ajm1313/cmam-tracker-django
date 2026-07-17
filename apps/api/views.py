@@ -318,6 +318,11 @@ def record_consumption(request):
             'message': 'Invalid inventory item or facility'
         }, status=status.HTTP_404_NOT_FOUND)
     
+    # RBAC: verify user has access to this facility
+    denied = _check_facility_access_api(request, facility)
+    if denied:
+        return denied
+    
     # Create stock movement
     movement = StockMovement.objects.create(
         inventory_item=inventory_item,
@@ -2307,6 +2312,12 @@ def stock_requests_api(request):
 def stock_request_create_api(request):
     """Create a stock request"""
     data = request.data
+    # RBAC: verify user has access to requesting facility
+    accessible = request.user.get_accessible_facilities()
+    if accessible is not None:
+        req_fac_id = data.get('requesting_facility_id')
+        if req_fac_id and int(req_fac_id) not in [f.id for f in accessible]:
+            return Response({'success': False, 'message': 'You do not have access to the requesting facility.'}, status=status.HTTP_403_FORBIDDEN)
     sr = StockRequest.objects.create(
         requesting_facility_id=data.get('requesting_facility_id'),
         requesting_region_id=data.get('requesting_region_id'),
@@ -2338,6 +2349,15 @@ def stock_request_update_api(request, pk):
         sr = StockRequest.objects.get(pk=pk)
     except StockRequest.DoesNotExist:
         return Response({'success': False, 'message': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    # RBAC: verify user has access to requesting or supplier facility
+    accessible = request.user.get_accessible_facilities()
+    if accessible is not None:
+        accessible_ids = [f.id for f in accessible]
+        req_fac = sr.requesting_facility_id
+        sup_fac = sr.supplier_facility_id
+        if req_fac not in accessible_ids and sup_fac not in accessible_ids:
+            return Response({'success': False, 'message': 'You do not have access to this stock request.'}, status=status.HTTP_403_FORBIDDEN)
 
     action = request.data.get('action')
     if action == 'approve':
@@ -3015,6 +3035,11 @@ def ipc_case_detail_api(request, pk):
         return Response({'success': False, 'message': 'IPC case not found'},
                         status=status.HTTP_404_NOT_FOUND)
 
+    # RBAC: verify user has access to case's facility
+    accessible = request.user.get_accessible_facilities()
+    if accessible is not None and case.facility_id not in [f.id for f in accessible]:
+        return Response({'success': False, 'message': 'You do not have access to this case.'}, status=status.HTTP_403_FORBIDDEN)
+
     if request.method == 'GET':
         return Response({
             'success': True,
@@ -3056,6 +3081,11 @@ def case_transfer_api(request, pk):
     except OpcRegistration.DoesNotExist:
         return Response({'success': False, 'message': 'Case not found'},
                         status=status.HTTP_404_NOT_FOUND)
+
+    # RBAC: verify user has access to case's facility
+    denied = _check_case_access_api(request, case)
+    if denied:
+        return denied
 
     data = request.data
     transfer_type = data.get('transfer_type', 'facility')  # facility or ipc
@@ -3114,6 +3144,11 @@ def case_tasks_api(request, pk):
     except OpcRegistration.DoesNotExist:
         return Response({'success': False, 'message': 'Case not found'},
                         status=status.HTTP_404_NOT_FOUND)
+
+    # RBAC: verify user has access to case's facility
+    denied = _check_case_access_api(request, case)
+    if denied:
+        return denied
 
     tasks = CaseTask.objects.filter(registration=case).order_by('-created_at')
     data = []
