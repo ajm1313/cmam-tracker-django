@@ -95,6 +95,9 @@ def inventory_track(request):
 @login_required
 def inventory_create(request):
     """Create new inventory item"""
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        messages.error(request, 'You do not have permission to create inventory items')
+        return redirect('inventory:dashboard')
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
         code = request.POST.get('code', '').strip().upper()

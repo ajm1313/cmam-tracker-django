@@ -212,6 +212,15 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '30/min',
+        'user': '300/min',
+        'login': '5/min',
+    },
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
     'DEFAULT_FILTER_BACKENDS': [
@@ -248,9 +257,9 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:9279",  # Browser preview proxy
 ]
 
-# Allow all origins for mobile app API access
+# Allow all origins for mobile app API access (mobile uses JWT, not cookies)
 CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_CREDENTIALS = False
 
 # Session settings
 SESSION_COOKIE_AGE = 7200  # 2 hours

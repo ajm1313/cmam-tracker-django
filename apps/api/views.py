@@ -1,7 +1,8 @@
 from rest_framework import viewsets, status
-from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.decorators import api_view, permission_classes, action, throttle_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.tokens import default_token_generator
@@ -142,8 +143,10 @@ def _detailed_case_stats(cases_qs, date_from, date_to, prev_period_end=None):
 
 @api_view(['POST'])
 @permission_classes([])
+@throttle_classes([ScopedRateThrottle])
 def login(request):
     """API login endpoint for mobile app"""
+    request.throttle_scope = 'login'
     email = request.data.get('email')
     password = request.data.get('password')
     
@@ -866,8 +869,10 @@ def change_password(request):
 
 @api_view(['POST'])
 @permission_classes([])
+@throttle_classes([ScopedRateThrottle])
 def password_reset_request(request):
     """Send password reset email to the user if the email exists."""
+    request.throttle_scope = 'login'
     email = request.data.get('email', '').strip().lower()
     if not email:
         return Response({'success': False, 'message': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -2078,6 +2083,8 @@ def inventory_item_detail_api(request, pk):
 @permission_classes([IsAuthenticated])
 def inventory_item_edit_api(request, pk):
     """Edit inventory item"""
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        return Response({'success': False, 'message': 'Admin permission required'}, status=status.HTTP_403_FORBIDDEN)
     try:
         item = InventoryItem.objects.get(pk=pk)
     except InventoryItem.DoesNotExist:
@@ -2097,6 +2104,8 @@ def inventory_item_edit_api(request, pk):
 @permission_classes([IsAuthenticated])
 def inventory_item_delete_api(request, pk):
     """Deactivate inventory item"""
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        return Response({'success': False, 'message': 'Admin permission required'}, status=status.HTTP_403_FORBIDDEN)
     try:
         item = InventoryItem.objects.get(pk=pk)
     except InventoryItem.DoesNotExist:
