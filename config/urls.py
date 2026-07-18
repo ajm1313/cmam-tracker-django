@@ -18,7 +18,8 @@ urlpatterns = [
     path('', include('apps.inventory.urls')),
     path('', include('apps.cases.urls')),
     path('', include('apps.locations.urls')),
-    
+    path('', include(('apps.ai.web_urls', 'ai'), namespace='ai')),
+
     # API URLs
     path('api/', include('apps.api.urls')),
     path('api/', include('apps.ai.urls')),

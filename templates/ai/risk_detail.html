@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Risk Detail - {{ registration.child_name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <a href="{% url 'ai:ai_risk_list' %}" class="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 mb-4">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+        Back to Risk List
+    </a>
+
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">{{ registration.child_name }}</h1>
+        <p class="text-sm text-gray-500 mt-1">
+            {{ registration.registration_number }} · {{ registration.facility.name }} · {{ registration.malnutrition_type }}
+        </p>
+
+        <!-- Risk Score -->
+        <div class="mt-6 p-6 rounded-2xl text-center
+            {% if prediction.risk_level == 'critical' %}bg-red-50{% elif prediction.risk_level == 'high' %}bg-orange-50{% elif prediction.risk_level == 'moderate' %}bg-amber-50{% else %}bg-emerald-50{% endif %}">
+            <p class="text-sm font-medium text-gray-500">Risk Score</p>
+            <p class="text-5xl font-bold mt-2
+                {% if prediction.risk_level == 'critical' %}text-red-600{% elif prediction.risk_level == 'high' %}text-orange-600{% elif prediction.risk_level == 'moderate' %}text-amber-600{% else %}text-emerald-600{% endif %}">
+                {{ prediction.risk_score|floatformat:1 }}%
+            </p>
+            <p class="text-lg font-semibold mt-2
+                {% if prediction.risk_level == 'critical' %}text-red-700{% elif prediction.risk_level == 'high' %}text-orange-700{% elif prediction.risk_level == 'moderate' %}text-amber-700{% else %}text-emerald-700{% endif %}">
+                {{ prediction.risk_label }}
+            </p>
+        </div>
+    </div>
+
+    <!-- Contributing Factors -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Contributing Factors</h2>
+        <div class="space-y-3">
+            {% for factor in prediction.contributing_factors %}
+            <div class="flex items-center gap-4 p-3 rounded-xl border border-gray-100">
+                <div class="flex-1">
+                    <p class="text-sm font-medium text-gray-900">{{ factor.factor|cut:"_"|title }}</p>
+                    <p class="text-xs text-gray-500 mt-0.5">{{ factor.detail }}</p>
+                </div>
+                <div class="text-right">
+                    <div class="w-20 h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div class="h-full rounded-full {% if factor.score >= 0.6 %}bg-red-500{% elif factor.score >= 0.3 %}bg-amber-500{% else %}bg-emerald-500{% endif %}"
+                             style="width: {{ factor.score|floatformat:0 }}%"></div>
+                    </div>
+                    <p class="text-xs font-semibold text-gray-600 mt-1">{{ factor.score|floatformat:0 }}%</p>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Recommendations -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Recommendations</h2>
+        <div class="space-y-3">
+            {% for rec in prediction.recommendations %}
+            <div class="flex items-start gap-3">
+                <svg class="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <p class="text-sm text-gray-700">{{ rec }}</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}

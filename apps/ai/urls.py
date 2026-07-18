@@ -1,7 +1,7 @@
 from django.urls import path
 from . import views
 
-app_name = 'ai'
+app_name = 'ai_api'
 
 urlpatterns = [
     # Risk Prediction

@@ -1,5 +1,8 @@
 import logging
-from django.http import JsonResponse
+import json
+from django.http import JsonResponse, HttpResponse
+from django.shortcuts import render, get_object_or_404, redirect
+from django.contrib.auth.decorators import login_required
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
@@ -433,5 +436,335 @@ def ai_overview(request):
         'data': {
             'risk_summary': risk_summary,
             'stock_summary': stock_summary,
+        }
+    })
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# WEBAPP TEMPLATE VIEWS (Server-side rendered)
+# ═══════════════════════════════════════════════════════════════════════════
+
+@login_required
+def ai_dashboard(request):
+    """AI Dashboard page - overview with risk and stock summaries."""
+    from apps.cases.models import OpcRegistration
+    from apps.inventory.models import InventoryItem
+
+    user = request.user
+    facility_id = request.GET.get('facility_id')
+    facility_ids = list(user.get_accessible_facilities().values_list('id', flat=True))
+
+    selected_facility = None
+    if facility_id:
+        facility_id = int(facility_id)
+        if facility_id not in facility_ids:
+            return redirect('ai:ai_dashboard')
+        selected_facility = facility_id
+        facility_ids = [facility_id]
+
+    accessible_facilities = user.get_accessible_facilities()
+
+    # Risk summary
+    active_cases = OpcRegistration.objects.filter(
+        status='Active',
+        facility_id__in=facility_ids
+    ).select_related('facility')
+
+    risk_results = []
+    for reg in active_cases:
+        try:
+            result = predict_risk(reg)
+            result['registration_id'] = reg.id
+            result['registration_number'] = reg.registration_number
+            result['child_name'] = reg.child_name
+            result['facility_name'] = reg.facility.name
+            result['malnutrition_type'] = reg.malnutrition_type
+            risk_results.append(result)
+        except Exception:
+            pass
+
+    risk_results.sort(key=lambda x: x['risk_score'], reverse=True)
+
+    risk_summary = {
+        'total': len(risk_results),
+        'critical': sum(1 for r in risk_results if r['risk_level'] == 'critical'),
+        'high': sum(1 for r in risk_results if r['risk_level'] == 'high'),
+        'moderate': sum(1 for r in risk_results if r['risk_level'] == 'moderate'),
+        'low': sum(1 for r in risk_results if r['risk_level'] == 'low'),
+    }
+
+    # Stock forecast summary
+    items = InventoryItem.objects.filter(is_active=True)
+    stock_results = []
+    for item in items:
+        try:
+            result = forecast_stock(item)
+            stock_results.append(result)
+        except Exception:
+            pass
+
+    stock_results.sort(key=lambda x: (
+        not x['reorder_recommended'],
+        x.get('days_until_stockout') or 999
+    ))
+
+    stock_summary = {
+        'total': len(stock_results),
+        'reorder': sum(1 for r in stock_results if r['reorder_recommended']),
+        'stockout_soon': sum(1 for r in stock_results if r.get('days_until_stockout') and r['days_until_stockout'] <= 14),
+    }
+
+    context = {
+        'risk_summary': risk_summary,
+        'stock_summary': stock_summary,
+        'top_risks': risk_results[:5],
+        'critical_items': [r for r in stock_results if r['reorder_recommended']][:5],
+        'accessible_facilities': accessible_facilities,
+        'selected_facility': selected_facility,
+    }
+
+    return render(request, 'ai/dashboard.html', context)
+
+
+@login_required
+def ai_risk_list(request):
+    """Risk prediction list page."""
+    from apps.cases.models import OpcRegistration
+
+    user = request.user
+    facility_id = request.GET.get('facility_id')
+    facility_ids = list(user.get_accessible_facilities().values_list('id', flat=True))
+
+    selected_facility = None
+    if facility_id:
+        facility_id = int(facility_id)
+        if facility_id not in facility_ids:
+            return redirect('ai:ai_risk_list')
+        selected_facility = facility_id
+        facility_ids = [facility_id]
+
+    accessible_facilities = user.get_accessible_facilities()
+
+    active_cases = OpcRegistration.objects.filter(
+        status='Active',
+        facility_id__in=facility_ids
+    ).select_related('facility')
+
+    risk_results = []
+    for reg in active_cases:
+        try:
+            result = predict_risk(reg)
+            result['registration_id'] = reg.id
+            result['registration_number'] = reg.registration_number
+            result['child_name'] = reg.child_name
+            result['facility_name'] = reg.facility.name
+            result['malnutrition_type'] = reg.malnutrition_type
+            risk_results.append(result)
+        except Exception:
+            pass
+
+    risk_results.sort(key=lambda x: x['risk_score'], reverse=True)
+
+    context = {
+        'predictions': risk_results,
+        'accessible_facilities': accessible_facilities,
+        'selected_facility': selected_facility,
+    }
+
+    return render(request, 'ai/risk_list.html', context)
+
+
+@login_required
+def ai_risk_detail(request, registration_id):
+    """Risk prediction detail page for a single case."""
+    from apps.cases.models import OpcRegistration
+
+    reg = get_object_or_404(OpcRegistration, pk=registration_id)
+
+    if not request.user.can_access_facility(reg.facility_id):
+        return redirect('ai:ai_risk_list')
+
+    result = predict_risk(reg)
+
+    # Save prediction
+    RiskPrediction.objects.create(
+        registration=reg,
+        facility=reg.facility,
+        risk_score=result['risk_score'],
+        risk_level=result['risk_level'],
+        contributing_factors=result['contributing_factors'],
+        recommendations=result['recommendations'],
+        predicted_by=request.user,
+    )
+
+    context = {
+        'registration': reg,
+        'prediction': result,
+    }
+
+    return render(request, 'ai/risk_detail.html', context)
+
+
+@login_required
+def ai_forecast_list(request):
+    """Stock forecast list page."""
+    from apps.inventory.models import InventoryItem
+
+    user = request.user
+    facility_id = request.GET.get('facility_id')
+    facility = None
+
+    if facility_id:
+        from apps.facilities.models import Facility
+        facility_id = int(facility_id)
+        if not user.can_access_facility(facility_id):
+            return redirect('ai:ai_forecast_list')
+        facility = Facility.objects.get(pk=facility_id)
+
+    accessible_facilities = user.get_accessible_facilities()
+
+    items = InventoryItem.objects.filter(is_active=True)
+    forecast_results = []
+    for item in items:
+        try:
+            result = forecast_stock(item, facility)
+            forecast_results.append(result)
+        except Exception:
+            pass
+
+    forecast_results.sort(key=lambda x: (
+        not x['reorder_recommended'],
+        x.get('days_until_stockout') or 999
+    ))
+
+    context = {
+        'forecasts': forecast_results,
+        'accessible_facilities': accessible_facilities,
+        'selected_facility': facility_id,
+    }
+
+    return render(request, 'ai/forecast_list.html', context)
+
+
+@login_required
+def ai_forecast_detail(request, item_id):
+    """Stock forecast detail page for a single item."""
+    from apps.inventory.models import InventoryItem
+
+    item = get_object_or_404(InventoryItem, pk=item_id, is_active=True)
+
+    facility_id = request.GET.get('facility_id')
+    facility = None
+    if facility_id:
+        from apps.facilities.models import Facility
+        facility_id = int(facility_id)
+        if not request.user.can_access_facility(facility_id):
+            return redirect('ai:ai_forecast_list')
+        facility = Facility.objects.get(pk=facility_id)
+
+    result = forecast_stock(item, facility)
+
+    # Save forecast
+    StockForecast.objects.create(
+        item=item,
+        facility=facility,
+        forecast_periods=result['forecast_periods'],
+        method=result['method'],
+        accuracy_score=result.get('accuracy_score'),
+        current_stock=result['current_stock'],
+        days_until_stockout=result.get('days_until_stockout'),
+        reorder_recommended=result['reorder_recommended'],
+        recommended_quantity=result['recommended_quantity'],
+    )
+
+    context = {
+        'item': item,
+        'forecast': result,
+    }
+
+    return render(request, 'ai/forecast_detail.html', context)
+
+
+@login_required
+def ai_assistant(request):
+    """Clinical assistant chat page."""
+    sessions = ChatSession.objects.filter(user=request.user).order_by('-created_at')[:20]
+    selected_session_id = request.GET.get('session_id')
+
+    messages = []
+    selected_session = None
+    if selected_session_id:
+        try:
+            selected_session = ChatSession.objects.get(pk=selected_session_id, user=request.user)
+            messages = list(selected_session.messages.order_by('created_at'))
+        except ChatSession.DoesNotExist:
+            pass
+
+    context = {
+        'sessions': sessions,
+        'selected_session': selected_session,
+        'messages': messages,
+    }
+
+    return render(request, 'ai/assistant.html', context)
+
+
+@login_required
+@require_http_methods(['POST'])
+def ai_assistant_send(request):
+    """Handle chat message send from the webapp (AJAX endpoint)."""
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    message = data.get('message', '').strip()
+    session_id = data.get('session_id')
+
+    if not message:
+        return JsonResponse({'error': 'Message is required'}, status=400)
+
+    session = None
+    if session_id:
+        try:
+            session = ChatSession.objects.get(pk=session_id, user=request.user)
+        except ChatSession.DoesNotExist:
+            pass
+
+    if not session:
+        session = ChatSession.objects.create(
+            user=request.user,
+            title=message[:50] + ('...' if len(message) > 50 else ''),
+        )
+
+    ChatMessage.objects.create(
+        session=session,
+        role='user',
+        content=message,
+    )
+
+    history_msgs = list(session.messages.order_by('created_at').values('role', 'content'))
+    chat_messages = [{'role': m['role'], 'content': m['content']} for m in history_msgs]
+
+    result = chat_with_llm(chat_messages, user=request.user)
+
+    ChatMessage.objects.create(
+        session=session,
+        role='assistant',
+        content=result['response'],
+        metadata=result.get('metadata'),
+    )
+
+    if session.messages.count() == 2 and session.title.startswith('New'):
+        session.title = message[:50] + ('...' if len(message) > 50 else '')
+        session.save()
+
+    return JsonResponse({
+        'success': True,
+        'data': {
+            'session_id': session.id,
+            'response': result['response'],
+            'source': result['source'],
+            'metadata': result.get('metadata', {}),
         }
     })

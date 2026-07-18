@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Clinical Assistant - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div class="flex gap-6" style="height: calc(100vh - 200px);">
+
+        <!-- Session sidebar -->
+        <div class="w-64 flex-shrink-0 bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col overflow-hidden">
+            <div class="p-4 border-b border-gray-100">
+                <h2 class="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                    <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                    Chat History
+                </h2>
+            </div>
+            <div class="flex-1 overflow-y-auto p-2">
+                <a href="{% url 'ai:ai_assistant' %}" class="block px-3 py-2.5 rounded-lg text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors mb-1">
+                    + New Conversation
+                </a>
+                {% for s in sessions %}
+                <a href="{% url 'ai:ai_assistant' %}?session_id={{ s.id }}"
+                   class="block px-3 py-2.5 rounded-lg text-sm hover:bg-gray-50 transition-colors mb-1 {% if selected_session and selected_session.id == s.id %}bg-gray-100{% endif %}">
+                    <p class="font-medium text-gray-700 truncate">{{ s.title }}</p>
+                    <p class="text-xs text-gray-400 mt-0.5">{{ s.created_at|date:"M j, H:i" }}</p>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Chat area -->
+        <div class="flex-1 bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col overflow-hidden">
+            <!-- Header -->
+            <div class="px-6 py-4 border-b border-gray-100">
+                <h1 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
+                    CMAM Clinical Assistant
+                </h1>
+                <p class="text-xs text-gray-400 mt-0.5">AI-powered guidance for malnutrition management</p>
+            </div>
+
+            <!-- Messages -->
+            <div id="chatMessages" class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+                {% if messages %}
+                    {% for msg in messages %}
+                    <div class="flex {% if msg.role == 'user' %}justify-end{% else %}justify-start{% endif %}">
+                        <div class="max-w-[75%] px-4 py-3 rounded-2xl text-sm
+                            {% if msg.role == 'user' %}bg-blue-600 text-white{% else %}bg-gray-100 text-gray-800{% endif %}">
+                            {{ msg.content|linebreaks }}
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center py-12">
+                        <svg class="w-12 h-12 text-purple-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                        <p class="text-gray-400 text-sm">Ask about CMAM protocols, dosing, admission criteria, or stock management.</p>
+                        <div class="mt-4 flex flex-wrap gap-2 justify-center">
+                            <button onclick="sendSuggestion('What are SAM admission criteria?')" class="px-3 py-1.5 text-xs bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors">SAM admission criteria</button>
+                            <button onclick="sendSuggestion('How do I calculate RUTF dosage?')" class="px-3 py-1.5 text-xs bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors">RUTF dosage</button>
+                            <button onclick="sendSuggestion('What are the discharge criteria for SAM?')" class="px-3 py-1.5 text-xs bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors">SAM discharge criteria</button>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- Input -->
+            <div class="px-6 py-4 border-t border-gray-100">
+                <form id="chatForm" onsubmit="sendMessage(event)" class="flex gap-2">
+                    <input type="hidden" id="sessionId" value="{{ selected_session.id|default:'' }}">
+                    <input type="text" id="messageInput" placeholder="Type your question..."
+                           class="flex-1 border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-500"
+                           autocomplete="off" required>
+                    <button type="submit" id="sendBtn"
+                            class="px-5 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-medium hover:bg-purple-700 transition-colors flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+                        Send
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function scrollToBottom() {
+    const container = document.getElementById('chatMessages');
+    container.scrollTop = container.scrollHeight;
+}
+
+function sendSuggestion(text) {
+    document.getElementById('messageInput').value = text;
+    document.getElementById('chatForm').dispatchEvent(new Event('submit'));
+}
+
+function addMessage(role, content) {
+    const container = document.getElementById('chatMessages');
+    const div = document.createElement('div');
+    div.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+    div.innerHTML = `<div class="max-w-[75%] px-4 py-3 rounded-2xl text-sm ${role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800'}">${content.replace(/\n/g, '<br>')}</div>`;
+    container.appendChild(div);
+    scrollToBottom();
+}
+
+function addTypingIndicator() {
+    const container = document.getElementById('chatMessages');
+    const div = document.createElement('div');
+    div.id = 'typingIndicator';
+    div.className = 'flex justify-start';
+    div.innerHTML = '<div class="px-4 py-3 rounded-2xl text-sm bg-gray-100 text-gray-400"><span class="animate-pulse">Assistant is typing...</span></div>';
+    container.appendChild(div);
+    scrollToBottom();
+}
+
+function removeTypingIndicator() {
+    const el = document.getElementById('typingIndicator');
+    if (el) el.remove();
+}
+
+async function sendMessage(event) {
+    event.preventDefault();
+    const input = document.getElementById('messageInput');
+    const message = input.value.trim();
+    if (!message) return;
+
+    const sessionId = document.getElementById('sessionId').value;
+    const btn = document.getElementById('sendBtn');
+
+    addMessage('user', message);
+    input.value = '';
+    btn.disabled = true;
+    btn.classList.add('opacity-50');
+    addTypingIndicator();
+
+    try {
+        const resp = await fetch('{% url "ai:ai_assistant_send" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}',
+            },
+            body: JSON.stringify({ message, session_id: sessionId || null }),
+        });
+
+        const data = await resp.json();
+        removeTypingIndicator();
+
+        if (data.success) {
+            addMessage('assistant', data.data.response);
+            document.getElementById('sessionId').value = data.data.session_id;
+        } else {
+            addMessage('assistant', 'Sorry, I encountered an error. Please try again.');
+        }
+    } catch (err) {
+        removeTypingIndicator();
+        addMessage('assistant', 'Network error. Please check your connection and try again.');
+    } finally {
+        btn.disabled = false;
+        btn.classList.remove('opacity-50');
+        input.focus();
+    }
+}
+
+scrollToBottom();
+</script>
+{% endblock %}

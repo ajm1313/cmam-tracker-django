@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}AI Dashboard - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                <svg class="w-7 h-7 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
+                AI Dashboard
+            </h1>
+            <p class="text-sm text-gray-500 mt-1">Default risk prediction & stock demand forecasting</p>
+        </div>
+
+        <!-- Facility filter -->
+        {% if accessible_facilities.count > 1 %}
+        <form method="get" class="flex items-center gap-2">
+            <select name="facility_id" onchange="this.form.submit()"
+                    class="text-sm border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500">
+                <option value="">All Facilities</option>
+                {% for f in accessible_facilities %}
+                <option value="{{ f.id }}" {% if selected_facility == f.id %}selected{% endif %}>{{ f.name }}</option>
+                {% endfor %}
+            </select>
+        </form>
+        {% endif %}
+    </div>
+
+    <!-- Quick links -->
+    <div class="flex flex-wrap gap-3 mb-6">
+        <a href="{% url 'ai:ai_risk_list' %}" class="inline-flex items-center gap-2 px-4 py-2 bg-white rounded-xl shadow-sm border border-gray-200 hover:bg-blue-50 hover:border-blue-200 transition-colors">
+            <svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            <span class="text-sm font-medium text-gray-700">Risk Predictions</span>
+        </a>
+        <a href="{% url 'ai:ai_forecast_list' %}" class="inline-flex items-center gap-2 px-4 py-2 bg-white rounded-xl shadow-sm border border-gray-200 hover:bg-blue-50 hover:border-blue-200 transition-colors">
+            <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+            <span class="text-sm font-medium text-gray-700">Stock Forecasts</span>
+        </a>
+        <a href="{% url 'ai:ai_assistant' %}" class="inline-flex items-center gap-2 px-4 py-2 bg-white rounded-xl shadow-sm border border-gray-200 hover:bg-blue-50 hover:border-blue-200 transition-colors">
+            <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+            <span class="text-sm font-medium text-gray-700">Clinical Assistant</span>
+        </a>
+    </div>
+
+    <!-- Risk Summary -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
+        <div class="flex items-center gap-2 mb-4">
+            <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            <h2 class="text-lg font-semibold text-gray-900">Default Risk Summary</h2>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div class="text-center p-4 bg-red-50 rounded-xl">
+                <p class="text-3xl font-bold text-red-600">{{ risk_summary.critical }}</p>
+                <p class="text-xs text-gray-500 mt-1">Critical</p>
+            </div>
+            <div class="text-center p-4 bg-orange-50 rounded-xl">
+                <p class="text-3xl font-bold text-orange-600">{{ risk_summary.high }}</p>
+                <p class="text-xs text-gray-500 mt-1">High</p>
+            </div>
+            <div class="text-center p-4 bg-amber-50 rounded-xl">
+                <p class="text-3xl font-bold text-amber-600">{{ risk_summary.moderate }}</p>
+                <p class="text-xs text-gray-500 mt-1">Moderate</p>
+            </div>
+            <div class="text-center p-4 bg-emerald-50 rounded-xl">
+                <p class="text-3xl font-bold text-emerald-600">{{ risk_summary.low }}</p>
+                <p class="text-xs text-gray-500 mt-1">Low</p>
+            </div>
+        </div>
+        <p class="text-sm text-gray-500 mt-3">{{ risk_summary.total }} active cases assessed</p>
+    </div>
+
+    <!-- Top Risk Cases -->
+    {% if top_risks %}
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Top Risk Cases</h2>
+        <div class="space-y-3">
+            {% for r in top_risks %}
+            <a href="{% url 'ai:ai_risk_detail' r.registration_id %}" class="flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition-colors border border-gray-100">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-bold
+                        {% if r.risk_level == 'critical' %}bg-red-500{% elif r.risk_level == 'high' %}bg-orange-500{% elif r.risk_level == 'moderate' %}bg-amber-500{% else %}bg-emerald-500{% endif %}">
+                        {{ r.child_name|first|upper }}
+                    </div>
+                    <div>
+                        <p class="text-sm font-medium text-gray-900">{{ r.child_name }}</p>
+                        <p class="text-xs text-gray-500">{{ r.facility_name }} · {{ r.malnutrition_type }}</p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <span class="inline-block px-2.5 py-1 rounded-lg text-xs font-bold
+                        {% if r.risk_level == 'critical' %}bg-red-100 text-red-700{% elif r.risk_level == 'high' %}bg-orange-100 text-orange-700{% elif r.risk_level == 'moderate' %}bg-amber-100 text-amber-700{% else %}bg-emerald-100 text-emerald-700{% endif %}">
+                        {{ r.risk_score|floatformat:0 }}%
+                    </span>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Stock Forecast Summary -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
+        <div class="flex items-center gap-2 mb-4">
+            <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+            <h2 class="text-lg font-semibold text-gray-900">Stock Forecast Summary</h2>
+        </div>
+        <div class="grid grid-cols-3 gap-4">
+            <div class="text-center p-4 bg-blue-50 rounded-xl">
+                <p class="text-3xl font-bold text-blue-600">{{ stock_summary.total }}</p>
+                <p class="text-xs text-gray-500 mt-1">Total Items</p>
+            </div>
+            <div class="text-center p-4 bg-amber-50 rounded-xl">
+                <p class="text-3xl font-bold text-amber-600">{{ stock_summary.reorder }}</p>
+                <p class="text-xs text-gray-500 mt-1">Reorder Needed</p>
+            </div>
+            <div class="text-center p-4 bg-red-50 rounded-xl">
+                <p class="text-3xl font-bold text-red-600">{{ stock_summary.stockout_soon }}</p>
+                <p class="text-xs text-gray-500 mt-1">Stockout ≤2wk</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Critical Stock Items -->
+    {% if critical_items %}
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Critical Stock Items</h2>
+        <div class="space-y-3">
+            {% for item in critical_items %}
+            <a href="{% url 'ai:ai_forecast_detail' item.item_id %}" class="flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition-colors border border-gray-100">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                    </div>
+                    <div>
+                        <p class="text-sm font-medium text-gray-900">{{ item.item_name }}</p>
+                        <p class="text-xs text-gray-500">Stock: {{ item.current_stock }} · Reorder: {{ item.recommended_quantity }}</p>
+                    </div>
+                </div>
+                {% if item.days_until_stockout %}
+                <span class="inline-block px-2.5 py-1 rounded-lg text-xs font-bold bg-red-100 text-red-700">
+                    Stockout in ~{{ item.days_until_stockout }} days
+                </span>
+                {% else %}
+                <span class="inline-block px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-700">
+                    Reorder
+                </span>
+                {% endif %}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Risk Predictions - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                <svg class="w-7 h-7 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                Default Risk Predictions
+            </h1>
+            <p class="text-sm text-gray-500 mt-1">{{ predictions|length }} active cases assessed</p>
+        </div>
+
+        {% if accessible_facilities.count > 1 %}
+        <form method="get" class="flex items-center gap-2">
+            <select name="facility_id" onchange="this.form.submit()"
+                    class="text-sm border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500">
+                <option value="">All Facilities</option>
+                {% for f in accessible_facilities %}
+                <option value="{{ f.id }}" {% if selected_facility == f.id %}selected{% endif %}>{{ f.name }}</option>
+                {% endfor %}
+            </select>
+        </form>
+        {% endif %}
+    </div>
+
+    {% if predictions %}
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                        <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Child</th>
+                        <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Facility</th>
+                        <th class="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Type</th>
+                        <th class="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Risk Score</th>
+                        <th class="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Level</th>
+                        <th class="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for p in predictions %}
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-4 py-3">
+                            <div class="flex items-center gap-2">
+                                <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold
+                                    {% if p.risk_level == 'critical' %}bg-red-500{% elif p.risk_level == 'high' %}bg-orange-500{% elif p.risk_level == 'moderate' %}bg-amber-500{% else %}bg-emerald-500{% endif %}">
+                                    {{ p.child_name|first|upper }}
+                                </div>
+                                <div>
+                                    <p class="text-sm font-medium text-gray-900">{{ p.child_name }}</p>
+                                    <p class="text-xs text-gray-400">{{ p.registration_number }}</p>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-600">{{ p.facility_name }}</td>
+                        <td class="px-4 py-3">
+                            <span class="inline-block px-2 py-0.5 rounded text-xs font-medium
+                                {% if p.malnutrition_type == 'SAM' %}bg-red-100 text-red-700{% else %}bg-amber-100 text-amber-700{% endif %}">
+                                {{ p.malnutrition_type }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-center">
+                            <div class="inline-flex items-center gap-2">
+                                <div class="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                    <div class="h-full rounded-full
+                                        {% if p.risk_level == 'critical' %}bg-red-500{% elif p.risk_level == 'high' %}bg-orange-500{% elif p.risk_level == 'moderate' %}bg-amber-500{% else %}bg-emerald-500{% endif %}"
+                                        style="width: {{ p.risk_score|floatformat:0 }}%"></div>
+                                </div>
+                                <span class="text-sm font-semibold text-gray-700">{{ p.risk_score|floatformat:0 }}%</span>
+                            </div>
+                        </td>
+                        <td class="px-4 py-3 text-center">
+                            <span class="inline-block px-2.5 py-1 rounded-lg text-xs font-bold
+                                {% if p.risk_level == 'critical' %}bg-red-100 text-red-700{% elif p.risk_level == 'high' %}bg-orange-100 text-orange-700{% elif p.risk_level == 'moderate' %}bg-amber-100 text-amber-700{% else %}bg-emerald-100 text-emerald-700{% endif %}">
+                                {{ p.risk_level|title }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-right">
+                            <a href="{% url 'ai:ai_risk_detail' p.registration_id %}"
+                               class="text-blue-600 hover:text-blue-800 text-sm font-medium">View →</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-12 text-center">
+        <svg class="w-12 h-12 text-emerald-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <p class="text-gray-500">No active cases to assess.</p>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}
