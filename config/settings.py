@@ -89,6 +89,7 @@ INSTALLED_APPS = [
     'apps.inventory',
     'apps.cases',
     'apps.api',
+    'apps.ai',
 ]
 
 MIDDLEWARE = [
@@ -220,6 +221,7 @@ REST_FRAMEWORK = {
         'anon': '30/min',
         'user': '300/min',
         'login': '5/min',
+        'ai': '60/min',
     },
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
@@ -320,3 +322,12 @@ LOGGING = {
         },
     },
 }
+
+# ═══════════════════════════════════════════════════════════════════════════
+# AI / LLM Configuration
+# ═══════════════════════════════════════════════════════════════════════════
+# OpenAI-compatible API key for clinical assistant chatbot.
+# When not set, the chatbot falls back to a built-in CMAM knowledge base.
+OPENAI_API_KEY = config('OPENAI_API_KEY', default='')
+OPENAI_API_URL = config('OPENAI_API_URL', default='https://api.openai.com/v1/chat/completions')
+OPENAI_MODEL = config('OPENAI_MODEL', default='gpt-4o-mini')

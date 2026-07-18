@@ -21,6 +21,7 @@ urlpatterns = [
     
     # API URLs
     path('api/', include('apps.api.urls')),
+    path('api/', include('apps.ai.urls')),
     
     # Health check
     path('health/', include('apps.core.urls')),
