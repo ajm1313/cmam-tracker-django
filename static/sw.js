@@ -1,12 +1,13 @@
-/* CMAM Tracker Service Worker
+/* CMAM Tracker Service Worker v2
  * Strategy:
- *  - Navigation requests: Network-first, fallback to cached page shell
+ *  - Navigation requests: Stale-while-revalidate (serve cached immediately, update in background)
+ *  - Pre-fetch key app pages on activate so they're available offline
  *  - Static assets (CSS/JS/img): Stale-while-revalidate
  *  - API GET requests: Network-first with cache fallback
- *  - Form POSTs: When network fails, pass to offline queue (IndexedDB)
+ *  - Form POSTs: When network fails, queue to IndexedDB for later sync
  */
 
-const CACHE_VERSION = 'cmam-v1.3.0';
+const CACHE_VERSION = 'cmam-v2.0.0';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const PAGE_CACHE = `${CACHE_VERSION}-pages`;
 const OFFLINE_URL = '/offline/';
@@ -19,6 +20,33 @@ const PRECACHE_URLS = [
   '/static/manifest.json',
 ];
 
+// Main app pages to pre-fetch on activate (best-effort, failures ignored)
+const APP_PAGES = [
+  '/dashboard/',
+  '/manage/cases/',
+  '/manage/cases/dashboard/',
+  '/manage/inventory/',
+  '/manage/inventory/stock-levels/',
+  '/manage/inventory/movements/',
+  '/manage/inventory/requests/',
+  '/manage/inventory/items/',
+  '/manage/inventory/receive/',
+  '/manage/inventory/distribute/',
+  '/manage/visits/',
+  '/manage/discharge/',
+  '/manage/ipc/',
+  '/manage/facilities/',
+  '/manage/users/',
+  '/reports/',
+  '/locations/',
+  '/locations/regions/',
+  '/locations/districts/',
+  '/locations/sub-districts/',
+  '/profile/',
+  '/settings/',
+  '/manage/batch-visit/',
+];
+
 // ── INSTALL: precache key assets ──────────────────────────────────────────
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -28,15 +56,27 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// ── ACTIVATE: clean old caches ─────────────────────────────────────────────
+// ── ACTIVATE: clean old caches + pre-fetch app pages ───────────────────────
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(
         keys
-          .filter((k) => k.startsWith('cmam-') && k !== CACHE_VERSION && !k.endsWith('-static') && !k.endsWith('-pages') || (k.startsWith('cmam-') && k !== STATIC_CACHE && k !== PAGE_CACHE))
+          .filter((k) => k.startsWith('cmam-') && k !== STATIC_CACHE && k !== PAGE_CACHE)
           .map((k) => caches.delete(k))
       ))
+      .then(() => {
+        // Pre-fetch app pages in background (best-effort, ignore failures)
+        caches.open(PAGE_CACHE).then((cache) => {
+          APP_PAGES.forEach((url) => {
+            fetch(url, { credentials: 'same-origin' })
+              .then((resp) => {
+                if (resp && resp.ok) cache.put(url, resp.clone());
+              })
+              .catch(() => {});
+          });
+        });
+      })
       .then(() => self.clients.claim())
   );
 });
@@ -54,6 +94,9 @@ self.addEventListener('fetch', (event) => {
 
   // Skip Chrome extension requests
   if (url.pathname.startsWith('/chrome-extension/')) return;
+
+  // Skip Django admin
+  if (url.pathname.startsWith('/admin/')) return;
 
   // ── POST requests (form submissions) ──
   if (request.method === 'POST') {
@@ -84,32 +127,48 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(networkFirst(request, PAGE_CACHE));
 });
 
-// ── Navigation: network-first with cache fallback ──────────────────────────
+// ── Navigation: stale-while-revalidate ─────────────────────────────────────
+// Serve cached page immediately if available, fetch updated version in background.
+// If not cached, try network. If network fails too, show offline page.
 async function handleNavigation(request) {
+  const cache = await caches.open(PAGE_CACHE);
+  const cached = await cache.match(request);
+
+  // If we have a cached version, serve it immediately and revalidate in background
+  if (cached) {
+    // Fire-and-forget background update
+    fetch(request, { credentials: 'same-origin' })
+      .then((response) => {
+        if (response && response.ok) {
+          cache.put(request, response.clone());
+        }
+      })
+      .catch(() => {});
+    return cached;
+  }
+
+  // No cached version — try network
   try {
-    const networkResponse = await fetch(request);
+    const networkResponse = await fetch(request, { credentials: 'same-origin' });
     if (networkResponse && networkResponse.ok) {
-      const cache = await caches.open(PAGE_CACHE);
       cache.put(request, networkResponse.clone());
     }
     return networkResponse;
   } catch (err) {
-    // Try cache
-    const cached = await caches.match(request);
-    if (cached) return cached;
+    // Try matching with ignoreSearch (in case of query params)
+    const cachedFallback = await cache.match(request, { ignoreSearch: true });
+    if (cachedFallback) return cachedFallback;
 
-    // Try any cached page as fallback
-    const pageCache = await caches.open(PAGE_CACHE);
-    const keys = await pageCache.keys();
+    // Try any cached page
+    const keys = await cache.keys();
     if (keys.length > 0) {
-      // Return the most recent cached page (better than offline page)
-      const cachedPage = await pageCache.match(keys[keys.length - 1]);
+      const cachedPage = await cache.match(keys[keys.length - 1]);
       if (cachedPage) return cachedPage;
     }
 
     // Offline fallback page
-    const offlineCache = await caches.open(STATIC_CACHE);
-    const offlinePage = await offlineCache.match(OFFLINE_URL);
+    const staticCache = await caches.open(STATIC_CACHE);
+    const offlinePage = await staticCache.match(OFFLINE_URL);
     if (offlinePage) return offlinePage;
 
     return new Response(
@@ -274,7 +333,7 @@ async function syncPendingSubmissions() {
         credentials: 'same-origin',
       });
 
-      if (response.ok || response.status === 302) {
+      if (response.ok || response.status === 302 || response.type === 'opaqueredirect') {
         // Success — remove from queue
         const delTx = db.transaction('pendingSubmissions', 'readwrite');
         await delTx.objectStore('pendingSubmissions').delete(item.id);
