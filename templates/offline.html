@@ -1,0 +1,59 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline — CMAM Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center">
+    <div class="text-center max-w-md mx-auto px-6">
+        <div class="mb-6">
+            <svg class="w-20 h-20 mx-auto text-amber-400 pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/>
+            </svg>
+        </div>
+        <h1 class="text-2xl font-bold text-gray-800 mb-3">You're Offline</h1>
+        <p class="text-gray-600 mb-6">
+            The CMAM Tracker is currently unavailable. Your form submissions will be
+            saved automatically and synced when you reconnect.
+        </p>
+        <div id="pendingInfo" class="hidden bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+            <p class="text-amber-800 text-sm">
+                <span id="pendingCount">0</span> submission(s) waiting to sync.
+            </p>
+        </div>
+        <button onclick="window.location.reload()" class="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition">
+            Try Again
+        </button>
+        <p class="text-gray-400 text-xs mt-6">The page will reload automatically when you're back online.</p>
+    </div>
+    <script>
+        // Auto-reload when back online
+        window.addEventListener('online', () => window.location.reload());
+
+        // Show pending count
+        if (indexedDB) {
+            const req = indexedDB.open('cmam_offline', 1);
+            req.onsuccess = (e) => {
+                const db = e.target.result;
+                if (db.objectStoreNames.contains('pendingSubmissions')) {
+                    const tx = db.transaction('pendingSubmissions', 'readonly');
+                    const countReq = tx.objectStore('pendingSubmissions').count();
+                    countReq.onsuccess = () => {
+                        if (countReq.result > 0) {
+                            document.getElementById('pendingInfo').classList.remove('hidden');
+                            document.getElementById('pendingCount').textContent = countReq.result;
+                        }
+                    };
+                }
+            };
+        }
+    </script>
+</body>
+</html>

@@ -10,6 +10,8 @@
     <title>{% block title %}CMAM Tracker{% endblock %}</title>
     <link rel="icon" type="image/png" href="{% static 'img/logo.png' %}">
     <link rel="shortcut icon" type="image/png" href="{% static 'img/logo.png' %}">
+    <link rel="manifest" href="{% static 'manifest.json' %}">
+    <meta name="theme-color" content="#1e3a8a">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -576,6 +578,20 @@
                     text.textContent = 'Offline';
                     text.className = 'text-amber-200 text-xs font-medium';
                 }
+                // Show pending count if any
+                if (window.cmamPendingCount && window.cmamPendingCount > 0) {
+                    const badge = document.getElementById('syncBadge') || (() => {
+                        const b = document.createElement('span');
+                        b.id = 'syncBadge';
+                        b.className = 'bg-amber-400 text-amber-900 text-xs font-bold px-1.5 rounded-full';
+                        indicator.appendChild(b);
+                        return b;
+                    })();
+                    badge.textContent = window.cmamPendingCount;
+                } else {
+                    const badge = document.getElementById('syncBadge');
+                    if (badge) badge.remove();
+                }
             }
             updateSyncStatus();
             window.addEventListener('online', updateSyncStatus);
@@ -610,5 +626,21 @@
     </script>
 
     {% block extra_js %}{% endblock %}
+
+    <!-- Offline support: form interception + service worker -->
+    <script src="{% static 'js/offline_forms.js' %}"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                    .then((reg) => {
+                        console.log('SW registered:', reg.scope);
+                    })
+                    .catch((err) => {
+                        console.warn('SW registration failed:', err);
+                    });
+            });
+        }
+    </script>
 </body>
 </html>
