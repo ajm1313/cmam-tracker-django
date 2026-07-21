@@ -107,6 +107,23 @@
                         <p class="mt-1 text-xs text-gray-500">Minimum stock level before reorder alert</p>
                     </div>
                     <div>
+                        <label class="block text-sm font-medium text-gray-700">Min Stock Level</label>
+                        <input type="number" name="min_stock_level" value="{{ item.min_stock_level }}" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <p class="mt-1 text-xs text-gray-500">Critical threshold below which stock is urgent</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Max Stock Level</label>
+                        <input type="number" name="max_stock_level" value="{{ item.max_stock_level }}" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <p class="mt-1 text-xs text-gray-500">Maximum storage capacity</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Has Expiry Date?</label>
+                        <select name="has_expiry" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            <option value="0" {% if not item.has_expiry %}selected{% endif %}>No</option>
+                            <option value="1" {% if item.has_expiry %}selected{% endif %}>Yes</option>
+                        </select>
+                    </div>
+                    <div>
                         <label class="block text-sm font-medium text-gray-700">Status</label>
                         <select name="is_active" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
                             <option value="1" {% if item.is_active %}selected{% endif %}>Active</option>

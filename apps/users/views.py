@@ -385,6 +385,11 @@ def user_edit(request, pk):
         is_active = request.POST.get('is_active') == '1'
         password = request.POST.get('password', '')
         password_confirm = request.POST.get('password_confirm', '')
+        role_id = request.POST.get('role') or None
+        region_id = request.POST.get('region_id') or None
+        district_id = request.POST.get('district_id') or None
+        sub_district_id = request.POST.get('sub_district_id') or None
+        facility_id = request.POST.get('facility_id') or None
         
         if not name or not email:
             messages.error(request, 'Name and email are required')
@@ -399,7 +404,36 @@ def user_edit(request, pk):
             edit_user.is_active = is_active
             if password:
                 edit_user.set_password(password)
+            
+            # Handle avatar upload
+            if request.FILES.get('avatar'):
+                edit_user.avatar = request.FILES['avatar']
+            
             edit_user.save()
+            
+            # Update role assignment if role_id provided
+            if role_id:
+                role = Role.objects.filter(pk=role_id).first()
+                if role:
+                    user_role = UserRole.objects.filter(user=edit_user, is_active=True).first()
+                    if user_role:
+                        user_role.role = role
+                        user_role.region_id = region_id if role.level >= 2 else None
+                        user_role.district_id = district_id if role.level >= 3 else None
+                        user_role.sub_district_id = sub_district_id if role.level >= 4 else None
+                        user_role.facility_id = facility_id if role.level >= 5 else None
+                        user_role.save()
+                    else:
+                        UserRole.objects.create(
+                            user=edit_user,
+                            role=role,
+                            region_id=region_id if role.level >= 2 else None,
+                            district_id=district_id if role.level >= 3 else None,
+                            sub_district_id=sub_district_id if role.level >= 4 else None,
+                            facility_id=facility_id if role.level >= 5 else None,
+                            is_active=True,
+                        )
+            
             messages.success(request, f'User "{name}" updated successfully')
             return redirect('users:user_detail', pk=edit_user.pk)
     
@@ -407,9 +441,20 @@ def user_edit(request, pk):
         'role', 'facility', 'region', 'district'
     ).first()
     
+    roles = Role.objects.all().order_by('level')
+    regions = Region.objects.filter(is_active=True)
+    districts = District.objects.filter(is_active=True).select_related('region')
+    sub_districts = SubDistrict.objects.filter(is_active=True).select_related('district')
+    facilities = Facility.objects.filter(is_active=True).select_related('district', 'sub_district')
+    
     context = {
         'user_obj': edit_user,
         'user_role': user_role,
+        'roles': roles,
+        'regions': regions,
+        'districts': districts,
+        'sub_districts': sub_districts,
+        'facilities': facilities,
     }
     return render(request, 'users/user_edit.html', context)
 

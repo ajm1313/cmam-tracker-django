@@ -10,7 +10,7 @@
     </div>
 
     <div class="bg-white shadow rounded-lg p-6">
-        <form method="post" class="space-y-6">
+        <form method="post" enctype="multipart/form-data" class="space-y-6">
             {% csrf_token %}
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
@@ -33,7 +33,76 @@
                     </select>
                 </div>
             </div>
-            
+
+            <!-- Role & Location Assignment -->
+            <div class="border-t pt-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Role & Location Assignment</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Role</label>
+                        <select name="role" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">— Keep current —</option>
+                            {% for role in roles %}
+                            <option value="{{ role.pk }}" {% if user_role and user_role.role_id == role.pk %}selected{% endif %}>{{ role.name }} (Level {{ role.level }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Region</label>
+                        <select name="region_id" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">— None —</option>
+                            {% for region in regions %}
+                            <option value="{{ region.pk }}" {% if user_role and user_role.region_id == region.pk %}selected{% endif %}>{{ region.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">District</label>
+                        <select name="district_id" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">— None —</option>
+                            {% for district in districts %}
+                            <option value="{{ district.pk }}" {% if user_role and user_role.district_id == district.pk %}selected{% endif %}>{{ district.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Sub District</label>
+                        <select name="sub_district_id" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">— None —</option>
+                            {% for sub_district in sub_districts %}
+                            <option value="{{ sub_district.pk }}" {% if user_role and user_role.sub_district_id == sub_district.pk %}selected{% endif %}>{{ sub_district.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-gray-700">Facility</label>
+                        <select name="facility_id" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">— None —</option>
+                            {% for facility in facilities %}
+                            <option value="{{ facility.pk }}" {% if user_role and user_role.facility_id == facility.pk %}selected{% endif %}>{{ facility.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Avatar Upload -->
+            <div class="border-t pt-6">
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Avatar</h3>
+                <div class="flex items-center gap-4">
+                    {% if user_obj.avatar %}
+                    <img src="{{ user_obj.avatar.url }}" alt="Avatar" class="w-16 h-16 rounded-full object-cover">
+                    {% else %}
+                    <div class="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-gray-400 text-2xl">?</div>
+                    {% endif %}
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Upload New Avatar</label>
+                        <input type="file" name="avatar" accept="image/*" class="mt-1 block w-full text-sm text-gray-700">
+                        <p class="mt-1 text-xs text-gray-500">Leave blank to keep current avatar</p>
+                    </div>
+                </div>
+            </div>
+
             <div class="border-t pt-6">
                 <h3 class="text-lg font-medium text-gray-900 mb-4">Change Password (Optional)</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">

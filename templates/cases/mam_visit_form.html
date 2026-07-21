@@ -169,6 +169,84 @@
                     <input type="text" name="staff_name" value="{% if visit %}{{ visit.staff_name|default:'' }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" placeholder="Staff who issued food">
                 </div>
             </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">CSB+ Given (kg)</label>
+                    <input type="number" step="0.01" name="csb_plus_given" value="{% if visit %}{{ visit.csb_plus_given|default:'' }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Oil Given (L)</label>
+                    <input type="number" step="0.01" name="oil_given" value="{% if visit %}{{ visit.oil_given|default:'' }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Other Supplies</label>
+                    <input type="text" name="other_supplies" value="{% if visit %}{{ visit.other_supplies|default:'' }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                </div>
+            </div>
+        </div>
+
+        <!-- Clinical Assessment -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Clinical Assessment</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">General Condition</label>
+                    <select name="general_condition" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                        <option value="">Select</option>
+                        <option value="Good" {% if visit and visit.general_condition == 'Good' %}selected{% endif %}>Good</option>
+                        <option value="Fair" {% if visit and visit.general_condition == 'Fair' %}selected{% endif %}>Fair</option>
+                        <option value="Poor" {% if visit and visit.general_condition == 'Poor' %}selected{% endif %}>Poor</option>
+                        <option value="Critical" {% if visit and visit.general_condition == 'Critical' %}selected{% endif %}>Critical</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Has Complications?</label>
+                    <select name="has_complications" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                        <option value="N" {% if visit and not visit.has_complications %}selected{% endif %}>No</option>
+                        <option value="Y" {% if visit and visit.has_complications %}selected{% endif %}>Yes</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mt-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Complications Notes</label>
+                <textarea name="complications_notes" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">{% if visit %}{{ visit.complications_notes|default:'' }}{% endif %}</textarea>
+            </div>
+        </div>
+
+        <!-- Counseling & Follow-up -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Counseling & Follow-up</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Counseling Topics</label>
+                    <textarea name="counseling_topics" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">{% if visit %}{{ visit.counseling_topics|default:'' }}{% endif %}</textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Caregiver Understanding</label>
+                    <select name="caregiver_understanding" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                        <option value="">Select</option>
+                        <option value="Good" {% if visit and visit.caregiver_understanding == 'Good' %}selected{% endif %}>Good</option>
+                        <option value="Fair" {% if visit and visit.caregiver_understanding == 'Fair' %}selected{% endif %}>Fair</option>
+                        <option value="Poor" {% if visit and visit.caregiver_understanding == 'Poor' %}selected{% endif %}>Poor</option>
+                    </select>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Treatment Response</label>
+                    <select name="treatment_response" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                        <option value="">Select</option>
+                        <option value="Good" {% if visit and visit.treatment_response == 'Good' %}selected{% endif %}>Good</option>
+                        <option value="Moderate" {% if visit and visit.treatment_response == 'Moderate' %}selected{% endif %}>Moderate</option>
+                        <option value="Poor" {% if visit and visit.treatment_response == 'Poor' %}selected{% endif %}>Poor</option>
+                        <option value="No-Response" {% if visit and visit.treatment_response == 'No-Response' %}selected{% endif %}>No Response</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Next Visit Date</label>
+                    <input type="date" name="next_visit_date" value="{% if visit %}{{ visit.next_visit_date|date:'Y-m-d' }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                </div>
+            </div>
         </div>
 
         <!-- Remarks -->

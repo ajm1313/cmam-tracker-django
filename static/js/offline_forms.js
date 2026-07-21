@@ -14,6 +14,8 @@
   const DB_NAME = 'cmam_offline';
   const DB_VERSION = 1;
   const STORE = 'pendingSubmissions';
+  const MAX_RETRIES = 5;
+  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB limit for base64 storage
 
   function openDB() {
     return new Promise((resolve, reject) => {
@@ -67,11 +69,33 @@
 
     for (const [key, value] of formData.entries()) {
       if (value instanceof File) {
-        files.push({ key, name: value.name, type: value.type, size: value.size });
+        // Store file as base64 if small enough; skip large files with a warning
+        if (value.size <= MAX_FILE_SIZE) {
+          const base64 = await fileToBase64(value);
+          files.push({
+            key,
+            name: value.name,
+            type: value.type,
+            size: value.size,
+            base64: base64,
+          });
+        } else {
+          // File too large for offline storage — record metadata only
+          files.push({
+            key,
+            name: value.name,
+            type: value.type,
+            size: value.size,
+            skipped: true,
+          });
+        }
       } else {
         data[key] = value;
       }
     }
+
+    // Generate idempotency key from form data hash
+    const idempotencyKey = generateIdempotencyKey(data, files, form.action || window.location.href);
 
     const item = {
       url: form.action || window.location.href,
@@ -82,6 +106,7 @@
       formId: form.id || '',
       timestamp: Date.now(),
       retries: 0,
+      idempotencyKey: idempotencyKey,
     };
 
     const db = await openDB();
@@ -91,6 +116,41 @@
       req.onsuccess = () => resolve(item);
       req.onerror = () => reject(req.error);
     });
+  }
+
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        // result is data URL: data:<type>;base64,<data>
+        resolve(reader.result);
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function base64ToBlob(dataUrl) {
+    const arr = dataUrl.split(',');
+    const mime = arr[0].match(/:(.*?);/)[1];
+    const bstr = atob(arr[1]);
+    const u8 = new Uint8Array(bstr.length);
+    for (let i = 0; i < bstr.length; i++) {
+      u8[i] = bstr.charCodeAt(i);
+    }
+    return new Blob([u8], { type: mime });
+  }
+
+  function generateIdempotencyKey(data, files, url) {
+    const fileKeys = files.map(f => f.name + f.size).join('|');
+    const dataStr = JSON.stringify(data) + fileKeys + url;
+    let hash = 0;
+    for (let i = 0; i < dataStr.length; i++) {
+      const char = dataStr.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return 'offline-' + Math.abs(hash).toString(36) + '-' + Date.now().toString(36);
   }
 
   // ── Sync pending submissions ──────────────────────────────────────────
@@ -105,34 +165,94 @@
 
     let synced = 0;
     let failed = 0;
+    let authFailed = false;
 
     for (const item of items) {
+      // Skip items that have exceeded max retries
+      if (item.retries >= MAX_RETRIES) {
+        failed++;
+        continue;
+      }
+
       try {
         const formData = new FormData();
         for (const [key, value] of Object.entries(item.data)) {
           formData.append(key, value);
         }
 
+        // Reconstruct files from base64
+        if (item.files && item.files.length > 0) {
+          for (const file of item.files) {
+            if (file.base64) {
+              const blob = base64ToBlob(file.base64);
+              formData.append(file.key, blob, file.name);
+            } else if (file.skipped) {
+              // File was too large to store offline — skip it
+              console.warn(`File ${file.name} was too large to store offline and will not be synced.`);
+            }
+          }
+        }
+
+        // Add idempotency header if supported
+        const headers = {};
+        if (item.idempotencyKey) {
+          headers['X-Idempotency-Key'] = item.idempotencyKey;
+        }
+
         const response = await fetch(item.url, {
           method: item.method,
           body: formData,
           credentials: 'same-origin',
-          redirect: 'manual', // Don't follow redirects — we just need to know it worked
+          redirect: 'manual',
+          headers: headers,
         });
 
-        // 0 = redirect (opaque), 200-299 = success, 302 = redirect
-        if (response.status === 0 || response.ok || response.status === 302 || response.type === 'opaqueredirect') {
+        // Check for auth redirect: Django redirects to login page with 302
+        // An opaque redirect (status 0) could also be an auth redirect
+        // We need to verify it's not a login redirect by checking the location
+        if (response.status === 302 || response.type === 'opaqueredirect' || response.status === 0) {
+          // Try to detect auth redirect by checking if the redirect target is a login page
+          const redirectUrl = response.headers.get('Location') || '';
+          if (redirectUrl.includes('/login') || redirectUrl.includes('/accounts/login') || redirectUrl.includes('next=')) {
+            // Session expired — don't treat as success, don't remove from queue
+            authFailed = true;
+            item.retries = (item.retries || 0) + 1;
+            await updatePendingItem(item);
+            failed++;
+            continue;
+          }
+          // Non-auth redirect — treat as success (form was processed)
           await removePending(item.id);
           synced++;
+        } else if (response.ok) {
+          // 200-299 — success
+          await removePending(item.id);
+          synced++;
+        } else if (response.status === 401 || response.status === 403) {
+          // Auth failure — session expired
+          authFailed = true;
+          item.retries = (item.retries || 0) + 1;
+          await updatePendingItem(item);
+          failed++;
         } else if (response.status >= 400 && response.status < 500) {
           // Client error — keep for review but don't retry
           failed++;
         } else {
+          // Server error — increment retry and keep
+          item.retries = (item.retries || 0) + 1;
+          await updatePendingItem(item);
           failed++;
         }
       } catch (err) {
+        // Network error — increment retry and keep
+        item.retries = (item.retries || 0) + 1;
+        await updatePendingItem(item);
         failed++;
       }
+    }
+
+    if (authFailed) {
+      showAuthWarning();
     }
 
     // If any synced, reload to show updated data
@@ -142,6 +262,25 @@
     } else {
       updateBanner();
     }
+  }
+
+  async function updatePendingItem(item) {
+    const db = await openDB();
+    const tx = db.transaction(STORE, 'readwrite');
+    return new Promise((resolve) => {
+      const req = tx.objectStore(STORE).put(item);
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve();
+    });
+  }
+
+  function showAuthWarning() {
+    const banner = document.getElementById('offlineBanner');
+    if (!banner) return;
+    banner.style.background = '#ef4444';
+    banner.style.display = 'block';
+    banner.innerHTML = '<span>⚠ Session expired — some submissions could not sync. Please <a href="/login/" style="color:#fff;text-decoration:underline;">log in</a> again.</span>';
+    document.body.style.paddingTop = banner.offsetHeight + 'px';
   }
 
   // ── UI: Offline banner ────────────────────────────────────────────────

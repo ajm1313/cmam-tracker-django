@@ -155,6 +155,31 @@ FALLBACK_KNOWLEDGE = {
             '- Record treatment response'
         )
     },
+    'appetite': {
+        'keywords': ['appetite', 'test', 'rutf test'],
+        'response': (
+            'Appetite Test in CMAM:\n'
+            '- Offer RUTF to child at clinic\n'
+            '- Observe if child eats willingly within 30 minutes\n'
+            '- Passed: Child eats RUTF willingly\n'
+            '- Failed: Child refuses or cannot eat\n\n'
+            'Failed appetite test = IPC referral required\n'
+            'This is a critical decision point in CMAM protocol.'
+        )
+    },
+    'weight': {
+        'keywords': ['weight', 'gain', 'loss', 'monitoring'],
+        'response': (
+            'Weight Monitoring in CMAM:\n'
+            '- Weigh at every visit (weekly for SAM, biweekly for MAM)\n'
+            '- Track weight change from previous visit\n'
+            '- Good response: > 0.2kg gain per week\n'
+            '- Poor response: No gain or weight loss\n'
+            '- Weight loss despite treatment = review treatment plan\n'
+            '- Consider IPC referral if weight loss persists\n\n'
+            'Discharge requires sustained weight gain.'
+        )
+    },
 }
 
 
@@ -225,7 +250,9 @@ def chat_with_llm(messages, user=None):
 
         # Add user context if available
         if user:
-            user_context = f"\n\nCurrent user: {user.name}, Role: {getattr(user, 'role', {}).get('name', 'Unknown') if isinstance(getattr(user, 'role', None), dict) else 'Healthcare Worker'}"
+            user_role = user.user_roles.filter(is_active=True).select_related('role').first()
+            role_name = user_role.role.display_name if user_role and user_role.role else 'Healthcare Worker'
+            user_context = f"\n\nCurrent user: {user.name}, Role: {role_name}"
             full_messages[0]['content'] += user_context
 
         # Add conversation history (last 10 messages)

@@ -2,6 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse
+from django.db import transaction
 from django.db.models import Sum, Count, Q, F
 from django.utils import timezone
 from datetime import datetime, timedelta, date
@@ -133,6 +134,9 @@ def inventory_create(request):
                 supplier=supplier,
                 storage_conditions=storage_conditions,
                 reorder_level=reorder_level,
+                min_stock_level=min_stock_level,
+                max_stock_level=max_stock_level,
+                has_expiry=has_expiry,
                 description=description
             )
             messages.success(request, f'Inventory item "{name}" created successfully')
@@ -177,6 +181,9 @@ def inventory_edit(request, pk):
         supplier = request.POST.get('supplier', '').strip() or None
         storage_conditions = request.POST.get('storage_conditions') or None
         reorder_level = request.POST.get('reorder_level') or 0
+        min_stock_level = request.POST.get('min_stock_level') or 0
+        max_stock_level = request.POST.get('max_stock_level') or 0
+        has_expiry = request.POST.get('has_expiry') == '1'
         description = request.POST.get('description', '').strip() or None
         is_active = request.POST.get('is_active') == '1'
         
@@ -198,6 +205,9 @@ def inventory_edit(request, pk):
             item.supplier = supplier
             item.storage_conditions = storage_conditions
             item.reorder_level = reorder_level
+            item.min_stock_level = min_stock_level
+            item.max_stock_level = max_stock_level
+            item.has_expiry = has_expiry
             item.description = description
             item.is_active = is_active
             item.save()
@@ -323,19 +333,38 @@ def update_stock(request):
         current_stock = request.POST.get('current_stock')
         
         try:
-            item = InventoryItem.objects.get(id=item_id)
-            facility = Facility.objects.get(id=facility_id) if facility_id else None
-            
-            stock_level, created = StockLevel.objects.get_or_create(
-                inventory_item=item,
-                location_type='facility' if facility else 'national',
-                facility=facility,
-                defaults={'current_stock': 0}
-            )
-            stock_level.current_stock = int(current_stock)
-            stock_level.save()
-            
-            messages.success(request, f'Stock level updated for {item.name}')
+            with transaction.atomic():
+                item = InventoryItem.objects.get(id=item_id)
+                facility = Facility.objects.get(id=facility_id) if facility_id else None
+                
+                stock_level, created = StockLevel.objects.get_or_create(
+                    inventory_item=item,
+                    location_type='facility' if facility else 'national',
+                    facility=facility,
+                    defaults={'current_stock': 0}
+                )
+                old_stock = stock_level.current_stock
+                new_stock = int(current_stock)
+                stock_level.current_stock = new_stock
+                stock_level.save()
+                
+                # Create audit trail StockMovement
+                if old_stock != new_stock:
+                    StockMovement.objects.create(
+                        inventory_item=item,
+                        movement_type='ADJUSTMENT',
+                        quantity=new_stock - old_stock,
+                        reference_number=f'ADJ-{timezone.now().strftime("%Y%m%d%H%M%S")}',
+                        notes=f'Manual stock adjustment: {old_stock} → {new_stock}',
+                        created_by=request.user,
+                        movement_date=timezone.now(),
+                        source_type='facility' if facility else 'national',
+                        source_facility=facility,
+                        destination_type='facility' if facility else 'national',
+                        destination_facility=facility,
+                    )
+                
+                messages.success(request, f'Stock level updated for {item.name}')
         except Exception as e:
             messages.error(request, f'Error updating stock: {str(e)}')
     

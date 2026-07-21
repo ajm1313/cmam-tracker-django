@@ -1,9 +1,8 @@
 import logging
 import json
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import IsAuthenticated
@@ -44,16 +43,32 @@ def risk_prediction_single(request, registration_id):
 
     result = predict_risk(reg)
 
-    # Save prediction
-    RiskPrediction.objects.create(
-        registration=reg,
-        facility=reg.facility,
-        risk_score=result['risk_score'],
-        risk_level=result['risk_level'],
-        contributing_factors=result['contributing_factors'],
-        recommendations=result['recommendations'],
-        predicted_by=request.user,
-    )
+    # Save or update today's prediction (avoid duplicates)
+    from django.utils import timezone
+    today_start = timezone.make_aware(timezone.datetime.combine(timezone.now().date(), timezone.datetime.min.time()))
+    today_end = timezone.make_aware(timezone.datetime.combine(timezone.now().date(), timezone.datetime.max.time()))
+    existing = RiskPrediction.objects.filter(
+        registration=reg, created_at__gte=today_start, created_at__lte=today_end
+    ).first()
+    if existing:
+        existing.facility = reg.facility
+        existing.risk_score = result['risk_score']
+        existing.risk_level = result['risk_level']
+        existing.contributing_factors = result['contributing_factors']
+        existing.recommendations = result['recommendations']
+        existing.predicted_by = request.user
+        existing.is_offline = False
+        existing.save()
+    else:
+        RiskPrediction.objects.create(
+            registration=reg,
+            facility=reg.facility,
+            risk_score=result['risk_score'],
+            risk_level=result['risk_level'],
+            contributing_factors=result['contributing_factors'],
+            recommendations=result['recommendations'],
+            predicted_by=request.user,
+        )
 
     return JsonResponse({
         'success': True,
@@ -122,11 +137,9 @@ def risk_prediction_offline(request):
     Save an offline-generated risk prediction from the mobile app.
     The mobile app computes risk locally and syncs the result when online.
     """
-    import json
-
     from apps.cases.models import OpcRegistration
 
-    data = json.loads(request.body)
+    data = request.data
     registration_id = data.get('registration_id')
 
     try:
@@ -137,16 +150,33 @@ def risk_prediction_offline(request):
     if not request.user.can_access_facility(reg.facility_id):
         return JsonResponse({'error': 'Access denied'}, status=403)
 
-    RiskPrediction.objects.create(
-        registration=reg,
-        facility=reg.facility,
-        risk_score=data['risk_score'],
-        risk_level=data['risk_level'],
-        contributing_factors=data.get('contributing_factors', []),
-        recommendations=data.get('recommendations', []),
-        predicted_by=request.user,
-        is_offline=True,
-    )
+    # Save or update today's offline prediction (avoid duplicates)
+    from django.utils import timezone
+    today_start = timezone.make_aware(timezone.datetime.combine(timezone.now().date(), timezone.datetime.min.time()))
+    today_end = timezone.make_aware(timezone.datetime.combine(timezone.now().date(), timezone.datetime.max.time()))
+    existing = RiskPrediction.objects.filter(
+        registration=reg, created_at__gte=today_start, created_at__lte=today_end, is_offline=True
+    ).first()
+    if existing:
+        existing.facility = reg.facility
+        existing.risk_score = data['risk_score']
+        existing.risk_level = data['risk_level']
+        existing.contributing_factors = data.get('contributing_factors', [])
+        existing.recommendations = data.get('recommendations', [])
+        existing.predicted_by = request.user
+        existing.is_offline = True
+        existing.save()
+    else:
+        RiskPrediction.objects.create(
+            registration=reg,
+            facility=reg.facility,
+            risk_score=data['risk_score'],
+            risk_level=data['risk_level'],
+            contributing_factors=data.get('contributing_factors', []),
+            recommendations=data.get('recommendations', []),
+            predicted_by=request.user,
+            is_offline=True,
+        )
 
     return JsonResponse({'success': True, 'message': 'Offline prediction saved'})
 
@@ -175,21 +205,49 @@ def stock_forecast_single(request, item_id):
         if not request.user.can_access_facility(facility_id):
             return JsonResponse({'error': 'Access denied'}, status=403)
         facility = Facility.objects.get(pk=facility_id)
+    else:
+        # RBAC: verify item has stock at user's accessible facilities
+        from apps.inventory.models import StockLevel
+        accessible_ids = list(request.user.get_accessible_facilities().values_list('id', flat=True))
+        has_stock = StockLevel.objects.filter(
+            inventory_item=item,
+            facility_id__in=accessible_ids
+        ).exists()
+        if not has_stock and accessible_ids:
+            return JsonResponse({'error': 'Access denied'}, status=403)
 
     result = forecast_stock(item, facility)
 
-    # Save forecast
-    StockForecast.objects.create(
-        item=item,
-        facility=facility,
-        forecast_periods=result['forecast_periods'],
-        method=result['method'],
-        accuracy_score=result.get('accuracy_score'),
-        current_stock=result['current_stock'],
-        days_until_stockout=result.get('days_until_stockout'),
-        reorder_recommended=result['reorder_recommended'],
-        recommended_quantity=result['recommended_quantity'],
-    )
+    # Save or update today's forecast (avoid duplicates)
+    from django.utils import timezone
+    today_start = timezone.make_aware(timezone.datetime.combine(timezone.now().date(), timezone.datetime.min.time()))
+    today_end = timezone.make_aware(timezone.datetime.combine(timezone.now().date(), timezone.datetime.max.time()))
+    existing = StockForecast.objects.filter(
+        item=item, facility=facility,
+        created_at__gte=today_start, created_at__lte=today_end
+    ).first()
+    if existing:
+        existing.forecast_periods = result['forecast_periods']
+        existing.method = result['method']
+        existing.accuracy_score = result.get('accuracy_score')
+        existing.current_stock = result['current_stock']
+        existing.days_until_stockout = result.get('days_until_stockout')
+        existing.reorder_recommended = result['reorder_recommended']
+        existing.recommended_quantity = result['recommended_quantity']
+        existing.is_offline = False
+        existing.save()
+    else:
+        StockForecast.objects.create(
+            item=item,
+            facility=facility,
+            forecast_periods=result['forecast_periods'],
+            method=result['method'],
+            accuracy_score=result.get('accuracy_score'),
+            current_stock=result['current_stock'],
+            days_until_stockout=result.get('days_until_stockout'),
+            reorder_recommended=result['reorder_recommended'],
+            recommended_quantity=result['recommended_quantity'],
+        )
 
     return JsonResponse({'success': True, 'data': result})
 
@@ -210,9 +268,22 @@ def stock_forecast_batch(request):
             return JsonResponse({'error': 'Access denied'}, status=403)
         facility = Facility.objects.get(pk=facility_id)
 
+    # RBAC: filter stock levels to user's accessible facilities
+    accessible_facility_ids = list(
+        request.user.get_accessible_facilities().values_list('id', flat=True)
+    )
+
     items = InventoryItem.objects.filter(is_active=True)
     results = []
     for item in items:
+        # Skip items that have no stock at any accessible facility
+        from apps.inventory.models import StockLevel
+        has_stock = StockLevel.objects.filter(
+            inventory_item=item,
+            facility_id__in=accessible_facility_ids
+        ).exists()
+        if not has_stock and accessible_facility_ids:
+            continue
         try:
             result = forecast_stock(item, facility)
             results.append(result)
@@ -232,6 +303,67 @@ def stock_forecast_batch(request):
     })
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@throttle_classes([AIRateThrottle])
+def stock_forecast_offline(request):
+    """
+    Save an offline-generated stock forecast from the mobile app.
+    The mobile app computes forecasts locally and syncs the result when online.
+    """
+    from apps.inventory.models import InventoryItem
+
+    data = request.data
+    item_id = data.get('item_id')
+
+    try:
+        item = InventoryItem.objects.get(pk=item_id, is_active=True)
+    except InventoryItem.DoesNotExist:
+        return JsonResponse({'error': 'Item not found'}, status=404)
+
+    facility_id = data.get('facility_id')
+    facility = None
+    if facility_id:
+        from apps.facilities.models import Facility
+        if not request.user.can_access_facility(facility_id):
+            return JsonResponse({'error': 'Access denied'}, status=403)
+        facility = Facility.objects.get(pk=facility_id)
+
+    # Save or update today's offline forecast (avoid duplicates)
+    from django.utils import timezone
+    today_start = timezone.make_aware(timezone.datetime.combine(timezone.now().date(), timezone.datetime.min.time()))
+    today_end = timezone.make_aware(timezone.datetime.combine(timezone.now().date(), timezone.datetime.max.time()))
+    existing = StockForecast.objects.filter(
+        item=item, facility=facility,
+        created_at__gte=today_start, created_at__lte=today_end, is_offline=True
+    ).first()
+    if existing:
+        existing.forecast_periods = data.get('forecast_periods', [])
+        existing.method = data.get('method', 'offline_weighted_moving_average')
+        existing.accuracy_score = data.get('accuracy_score')
+        existing.current_stock = data.get('current_stock', 0)
+        existing.days_until_stockout = data.get('days_until_stockout')
+        existing.reorder_recommended = data.get('reorder_recommended', False)
+        existing.recommended_quantity = data.get('recommended_quantity', 0)
+        existing.is_offline = True
+        existing.save()
+    else:
+        StockForecast.objects.create(
+            item=item,
+            facility=facility,
+            forecast_periods=data.get('forecast_periods', []),
+            method=data.get('method', 'offline_weighted_moving_average'),
+            accuracy_score=data.get('accuracy_score'),
+            current_stock=data.get('current_stock', 0),
+            days_until_stockout=data.get('days_until_stockout'),
+            reorder_recommended=data.get('reorder_recommended', False),
+            recommended_quantity=data.get('recommended_quantity', 0),
+            is_offline=True,
+        )
+
+    return JsonResponse({'success': True, 'message': 'Offline forecast saved'})
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # CLINICAL ASSISTANT CHAT ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════════
@@ -241,9 +373,7 @@ def stock_forecast_batch(request):
 @throttle_classes([AIRateThrottle])
 def chat_send(request):
     """Send a message to the clinical assistant and get a response."""
-    import json
-
-    data = json.loads(request.body)
+    data = request.data
     message = data.get('message', '').strip()
     session_id = data.get('session_id')
 
@@ -286,11 +416,6 @@ def chat_send(request):
         content=result['response'],
         metadata=result.get('metadata'),
     )
-
-    # Update session title if it's the first exchange
-    if session.messages.count() == 2 and session.title.startswith('New'):
-        session.title = message[:50] + ('...' if len(message) > 50 else '')
-        session.save()
 
     return JsonResponse({
         'success': True,
@@ -351,6 +476,7 @@ def chat_history(request, session_id):
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
+@throttle_classes([AIRateThrottle])
 def chat_delete_session(request, session_id):
     """Delete a chat session."""
     try:
@@ -396,8 +522,10 @@ def ai_overview(request):
         try:
             result = predict_risk(reg)
             result['registration_id'] = reg.id
+            result['registration_number'] = reg.registration_number
             result['child_name'] = reg.child_name
             result['facility_name'] = reg.facility.name
+            result['malnutrition_type'] = reg.malnutrition_type
             risk_results.append(result)
         except Exception:
             pass
@@ -411,10 +539,20 @@ def ai_overview(request):
         'top_risks': sorted(risk_results, key=lambda x: x['risk_score'], reverse=True)[:5],
     }
 
-    # Stock forecast summary
+    # Stock forecast summary (RBAC: filter to accessible facilities)
+    from apps.inventory.models import StockLevel
+    accessible_facility_ids_for_stock = list(
+        request.user.get_accessible_facilities().values_list('id', flat=True)
+    )
     items = InventoryItem.objects.filter(is_active=True)
     stock_results = []
     for item in items:
+        has_stock = StockLevel.objects.filter(
+            inventory_item=item,
+            facility_id__in=accessible_facility_ids_for_stock
+        ).exists()
+        if not has_stock and accessible_facility_ids_for_stock:
+            continue
         try:
             result = forecast_stock(item)
             stock_results.append(result)
@@ -493,10 +631,18 @@ def ai_dashboard(request):
         'low': sum(1 for r in risk_results if r['risk_level'] == 'low'),
     }
 
-    # Stock forecast summary
+    # Stock forecast summary (RBAC: filter to accessible facilities)
+    from apps.inventory.models import StockLevel
+    accessible_facility_ids_dash = list(user.get_accessible_facilities().values_list('id', flat=True))
     items = InventoryItem.objects.filter(is_active=True)
     stock_results = []
     for item in items:
+        has_stock = StockLevel.objects.filter(
+            inventory_item=item,
+            facility_id__in=accessible_facility_ids_dash
+        ).exists()
+        if not has_stock and accessible_facility_ids_dash:
+            continue
         try:
             result = forecast_stock(item)
             stock_results.append(result)
@@ -586,16 +732,32 @@ def ai_risk_detail(request, registration_id):
 
     result = predict_risk(reg)
 
-    # Save prediction
-    RiskPrediction.objects.create(
-        registration=reg,
-        facility=reg.facility,
-        risk_score=result['risk_score'],
-        risk_level=result['risk_level'],
-        contributing_factors=result['contributing_factors'],
-        recommendations=result['recommendations'],
-        predicted_by=request.user,
-    )
+    # Save or update today's prediction (avoid duplicates)
+    from django.utils import timezone
+    today_start = timezone.make_aware(timezone.datetime.combine(timezone.now().date(), timezone.datetime.min.time()))
+    today_end = timezone.make_aware(timezone.datetime.combine(timezone.now().date(), timezone.datetime.max.time()))
+    existing = RiskPrediction.objects.filter(
+        registration=reg, created_at__gte=today_start, created_at__lte=today_end
+    ).first()
+    if existing:
+        existing.facility = reg.facility
+        existing.risk_score = result['risk_score']
+        existing.risk_level = result['risk_level']
+        existing.contributing_factors = result['contributing_factors']
+        existing.recommendations = result['recommendations']
+        existing.predicted_by = request.user
+        existing.is_offline = False
+        existing.save()
+    else:
+        RiskPrediction.objects.create(
+            registration=reg,
+            facility=reg.facility,
+            risk_score=result['risk_score'],
+            risk_level=result['risk_level'],
+            contributing_factors=result['contributing_factors'],
+            recommendations=result['recommendations'],
+            predicted_by=request.user,
+        )
 
     context = {
         'registration': reg,
@@ -623,9 +785,18 @@ def ai_forecast_list(request):
 
     accessible_facilities = user.get_accessible_facilities()
 
+    # RBAC: filter to accessible facilities
+    from apps.inventory.models import StockLevel
+    accessible_facility_ids_fl = list(user.get_accessible_facilities().values_list('id', flat=True))
     items = InventoryItem.objects.filter(is_active=True)
     forecast_results = []
     for item in items:
+        has_stock = StockLevel.objects.filter(
+            inventory_item=item,
+            facility_id__in=accessible_facility_ids_fl
+        ).exists()
+        if not has_stock and accessible_facility_ids_fl:
+            continue
         try:
             result = forecast_stock(item, facility)
             forecast_results.append(result)
@@ -661,21 +832,49 @@ def ai_forecast_detail(request, item_id):
         if not request.user.can_access_facility(facility_id):
             return redirect('ai:ai_forecast_list')
         facility = Facility.objects.get(pk=facility_id)
+    else:
+        # RBAC: verify item has stock at user's accessible facilities
+        from apps.inventory.models import StockLevel
+        accessible_ids = list(request.user.get_accessible_facilities().values_list('id', flat=True))
+        has_stock = StockLevel.objects.filter(
+            inventory_item=item,
+            facility_id__in=accessible_ids
+        ).exists()
+        if not has_stock and accessible_ids:
+            return redirect('ai:ai_forecast_list')
 
     result = forecast_stock(item, facility)
 
-    # Save forecast
-    StockForecast.objects.create(
-        item=item,
-        facility=facility,
-        forecast_periods=result['forecast_periods'],
-        method=result['method'],
-        accuracy_score=result.get('accuracy_score'),
-        current_stock=result['current_stock'],
-        days_until_stockout=result.get('days_until_stockout'),
-        reorder_recommended=result['reorder_recommended'],
-        recommended_quantity=result['recommended_quantity'],
-    )
+    # Save or update today's forecast (avoid duplicates)
+    from django.utils import timezone
+    today_start = timezone.make_aware(timezone.datetime.combine(timezone.now().date(), timezone.datetime.min.time()))
+    today_end = timezone.make_aware(timezone.datetime.combine(timezone.now().date(), timezone.datetime.max.time()))
+    existing = StockForecast.objects.filter(
+        item=item, facility=facility,
+        created_at__gte=today_start, created_at__lte=today_end
+    ).first()
+    if existing:
+        existing.forecast_periods = result['forecast_periods']
+        existing.method = result['method']
+        existing.accuracy_score = result.get('accuracy_score')
+        existing.current_stock = result['current_stock']
+        existing.days_until_stockout = result.get('days_until_stockout')
+        existing.reorder_recommended = result['reorder_recommended']
+        existing.recommended_quantity = result['recommended_quantity']
+        existing.is_offline = False
+        existing.save()
+    else:
+        StockForecast.objects.create(
+            item=item,
+            facility=facility,
+            forecast_periods=result['forecast_periods'],
+            method=result['method'],
+            accuracy_score=result.get('accuracy_score'),
+            current_stock=result['current_stock'],
+            days_until_stockout=result.get('days_until_stockout'),
+            reorder_recommended=result['reorder_recommended'],
+            recommended_quantity=result['recommended_quantity'],
+        )
 
     context = {
         'item': item,
@@ -754,10 +953,6 @@ def ai_assistant_send(request):
         content=result['response'],
         metadata=result.get('metadata'),
     )
-
-    if session.messages.count() == 2 and session.title.startswith('New'):
-        session.title = message[:50] + ('...' if len(message) > 50 else '')
-        session.save()
 
     return JsonResponse({
         'success': True,

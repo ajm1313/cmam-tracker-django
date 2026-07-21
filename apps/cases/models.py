@@ -173,7 +173,21 @@ class OpcRegistration(TimeStampedModel):
     
     # Additional Notes
     additional_notes = models.TextField(null=True, blank=True)
-    
+
+    # MAM Aggravating Factors
+    previous_sam_episode = models.BooleanField(default=False, null=True, blank=True)
+    failed_counselling_only = models.BooleanField(default=False, null=True, blank=True)
+    hiv_tb_status = models.CharField(max_length=50, null=True, blank=True)
+    household_vulnerability = models.CharField(max_length=20, null=True, blank=True)
+    poor_maternal_health = models.BooleanField(default=False, null=True, blank=True)
+    mother_deceased = models.BooleanField(default=False, null=True, blank=True)
+    immunization_action = models.CharField(max_length=255, null=True, blank=True)
+    mebendazole_date = models.DateField(null=True, blank=True)
+    other_medicines = models.TextField(null=True, blank=True)
+    counselling = models.CharField(max_length=255, null=True, blank=True)
+    food_product_type = models.CharField(max_length=50, null=True, blank=True)
+    food_product_quantity = models.CharField(max_length=50, null=True, blank=True)
+
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Active')
     outcome = models.CharField(max_length=50, null=True, blank=True)
     discharge_date = models.DateField(null=True, blank=True)
@@ -334,6 +348,15 @@ class OpcVisit(TimeStampedModel):
     dehydrated = models.BooleanField(default=False, null=True, blank=True)
     anaemia_palmar_pallor = models.BooleanField(default=False, null=True, blank=True)
     skin_infection = models.BooleanField(default=False, null=True, blank=True)
+
+    # Clinical Signs (for IPC referral criteria — SAM visits)
+    intractable_vomiting = models.BooleanField(default=False, null=True, blank=True)
+    lethargic_or_not_alert = models.BooleanField(default=False, null=True, blank=True)
+    convulsions = models.BooleanField(default=False, null=True, blank=True)
+    chest_indrawing = models.BooleanField(default=False, null=True, blank=True)
+    unconscious = models.BooleanField(default=False, null=True, blank=True)
+    very_pale_or_severe_palmar_pallor = models.BooleanField(default=False, null=True, blank=True)
+    severe_dehydration = models.BooleanField(default=False, null=True, blank=True)
     
     # Appetite / Feeding
     appetite = models.CharField(max_length=10, choices=APPETITE_CHOICES, null=True, blank=True)

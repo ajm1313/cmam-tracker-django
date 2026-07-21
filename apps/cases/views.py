@@ -1,6 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.db import transaction
 from django.db.models import Q, Count, Max, F
 from django.db.models.functions import Coalesce
 from django.utils import timezone
@@ -235,7 +236,14 @@ def case_create(request):
                     z_score_hfa=request.POST.get('z_score_hfa') or None,
                     oedema=request.POST.get('oedema') or None,
                     appetite_test=request.POST.get('appetite_test') or None,
-                    medical_complications=False,
+                    medical_complications=any([
+                        request.POST.get('diarrhoea') == 'Yes',
+                        request.POST.get('vomiting') == 'Yes',
+                        request.POST.get('cough') == 'Yes',
+                        request.POST.get('chest_indrawing') == 'Yes',
+                        request.POST.get('appetite_test') == 'Fail',
+                    ]),
+                    complications_notes=request.POST.get('additional_medical_history') or request.POST.get('physical_exam_notes') or None,
                     registration_latitude=request.POST.get('registration_latitude') or None,
                     registration_longitude=request.POST.get('registration_longitude') or None,
                     # Demographic/social fields
@@ -279,7 +287,7 @@ def case_create(request):
                     folic_acid_dosage=request.POST.get('folic_acid_dosage') or None,
                     deworming_date=request.POST.get('deworming_date') or None,
                     deworming_dosage=request.POST.get('deworming_dosage') or None,
-                    measles_vaccine_date=request.POST.get('measles_vaccine_date') or None,
+                    measles_vaccine_date=request.POST.get('measles_vaccine_date') or request.POST.get('measles_vaccination_date') or None,
                     measles_vaccine_dosage=request.POST.get('measles_vaccine_dosage') or None,
                     malaria_test_date=request.POST.get('malaria_test_date') or None,
                     malaria_test_result=request.POST.get('malaria_test_result') or None,
@@ -301,13 +309,32 @@ def case_create(request):
                     other_drug_3_dosage=request.POST.get('other_drug_3_dosage') or None,
                     # Additional Notes
                     additional_notes=request.POST.get('additional_notes') or None,
+                    # MAM Aggravating Factors
+                    previous_sam_episode=request.POST.get('previous_sam_episode') == 'True',
+                    failed_counselling_only=request.POST.get('failed_counselling_only') == 'True',
+                    hiv_tb_status=request.POST.get('hiv_tb_status') or None,
+                    household_vulnerability=request.POST.get('household_vulnerability') or None,
+                    poor_maternal_health=request.POST.get('poor_maternal_health') == 'True',
+                    mother_deceased=request.POST.get('mother_deceased') == 'True',
+                    immunization_action=request.POST.get('immunization_action') or None,
+                    mebendazole_date=request.POST.get('mebendazole_date') or None,
+                    other_medicines=request.POST.get('other_medicines') or None,
+                    counselling=request.POST.get('counselling') or None,
+                    food_product_type=request.POST.get('food_product_type') or None,
+                    food_product_quantity=request.POST.get('food_product_quantity') or None,
                     status='Active',
                     created_by=request.user,
                 )
                 
+                # Handle child photo upload
+                if 'child_photo' in request.FILES:
+                    registration.child_photo = request.FILES['child_photo']
+                    registration.save(update_fields=['child_photo'])
+
                 # Auto-deduct stock for commodities given at enrollment
                 try:
-                    deduct_stock_for_registration(registration, user=request.user)
+                    with transaction.atomic():
+                        deduct_stock_for_registration(registration, user=request.user)
                 except Exception:
                     pass
                 
@@ -416,6 +443,16 @@ def case_edit(request, pk):
             case.oedema = request.POST.get('oedema') or None
             case.appetite_test = request.POST.get('appetite_test') or None
             case.admission_criteria = request.POST.get('enrolment_criteria') or request.POST.get('entry_criteria') or case.admission_criteria
+            case.malnutrition_type = request.POST.get('malnutrition_type') or case.malnutrition_type
+            case.admission_type = request.POST.get('admission_type') or case.admission_type
+            case.medical_complications = any([
+                request.POST.get('diarrhoea') == 'Yes',
+                request.POST.get('vomiting') == 'Yes',
+                request.POST.get('cough') == 'Yes',
+                request.POST.get('chest_indrawing') == 'Yes',
+                request.POST.get('appetite_test') == 'Fail',
+            ])
+            case.complications_notes = request.POST.get('additional_medical_history') or request.POST.get('physical_exam_notes') or None
             case.registration_latitude = request.POST.get('registration_latitude') or None
             case.registration_longitude = request.POST.get('registration_longitude') or None
             # Demographic/social fields
@@ -459,7 +496,7 @@ def case_edit(request, pk):
             case.folic_acid_dosage = request.POST.get('folic_acid_dosage') or None
             case.deworming_date = request.POST.get('deworming_date') or None
             case.deworming_dosage = request.POST.get('deworming_dosage') or None
-            case.measles_vaccine_date = request.POST.get('measles_vaccine_date') or None
+            case.measles_vaccine_date = request.POST.get('measles_vaccine_date') or request.POST.get('measles_vaccination_date') or None
             case.measles_vaccine_dosage = request.POST.get('measles_vaccine_dosage') or None
             case.malaria_test_date = request.POST.get('malaria_test_date') or None
             case.malaria_test_result = request.POST.get('malaria_test_result') or None
@@ -481,6 +518,19 @@ def case_edit(request, pk):
             case.other_drug_3_dosage = request.POST.get('other_drug_3_dosage') or None
             # Additional Notes
             case.additional_notes = request.POST.get('additional_notes') or None
+            # MAM Aggravating Factors
+            case.previous_sam_episode = request.POST.get('previous_sam_episode') == 'True'
+            case.failed_counselling_only = request.POST.get('failed_counselling_only') == 'True'
+            case.hiv_tb_status = request.POST.get('hiv_tb_status') or None
+            case.household_vulnerability = request.POST.get('household_vulnerability') or None
+            case.poor_maternal_health = request.POST.get('poor_maternal_health') == 'True'
+            case.mother_deceased = request.POST.get('mother_deceased') == 'True'
+            case.immunization_action = request.POST.get('immunization_action') or None
+            case.mebendazole_date = request.POST.get('mebendazole_date') or None
+            case.other_medicines = request.POST.get('other_medicines') or None
+            case.counselling = request.POST.get('counselling') or None
+            case.food_product_type = request.POST.get('food_product_type') or None
+            case.food_product_quantity = request.POST.get('food_product_quantity') or None
             case.updated_by = request.user
             
             # Handle photo upload
@@ -630,6 +680,14 @@ def visit_form(request, registration_id):
                 skin_infection = request.POST.get('skin_infection') == 'Y'
                 action_needed = request.POST.get('action_needed') == 'Y'
                 home_visit_needed = request.POST.get('home_visit_needed') == 'Y'
+                # Clinical signs for IPC referral criteria
+                intractable_vomiting = request.POST.get('intractable_vomiting') == 'Y'
+                lethargic_or_not_alert = request.POST.get('lethargic_or_not_alert') == 'Y'
+                convulsions = request.POST.get('convulsions') == 'Y'
+                chest_indrawing = request.POST.get('chest_indrawing') == 'Y'
+                unconscious = request.POST.get('unconscious') == 'Y'
+                very_pale_or_severe_palmar_pallor = request.POST.get('very_pale_or_severe_palmar_pallor') == 'Y'
+                severe_dehydration = request.POST.get('severe_dehydration') == 'Y'
                 
                 visit = OpcVisit.objects.create(
                     registration=case,
@@ -656,6 +714,14 @@ def visit_form(request, registration_id):
                     dehydrated=dehydrated,
                     anaemia_palmar_pallor=anaemia_palmar_pallor,
                     skin_infection=skin_infection,
+                    # Clinical Signs (IPC referral criteria)
+                    intractable_vomiting=intractable_vomiting,
+                    lethargic_or_not_alert=lethargic_or_not_alert,
+                    convulsions=convulsions,
+                    chest_indrawing=chest_indrawing,
+                    unconscious=unconscious,
+                    very_pale_or_severe_palmar_pallor=very_pale_or_severe_palmar_pallor,
+                    severe_dehydration=severe_dehydration,
                     # Appetite / Feeding
                     appetite=request.POST.get('appetite') or None,
                     rutf_test=request.POST.get('rutf_test') or None,
@@ -679,6 +745,7 @@ def visit_form(request, registration_id):
                     action_needed=action_needed,
                     other_medication=request.POST.get('other_medication') or None,
                     home_visit_needed=home_visit_needed,
+                    home_visit_date=request.POST.get('home_visit_date') or None,
                     home_visit_notes=request.POST.get('home_visit_notes') or None,
                     community_volunteer=request.POST.get('community_volunteer') or None,
                     # Outcome
@@ -766,7 +833,8 @@ def visit_form(request, registration_id):
             
             # Auto-deduct stock for commodities given during visit
             try:
-                deduct_stock_for_visit(visit, user=request.user)
+                with transaction.atomic():
+                    deduct_stock_for_visit(visit, user=request.user)
             except Exception:
                 pass
             
@@ -867,6 +935,14 @@ def visit_edit(request, visit_id):
                 visit.dehydrated = request.POST.get('dehydrated') == 'Y'
                 visit.anaemia_palmar_pallor = request.POST.get('anaemia_palmar_pallor') == 'Y'
                 visit.skin_infection = request.POST.get('skin_infection') == 'Y'
+                # Clinical Signs (IPC referral criteria)
+                visit.intractable_vomiting = request.POST.get('intractable_vomiting') == 'Y'
+                visit.lethargic_or_not_alert = request.POST.get('lethargic_or_not_alert') == 'Y'
+                visit.convulsions = request.POST.get('convulsions') == 'Y'
+                visit.chest_indrawing = request.POST.get('chest_indrawing') == 'Y'
+                visit.unconscious = request.POST.get('unconscious') == 'Y'
+                visit.very_pale_or_severe_palmar_pallor = request.POST.get('very_pale_or_severe_palmar_pallor') == 'Y'
+                visit.severe_dehydration = request.POST.get('severe_dehydration') == 'Y'
                 visit.appetite = request.POST.get('appetite') or None
                 visit.rutf_test = request.POST.get('rutf_test') or None
                 visit.breastfeeding_status = request.POST.get('breastfeeding_status') or None
@@ -874,6 +950,7 @@ def visit_edit(request, visit_id):
                 visit.action_needed = request.POST.get('action_needed') == 'Y'
                 visit.other_medication = request.POST.get('other_medication') or None
                 visit.home_visit_needed = request.POST.get('home_visit_needed') == 'Y'
+                visit.home_visit_date = request.POST.get('home_visit_date') or None
                 visit.home_visit_notes = request.POST.get('home_visit_notes') or None
                 visit.community_volunteer = request.POST.get('community_volunteer') or None
             else:

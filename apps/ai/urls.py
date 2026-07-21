@@ -12,6 +12,7 @@ urlpatterns = [
     # Stock Forecast
     path('v1/ai/forecast/<int:item_id>/', views.stock_forecast_single, name='stock_forecast_single'),
     path('v1/ai/forecast/', views.stock_forecast_batch, name='stock_forecast_batch'),
+    path('v1/ai/forecast/offline/', views.stock_forecast_offline, name='stock_forecast_offline'),
 
     # Clinical Assistant Chat
     path('v1/ai/chat/send/', views.chat_send, name='chat_send'),

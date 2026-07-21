@@ -61,10 +61,14 @@ def facility_create(request):
                 sub_district=sub_district,
                 contact_person=contact_person,
                 phone=phone,
+                email=request.POST.get('email', '').strip() or None,
                 address=address,
                 population=int(population) if population else None,
                 sam_prevalence=sam_prevalence if sam_prevalence else None,
                 opc_day=opc_day,
+                latitude=request.POST.get('latitude') or None,
+                longitude=request.POST.get('longitude') or None,
+                capacity=request.POST.get('capacity') or None,
             )
             messages.success(request, f'Facility "{name}" created successfully')
             return redirect('facilities:facility_list')
@@ -107,6 +111,7 @@ def facility_edit(request, pk):
         facility.phone = request.POST.get('phone', '').strip() or None
         facility.address = request.POST.get('address', '').strip() or None
         facility.is_active = request.POST.get('is_active') == '1'
+        facility.email = request.POST.get('email', '').strip() or None
         
         pop_val = request.POST.get('population', '').strip()
         facility.population = int(pop_val) if pop_val else None
@@ -116,6 +121,10 @@ def facility_edit(request, pk):
 
         opc_day_raw = request.POST.get('opc_day', '').strip()
         facility.opc_day = int(opc_day_raw) if opc_day_raw != '' else None
+
+        facility.latitude = request.POST.get('latitude') or None
+        facility.longitude = request.POST.get('longitude') or None
+        facility.capacity = request.POST.get('capacity') or None
         
         if not facility.name or not facility.code:
             messages.error(request, 'Name and Code are required')
