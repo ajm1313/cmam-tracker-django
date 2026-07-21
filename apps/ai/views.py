@@ -6,7 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_http_methods
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.throttling import UserRateThrottle
+from rest_framework.throttling import ScopedRateThrottle
 
 from apps.ai.risk_engine import predict_risk, batch_predict
 from apps.ai.forecast_engine import forecast_stock, batch_forecast
@@ -16,9 +16,8 @@ from apps.ai.models import RiskPrediction, StockForecast, ChatSession, ChatMessa
 logger = logging.getLogger(__name__)
 
 
-class AIRateThrottle(UserRateThrottle):
+class AIRateThrottle(ScopedRateThrottle):
     scope = 'ai'
-    rate = '60/min'
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -328,6 +327,16 @@ def stock_forecast_offline(request):
         if not request.user.can_access_facility(facility_id):
             return JsonResponse({'error': 'Access denied'}, status=403)
         facility = Facility.objects.get(pk=facility_id)
+    else:
+        # RBAC: verify item has stock at user's accessible facilities
+        from apps.inventory.models import StockLevel
+        accessible_ids = list(request.user.get_accessible_facilities().values_list('id', flat=True))
+        has_stock = StockLevel.objects.filter(
+            inventory_item=item,
+            facility_id__in=accessible_ids
+        ).exists()
+        if not has_stock and accessible_ids:
+            return JsonResponse({'error': 'Access denied'}, status=403)
 
     # Save or update today's offline forecast (avoid duplicates)
     from django.utils import timezone
@@ -401,9 +410,8 @@ def chat_send(request):
         content=message,
     )
 
-    # Build conversation history
+    # Build conversation history (includes the latest user message)
     history_msgs = list(session.messages.order_by('created_at').values('role', 'content'))
-    # Remove the last user message (we just saved it, but chat_with_llm expects the full list)
     chat_messages = [{'role': m['role'], 'content': m['content']} for m in history_msgs]
 
     # Get AI response
