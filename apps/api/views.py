@@ -175,6 +175,7 @@ def login(request):
     
     refresh = RefreshToken.for_user(user)
     access_token = str(refresh.access_token)
+    refresh_token = str(refresh)
     
     # Get user role and location info
     user_role_data = {'id': 0, 'name': 'Administrator', 'level': 0}
@@ -229,6 +230,7 @@ def login(request):
                 'created_at': user.created_at.isoformat() if user.created_at else None,
             },
             'token': access_token,
+            'refresh_token': refresh_token,
             'expires_at': expires_at,
         }
     })
@@ -242,6 +244,36 @@ def logout(request):
         'success': True,
         'message': 'Logged out successfully'
     })
+
+
+@api_view(['POST'])
+@permission_classes([])
+def token_refresh(request):
+    """Refresh access token using a refresh token"""
+    refresh_token = request.data.get('refresh_token')
+    if not refresh_token:
+        return Response({
+            'success': False,
+            'message': 'refresh_token is required'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        from rest_framework_simplejwt.tokens import RefreshToken
+        token = RefreshToken(refresh_token)
+        new_access = str(token.access_token)
+        expires_at = (timezone.now() + timedelta(hours=1)).isoformat()
+        return Response({
+            'success': True,
+            'data': {
+                'token': new_access,
+                'expires_at': expires_at,
+            }
+        })
+    except Exception:
+        return Response({
+            'success': False,
+            'message': 'Invalid or expired refresh token'
+        }, status=status.HTTP_401_UNAUTHORIZED)
 
 
 @api_view(['GET'])

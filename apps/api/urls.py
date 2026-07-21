@@ -9,6 +9,7 @@ urlpatterns = [
     # Authentication
     path('v1/login/', views.login, name='login'),
     path('v1/logout/', views.logout, name='logout'),
+    path('v1/token/refresh/', views.token_refresh, name='token_refresh'),
     path('v1/profile/', views.profile, name='profile'),
 
     # Inventory - items
