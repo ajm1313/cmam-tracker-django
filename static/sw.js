@@ -7,7 +7,7 @@
  *  - Form POSTs: When network fails, queue to IndexedDB for later sync
  */
 
-const CACHE_VERSION = 'cmam-v2.0.0';
+const CACHE_VERSION = 'cmam-v2.1.0';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const PAGE_CACHE = `${CACHE_VERSION}-pages`;
 const OFFLINE_URL = '/offline/';
@@ -127,10 +127,31 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(networkFirst(request, PAGE_CACHE));
 });
 
+// Pages that must never be served from cache (contain CSRF tokens or session state)
+const NO_CACHE_PAGES = ['/login/', '/logout/', '/password-reset/', '/password-reset/done/'];
+
 // ── Navigation: stale-while-revalidate ─────────────────────────────────────
 // Serve cached page immediately if available, fetch updated version in background.
 // If not cached, try network. If network fails too, show offline page.
+// Auth pages are always fetched from network — cached CSRF tokens cause 403 errors.
 async function handleNavigation(request) {
+  const url = new URL(request.url);
+
+  // Auth pages must always come from network
+  if (NO_CACHE_PAGES.some((p) => url.pathname === p || url.pathname.startsWith(p))) {
+    try {
+      return await fetch(request, { credentials: 'same-origin' });
+    } catch (err) {
+      const staticCache = await caches.open(STATIC_CACHE);
+      const offlinePage = await staticCache.match(OFFLINE_URL);
+      if (offlinePage) return offlinePage;
+      return new Response(
+        '<html><body style="font-family:sans-serif;text-align:center;padding:40px"><h2>You are offline</h2><p>Please connect to the internet to log in.</p></body></html>',
+        { headers: { 'Content-Type': 'text/html' } }
+      );
+    }
+  }
+
   const cache = await caches.open(PAGE_CACHE);
   const cached = await cache.match(request);
 
