@@ -7,7 +7,7 @@
  *  - Form POSTs: When network fails, queue to IndexedDB for later sync
  */
 
-const CACHE_VERSION = 'cmam-v2.1.0';
+const CACHE_VERSION = 'cmam-v2.2.0';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const PAGE_CACHE = `${CACHE_VERSION}-pages`;
 const OFFLINE_URL = '/offline/';
@@ -20,32 +20,9 @@ const PRECACHE_URLS = [
   '/static/manifest.json',
 ];
 
-// Main app pages to pre-fetch on activate (best-effort, failures ignored)
-const APP_PAGES = [
-  '/dashboard/',
-  '/manage/cases/',
-  '/manage/cases/dashboard/',
-  '/manage/inventory/',
-  '/manage/inventory/stock-levels/',
-  '/manage/inventory/movements/',
-  '/manage/inventory/requests/',
-  '/manage/inventory/items/',
-  '/manage/inventory/receive/',
-  '/manage/inventory/distribute/',
-  '/manage/visits/',
-  '/manage/discharge/',
-  '/manage/ipc/',
-  '/manage/facilities/',
-  '/manage/users/',
-  '/reports/',
-  '/locations/',
-  '/locations/regions/',
-  '/locations/districts/',
-  '/locations/sub-districts/',
-  '/profile/',
-  '/settings/',
-  '/manage/batch-visit/',
-];
+// Authenticated app pages — NOT pre-fetched because they require a session.
+// Pre-fetching them when the session is expired caches the login page HTML
+// under the app page URL, causing ERR_FAILED on navigation.
 
 // ── INSTALL: precache key assets ──────────────────────────────────────────
 self.addEventListener('install', (event) => {
@@ -65,18 +42,6 @@ self.addEventListener('activate', (event) => {
           .filter((k) => k.startsWith('cmam-') && k !== STATIC_CACHE && k !== PAGE_CACHE)
           .map((k) => caches.delete(k))
       ))
-      .then(() => {
-        // Pre-fetch app pages in background (best-effort, ignore failures)
-        caches.open(PAGE_CACHE).then((cache) => {
-          APP_PAGES.forEach((url) => {
-            fetch(url, { credentials: 'same-origin' })
-              .then((resp) => {
-                if (resp && resp.ok) cache.put(url, resp.clone());
-              })
-              .catch(() => {});
-          });
-        });
-      })
       .then(() => self.clients.claim())
   );
 });
@@ -160,7 +125,8 @@ async function handleNavigation(request) {
     // Fire-and-forget background update
     fetch(request, { credentials: 'same-origin' })
       .then((response) => {
-        if (response && response.ok) {
+        // Only cache genuine OK responses — not redirects (which would be the login page)
+        if (response && response.ok && !response.redirected) {
           cache.put(request, response.clone());
         }
       })
@@ -171,7 +137,8 @@ async function handleNavigation(request) {
   // No cached version — try network
   try {
     const networkResponse = await fetch(request, { credentials: 'same-origin' });
-    if (networkResponse && networkResponse.ok) {
+    // Only cache genuine OK responses — not redirects (which would be the login page)
+    if (networkResponse && networkResponse.ok && !networkResponse.redirected) {
       cache.put(request, networkResponse.clone());
     }
     return networkResponse;
