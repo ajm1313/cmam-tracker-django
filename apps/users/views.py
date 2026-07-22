@@ -55,7 +55,7 @@ def dashboard(request):
     else:
         user_role = UserRole.objects.filter(
             user=user, is_active=True
-        ).select_related('facility', 'sub_district', 'district', 'region').first()
+        ).select_related('role', 'facility', 'sub_district', 'district', 'region').first()
         
         if user_role:
             if user_role.facility:
@@ -73,6 +73,9 @@ def dashboard(request):
             else:
                 role_context = "National"
                 role_level = "national"
+        else:
+            role_context = None
+            role_level = "none"
     
     # Location context for cascading filter dropdowns
     location_context = get_user_location_context(user)
@@ -2135,6 +2138,9 @@ def get_user_access_level(user):
         return 'national'
     
     user_roles = user.get_active_roles()
+    if not user_roles.exists():
+        return 'none'
+    
     for role in user_roles:
         if role.region_id and not role.district_id:
             return 'regional'

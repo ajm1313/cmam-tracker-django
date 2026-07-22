@@ -178,7 +178,7 @@ def login(request):
     refresh_token = str(refresh)
     
     # Get user role and location info
-    user_role_data = {'id': 0, 'name': 'Administrator', 'level': 0}
+    user_role_data = {'id': 0, 'name': 'No Role', 'level': 99}
     location_data = {}
     
     try:
@@ -189,7 +189,7 @@ def login(request):
         if user_role and user_role.role:
             user_role_data = {
                 'id': user_role.role.id,
-                'name': user_role.role.name,
+                'name': user_role.role.display_name or user_role.role.name,
                 'level': user_role.role.level
             }
             location_data = {
@@ -1614,7 +1614,7 @@ def users_list_api(request):
 def user_create_api(request):
     """Create a new user"""
     data = request.data
-    required = ['name', 'email', 'password']
+    required = ['name', 'email', 'password', 'role_id']
     missing = [f for f in required if not data.get(f)]
     if missing:
         return Response({'success': False, 'message': f'Missing: {", ".join(missing)}'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1638,53 +1638,66 @@ def user_create_api(request):
             is_active=data.get('is_active', True),
         )
 
-    # Assign role if provided
+    # Assign role
     role_id = data.get('role_id')
-    if role_id:
+    try:
+        role = Role.objects.get(pk=role_id)
+    except Role.DoesNotExist:
+        return Response({'success': False, 'message': 'Invalid role selected'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Resolve location hierarchy: auto-populate parent IDs from child
+    region_id = data.get('region_id')
+    district_id = data.get('district_id')
+    sub_district_id = data.get('sub_district_id')
+    facility_id = data.get('facility_id')
+
+    if facility_id:
         try:
-            role = Role.objects.get(pk=role_id)
-            # Resolve location hierarchy: auto-populate parent IDs from child
-            region_id = data.get('region_id')
-            district_id = data.get('district_id')
-            sub_district_id = data.get('sub_district_id')
-            facility_id = data.get('facility_id')
-
-            if facility_id:
-                try:
-                    fac = Facility.objects.get(pk=facility_id)
-                    sub_district_id = sub_district_id or fac.sub_district_id
-                    district_id = district_id or fac.district_id
-                    region_id = region_id or (fac.district.region_id if fac.district_id else None)
-                except Facility.DoesNotExist:
-                    pass
-            if sub_district_id:
-                try:
-                    sd = SubDistrict.objects.get(pk=sub_district_id)
-                    district_id = district_id or sd.district_id
-                    region_id = region_id or (sd.district.region_id if sd.district_id else None)
-                except SubDistrict.DoesNotExist:
-                    pass
-            if district_id:
-                try:
-                    d = District.objects.get(pk=district_id)
-                    region_id = region_id or d.region_id
-                except District.DoesNotExist:
-                    pass
-
-            # Filter by role level (matching webapp logic)
-            region_id = region_id if role.level >= 2 else None
-            district_id = district_id if role.level >= 3 else None
-            sub_district_id = sub_district_id if role.level >= 4 else None
-            facility_id = facility_id if role.level >= 5 else None
-
-            UserRole.objects.create(
-                user=user, role=role,
-                region_id=region_id, district_id=district_id,
-                sub_district_id=sub_district_id, facility_id=facility_id,
-                is_active=True,
-            )
-        except Role.DoesNotExist:
+            fac = Facility.objects.get(pk=facility_id)
+            sub_district_id = sub_district_id or fac.sub_district_id
+            district_id = district_id or fac.district_id
+            region_id = region_id or (fac.district.region_id if fac.district_id else None)
+        except Facility.DoesNotExist:
             pass
+    if sub_district_id:
+        try:
+            sd = SubDistrict.objects.get(pk=sub_district_id)
+            district_id = district_id or sd.district_id
+            region_id = region_id or (sd.district.region_id if sd.district_id else None)
+        except SubDistrict.DoesNotExist:
+            pass
+    if district_id:
+        try:
+            d = District.objects.get(pk=district_id)
+            region_id = region_id or d.region_id
+        except District.DoesNotExist:
+            pass
+
+    # Filter by role level (matching webapp logic)
+    region_id = region_id if role.level >= 2 else None
+    district_id = district_id if role.level >= 3 else None
+    sub_district_id = sub_district_id if role.level >= 4 else None
+    facility_id = facility_id if role.level >= 5 else None
+
+    # Validate required location based on role level
+    if role.level >= 2 and not region_id:
+        return Response({'success': False, 'message': 'Region is required for this role'}, status=status.HTTP_400_BAD_REQUEST)
+    if role.level >= 3 and not district_id:
+        return Response({'success': False, 'message': 'District is required for this role'}, status=status.HTTP_400_BAD_REQUEST)
+    if role.level >= 4 and not sub_district_id:
+        return Response({'success': False, 'message': 'Sub-District is required for this role'}, status=status.HTTP_400_BAD_REQUEST)
+    if role.level >= 5 and not facility_id:
+        return Response({'success': False, 'message': 'Facility is required for this role'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Deactivate any old roles (for reactivated users)
+    user.user_roles.filter(is_active=True).update(is_active=False)
+
+    UserRole.objects.create(
+        user=user, role=role,
+        region_id=region_id, district_id=district_id,
+        sub_district_id=sub_district_id, facility_id=facility_id,
+        is_active=True,
+    )
 
     return Response({'success': True, 'message': 'User created', 'data': {'id': user.id, 'email': user.email, 'name': user.name}},
                     status=status.HTTP_201_CREATED)

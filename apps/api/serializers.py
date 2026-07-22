@@ -28,15 +28,12 @@ class UserSerializer(serializers.ModelSerializer):
         try:
             ur = UserRole.objects.filter(user=obj, is_active=True).select_related('role').first()
             if ur and ur.role:
-                return {'id': ur.role.id, 'name': ur.role.name, 'level': ur.role.level}
+                return {'id': ur.role.id, 'name': ur.role.display_name or ur.role.name, 'level': ur.role.level}
         except Exception as e:
             logger.warning(f"Error fetching role for user {obj.id}: {e}")
         if obj.is_superuser:
             return {'id': 0, 'name': 'Super Administrator', 'level': 0}
-        # Keep this fallback identical to the login endpoint's fallback
-        # (apps/api/views.py login view) — otherwise the displayed role
-        # switches between login and subsequent profile refreshes.
-        return {'id': 0, 'name': 'Administrator', 'level': 0}
+        return {'id': 0, 'name': 'No Role', 'level': 99}
 
     def get_location(self, obj):
         from apps.users.models import UserRole
