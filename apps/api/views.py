@@ -1619,14 +1619,24 @@ def user_create_api(request):
     if missing:
         return Response({'success': False, 'message': f'Missing: {", ".join(missing)}'}, status=status.HTTP_400_BAD_REQUEST)
 
-    if User.objects.filter(email=data['email']).exists():
+    existing = User.objects.filter(email=data['email']).first()
+    if existing and existing.is_active:
         return Response({'success': False, 'message': 'Email already exists'}, status=status.HTTP_400_BAD_REQUEST)
 
-    user = User.objects.create_user(
-        email=data['email'], password=data['password'],
-        name=data['name'], phone=data.get('phone', ''),
-        is_active=data.get('is_active', True),
-    )
+    if existing:
+        # Reactivate a previously deactivated user with the same email
+        existing.name = data['name']
+        existing.phone = data.get('phone', '')
+        existing.is_active = True
+        existing.set_password(data['password'])
+        existing.save()
+        user = existing
+    else:
+        user = User.objects.create_user(
+            email=data['email'], password=data['password'],
+            name=data['name'], phone=data.get('phone', ''),
+            is_active=data.get('is_active', True),
+        )
 
     # Assign role if provided
     role_id = data.get('role_id')

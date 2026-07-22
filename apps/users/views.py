@@ -304,7 +304,7 @@ def user_create(request):
             messages.error(request, 'Name, Email, Password, and Role are required')
         elif password != password_confirm:
             messages.error(request, 'Passwords do not match')
-        elif User.objects.filter(email=email).exists():
+        elif User.objects.filter(email=email, is_active=True).exists():
             messages.error(request, f'User with email "{email}" already exists')
         else:
             role = get_object_or_404(Role, pk=role_id)
@@ -319,13 +319,22 @@ def user_create(request):
             elif role.level >= 5 and not facility_id:
                 messages.error(request, 'Facility is required for this role')
             else:
-                # Create user
-                user = User.objects.create_user(
-                    email=email,
-                    password=password,
-                    name=name,
-                    phone=phone
-                )
+                # Reactivate deactivated user or create new one
+                existing = User.objects.filter(email=email, is_active=False).first()
+                if existing:
+                    existing.name = name
+                    existing.phone = phone
+                    existing.is_active = True
+                    existing.set_password(password)
+                    existing.save()
+                    user = existing
+                else:
+                    user = User.objects.create_user(
+                        email=email,
+                        password=password,
+                        name=name,
+                        phone=phone
+                    )
                 
                 # Create user role with location assignment
                 UserRole.objects.create(
@@ -393,7 +402,7 @@ def user_edit(request, pk):
         
         if not name or not email:
             messages.error(request, 'Name and email are required')
-        elif email != edit_user.email and User.objects.filter(email=email).exists():
+        elif email != edit_user.email and User.objects.filter(email=email, is_active=True).exists():
             messages.error(request, f'Email "{email}" is already in use by another account')
         elif password and password != password_confirm:
             messages.error(request, 'Passwords do not match')
