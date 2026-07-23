@@ -401,10 +401,14 @@ def stock_movements(request):
     ).order_by('-movement_date')
     
     # RBAC: filter to user's accessible facilities
+    # Also include higher-level movements (national/regional/district) where
+    # source_facility or destination_facility is NULL.
     accessible = user.get_accessible_facilities()
     if accessible is not None:
         movements = movements.filter(
-            Q(source_facility__in=accessible) | Q(destination_facility__in=accessible)
+            Q(source_facility__in=accessible) |
+            Q(destination_facility__in=accessible) |
+            Q(source_facility__isnull=True, destination_facility__isnull=True)
         )
     
     # Apply filters
