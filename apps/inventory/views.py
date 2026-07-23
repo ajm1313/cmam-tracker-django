@@ -113,6 +113,9 @@ def inventory_create(request):
         supplier = request.POST.get('supplier', '').strip() or None
         storage_conditions = request.POST.get('storage_conditions') or None
         reorder_level = request.POST.get('reorder_level') or 0
+        min_stock_level = request.POST.get('min_stock_level') or 0
+        max_stock_level = request.POST.get('max_stock_level') or 0
+        has_expiry = request.POST.get('has_expiry') == '1'
         description = request.POST.get('description', '').strip() or None
         
         if not name or not code or not category or not unit_of_measure:
