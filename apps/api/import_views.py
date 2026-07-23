@@ -238,21 +238,21 @@ def _execute_case_import(rows, user):
             
             # Create case
             case = OpcRegistration.objects.create(
-                case_id=f"IMP-{datetime.now().strftime('%Y%m%d')}-{idx}",
                 child_name=row_data.get('child_name', '').strip(),
                 child_gender=row_data.get('child_gender', 'Male'),
                 date_of_birth=dob,
-                age_months_at_reg=int(row_data.get('age_months', 0)) if row_data.get('age_months') else 0,
+                age_months=int(row_data.get('age_months', 0)) if row_data.get('age_months') else 0,
                 facility=facility,
                 registration_date=reg_date,
+                admission_date=parse_date(row_data.get('admission_date')) or reg_date,
                 malnutrition_type=row_data.get('malnutrition_type', 'SAM')[:3].upper(),
                 status='Active',
-                guardian_name=row_data.get('guardian_name', '').strip() or 'Unknown',
-                guardian_phone=row_data.get('guardian_phone', '').strip()[:20] or '',
-                admission_weight=float(row_data.get('weight_kg', 0)) if row_data.get('weight_kg') else None,
-                admission_muac=float(row_data.get('muac_cm', 0)) if row_data.get('muac_cm') else None,
-                height=float(row_data.get('height_cm', 0)) if row_data.get('height_cm') else None,
-                oedema=row_data.get('oedema', 'None'),
+                caregiver_name=row_data.get('caregiver_name', '') or row_data.get('guardian_name', '').strip() or 'Unknown',
+                caregiver_phone=(row_data.get('caregiver_phone', '') or row_data.get('guardian_phone', '')).strip()[:20] or '',
+                weight_kg=float(row_data.get('weight_kg', 0)) if row_data.get('weight_kg') else 0,
+                muac_cm=float(row_data.get('muac_cm', 0)) if row_data.get('muac_cm') else None,
+                height_cm=float(row_data.get('height_cm', 0)) if row_data.get('height_cm') else 0,
+                oedema=row_data.get('oedema', '') or None,
                 created_by=user
             )
             
@@ -465,21 +465,23 @@ def _execute_inventory_import(rows, facility_id, user):
                 name__iexact=item_name,
                 defaults={
                     'name': item_name,
+                    'code': f'IMP-{facility.code}-{idx}',
                     'category': 'Therapeutic Food',
-                    'unit': 'sachet',
+                    'unit_of_measure': 'sachet',
                     'description': f'Imported item: {item_name}'
                 }
             )
             
             # Get or create stock level
             stock_level, stock_created = StockLevel.objects.get_or_create(
-                item=item,
+                inventory_item=item,
                 facility=facility,
-                defaults={'quantity': 0}
+                location_type='facility',
+                defaults={'current_stock': 0}
             )
             
             # Update quantity
-            stock_level.quantity += quantity
+            stock_level.current_stock += quantity
             stock_level.save()
             
             # Create batch if batch_number provided
@@ -490,7 +492,7 @@ def _execute_inventory_import(rows, facility_id, user):
                 expiry_date = parse_date(expiry_str) if expiry_str else None
                 
                 ItemBatch.objects.create(
-                    item=item,
+                    inventory_item=item,
                     facility=facility,
                     batch_number=batch_number,
                     quantity=quantity,
@@ -499,13 +501,15 @@ def _execute_inventory_import(rows, facility_id, user):
             
             # Record movement
             StockMovement.objects.create(
-                item=item,
-                facility=facility,
-                movement_type='receive',
+                inventory_item=item,
+                movement_type='IN',
                 quantity=quantity,
-                reference=f"Import: {batch_number or 'N/A'}",
+                reference_number=f"Import: {batch_number or 'N/A'}",
+                destination_type='facility',
+                destination_facility=facility,
                 notes=f"Imported via bulk import",
-                created_by=user
+                created_by=user,
+                movement_date=datetime.now(),
             )
             
             if item_created:
@@ -535,9 +539,9 @@ def import_template_download(request, model_type):
     if model_type == 'cases':
         headers = [
             'child_name', 'child_gender', 'date_of_birth', 'age_months',
-            'facility_id', 'guardian_name', 'guardian_phone',
+            'facility_id', 'caregiver_name', 'caregiver_phone',
             'malnutrition_type', 'weight_kg', 'height_cm', 'muac_cm',
-            'oedema', 'registration_date', 'notes'
+            'oedema', 'admission_date', 'registration_date', 'notes'
         ]
         ws.title = "Cases Import Template"
         
@@ -546,7 +550,7 @@ def import_template_download(request, model_type):
         ws.append([
             'John Doe', 'Male', '2022-01-15', '24', '1',
             'Jane Doe', '+1234567890', 'SAM', '8.5', '75.0', '11.5',
-            'None', '2024-01-20', 'Sample case'
+            'None', '2024-01-20', '2024-01-20', 'Sample case'
         ])
         
     elif model_type == 'inventory':
