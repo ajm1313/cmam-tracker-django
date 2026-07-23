@@ -38,6 +38,8 @@ def parse_date(date_str):
 def import_cases_preview(request):
     """Preview case import data before actual import"""
     file_obj = request.FILES.get('file')
+    facility_id = request.data.get('facility_id')
+    
     if not file_obj:
         return Response({'success': False, 'error': 'No file provided'}, status=400)
     
@@ -45,9 +47,9 @@ def import_cases_preview(request):
     
     try:
         if file_ext == 'csv':
-            preview_data = _preview_cases_csv(file_obj)
+            preview_data = _preview_cases_csv(file_obj, facility_id)
         elif file_ext in ['xlsx', 'xls']:
-            preview_data = _preview_cases_excel(file_obj)
+            preview_data = _preview_cases_excel(file_obj, facility_id)
         else:
             return Response({'success': False, 'error': 'Unsupported file format. Use CSV or Excel.'}, status=400)
         
@@ -65,14 +67,14 @@ def import_cases_preview(request):
         return Response({'success': False, 'error': str(e)}, status=400)
 
 
-def _preview_cases_csv(file_obj):
+def _preview_cases_csv(file_obj, facility_id=None):
     """Preview CSV cases data"""
     content = file_obj.read().decode('utf-8')
     reader = csv.DictReader(io.StringIO(content))
-    return _process_case_preview(reader)
+    return _process_case_preview(reader, facility_id)
 
 
-def _preview_cases_excel(file_obj):
+def _preview_cases_excel(file_obj, facility_id=None):
     """Preview Excel cases data"""
     wb = load_workbook(file_obj, data_only=True)
     ws = wb.active
@@ -83,19 +85,27 @@ def _preview_cases_excel(file_obj):
         row_dict = dict(zip(headers, row))
         rows.append(row_dict)
     
-    return _process_case_preview(rows)
+    return _process_case_preview(rows, facility_id)
 
 
-def _process_case_preview(rows):
+def _process_case_preview(rows, default_facility_id=None):
     """Process and validate case import preview"""
     results = []
     errors = []
     valid_count = 0
     
-    required = ['child_name', 'child_gender', 'date_of_birth', 'facility_id']
+    # If a default facility is provided, facility_id is not required per-row
+    if default_facility_id:
+        required = ['child_name', 'child_gender', 'date_of_birth']
+    else:
+        required = ['child_name', 'child_gender', 'date_of_birth', 'facility_id']
     
     for idx, row in enumerate(rows, 2):
         row_data = {k: v for k, v in row.items() if k}
+        
+        # Apply default facility if provided and row doesn't have one
+        if default_facility_id and not row_data.get('facility_id'):
+            row_data['facility_id'] = default_facility_id
         
         # Validate required fields
         missing = validate_required_fields(row_data, required)
@@ -163,6 +173,7 @@ def _process_case_preview(rows):
 def import_cases_execute(request):
     """Execute case import from preview"""
     file_obj = request.FILES.get('file')
+    facility_id = request.data.get('facility_id')
     if not file_obj:
         return Response({'success': False, 'error': 'No file provided'}, status=400)
     
@@ -170,9 +181,9 @@ def import_cases_execute(request):
     
     try:
         if file_ext == 'csv':
-            result = _import_cases_csv(file_obj, request.user)
+            result = _import_cases_csv(file_obj, request.user, facility_id)
         elif file_ext in ['xlsx', 'xls']:
-            result = _import_cases_excel(file_obj, request.user)
+            result = _import_cases_excel(file_obj, request.user, facility_id)
         else:
             return Response({'success': False, 'error': 'Unsupported file format'}, status=400)
         
@@ -184,14 +195,14 @@ def import_cases_execute(request):
         return Response({'success': False, 'error': str(e)}, status=400)
 
 
-def _import_cases_csv(file_obj, user):
+def _import_cases_csv(file_obj, user, default_facility_id=None):
     """Import cases from CSV"""
     content = file_obj.read().decode('utf-8')
     reader = csv.DictReader(io.StringIO(content))
-    return _execute_case_import(reader, user)
+    return _execute_case_import(reader, user, default_facility_id)
 
 
-def _import_cases_excel(file_obj, user):
+def _import_cases_excel(file_obj, user, default_facility_id=None):
     """Import cases from Excel"""
     wb = load_workbook(file_obj, data_only=True)
     ws = wb.active
@@ -202,11 +213,11 @@ def _import_cases_excel(file_obj, user):
         row_dict = dict(zip(headers, row))
         rows.append(row_dict)
     
-    return _execute_case_import(rows, user)
+    return _execute_case_import(rows, user, default_facility_id)
 
 
 @transaction.atomic
-def _execute_case_import(rows, user):
+def _execute_case_import(rows, user, default_facility_id=None):
     """Execute the actual case import"""
     created = 0
     failed = 0
@@ -222,8 +233,16 @@ def _execute_case_import(rows, user):
         try:
             row_data = {k: v for k, v in row.items() if k}
             
+            # Apply default facility if provided and row doesn't have one
+            if default_facility_id and not row_data.get('facility_id'):
+                row_data['facility_id'] = default_facility_id
+            
             # Check facility access
             facility_id = row_data.get('facility_id')
+            if not facility_id:
+                failed += 1
+                errors.append(f"Row {idx}: No facility_id provided")
+                continue
             if accessible_ids is not None and int(facility_id) not in accessible_ids:
                 failed += 1
                 errors.append(f"Row {idx}: No access to facility {facility_id}")
@@ -539,7 +558,7 @@ def import_template_download(request, model_type):
     if model_type == 'cases':
         headers = [
             'child_name', 'child_gender', 'date_of_birth', 'age_months',
-            'facility_id', 'caregiver_name', 'caregiver_phone',
+            'caregiver_name', 'caregiver_phone',
             'malnutrition_type', 'weight_kg', 'height_cm', 'muac_cm',
             'oedema', 'admission_date', 'registration_date', 'notes'
         ]
@@ -548,7 +567,7 @@ def import_template_download(request, model_type):
         # Add sample data
         ws.append(headers)
         ws.append([
-            'John Doe', 'Male', '2022-01-15', '24', '1',
+            'John Doe', 'Male', '2022-01-15', '24',
             'Jane Doe', '+1234567890', 'SAM', '8.5', '75.0', '11.5',
             'None', '2024-01-20', '2024-01-20', 'Sample case'
         ])

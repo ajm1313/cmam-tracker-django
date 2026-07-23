@@ -85,6 +85,7 @@ def case_list(request):
         'page_obj': page_obj,
         'paginator': paginator,
         'facilities': facilities,
+        'all_facilities': facilities,
         'filter_active': filter_active,
         'filters': {
             'search': search, 'status': status, 'type': case_type, 'gender': gender,
