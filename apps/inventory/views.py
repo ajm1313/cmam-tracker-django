@@ -260,9 +260,13 @@ def stock_levels(request):
     ).order_by('inventory_item__name')
     
     # RBAC: filter to user's accessible facilities
+    # Also include higher-level stock (national/regional/district) where facility is NULL,
+    # since these are supply sources visible to all users with facility access.
     accessible = user.get_accessible_facilities()
     if accessible is not None:
-        stock_levels_qs = stock_levels_qs.filter(facility__in=accessible)
+        stock_levels_qs = stock_levels_qs.filter(
+            Q(facility__in=accessible) | Q(facility__isnull=True)
+        )
     
     # Apply filters
     if search:
