@@ -1,7 +1,7 @@
 {
   "name": "CMAM Tracker",
   "short_name": "CMAM",
-  "description": "Community Management of Acute Malnutrition Tracker",
+  "description": "Community-based Management of Severe Acute Malnutrition Tracker",
   "start_url": "/dashboard/",
   "display": "standalone",
   "background_color": "#1e3a8a",
