@@ -298,17 +298,17 @@ def _execute_case_import(rows, user, default_facility_id=None, default_malnutrit
             # Use savepoint so a single row failure doesn't abort the whole import
             with transaction.atomic():
                 case = OpcRegistration.objects.create(
-                    child_name=row_data.get('child_name', '').strip(),
-                    child_gender=row_data.get('child_gender', 'Male'),
+                    child_name=str(row_data.get('child_name') or '').strip(),
+                    child_gender=str(row_data.get('child_gender') or 'Male').strip(),
                     date_of_birth=dob,
-                    age_months=int(row_data.get('age_months', 0)) if row_data.get('age_months') else 0,
+                    age_months=int(float(row_data.get('age_months') or 0)) if row_data.get('age_months') else 0,
                     facility=facility,
                     registration_date=reg_date,
                     admission_date=parse_date(row_data.get('admission_date')) or reg_date,
                     malnutrition_type=mal_type,
                     status='Active',
-                    caregiver_name=row_data.get('caregiver_name', '') or row_data.get('guardian_name', '').strip() or 'Unknown',
-                    caregiver_phone=(row_data.get('caregiver_phone', '') or row_data.get('guardian_phone', '')).strip()[:20] or '',
+                    caregiver_name=str(row_data.get('caregiver_name') or row_data.get('guardian_name') or 'Unknown').strip(),
+                    caregiver_phone=str(row_data.get('caregiver_phone') or row_data.get('guardian_phone') or '').strip()[:20],
                     caregiver_relationship=row_data.get('caregiver_relationship', '') or None,
                     address=row_data.get('community', '') or row_data.get('address', '') or None,
                     weight_kg=float(row_data.get('weight_kg', 0)) if row_data.get('weight_kg') else 0,
