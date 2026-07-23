@@ -9,7 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, PatternFill
-from apps.cases.models import OpcRegistration, IpcCase
+from apps.cases.models import OpcRegistration
 from apps.inventory.models import InventoryItem, StockLevel
 from apps.facilities.models import Facility
 
@@ -275,23 +275,6 @@ def _execute_case_import(rows, user, default_facility_id=None, default_malnutrit
             # Determine malnutrition type
             mal_type = str(row_data.get('malnutrition_type', 'SAM')).strip().upper()
             
-            # IPC cases use a separate model
-            if mal_type == 'IPC':
-                adm_date = parse_date(row_data.get('admission_date')) or datetime.now().date()
-                IpcCase.objects.create(
-                    facility=facility,
-                    patient_name=row_data.get('child_name', '').strip(),
-                    patient_age=int(row_data.get('age_months', 0)) if row_data.get('age_months') else 0,
-                    gender=row_data.get('child_gender', 'Male'),
-                    admission_date=adm_date,
-                    weight=float(row_data.get('weight_kg', 0)) if row_data.get('weight_kg') else 0,
-                    height=float(row_data.get('height_cm', 0)) if row_data.get('height_cm') else 0,
-                    muac=float(row_data.get('muac_cm', 0)) if row_data.get('muac_cm') else None,
-                    status='Admitted',
-                )
-                created += 1
-                continue
-            
             # Parse dates
             dob = parse_date(row_data.get('date_of_birth'))
             reg_date = parse_date(row_data.get('registration_date')) or datetime.now().date()
@@ -305,7 +288,7 @@ def _execute_case_import(rows, user, default_facility_id=None, default_malnutrit
                 facility=facility,
                 registration_date=reg_date,
                 admission_date=parse_date(row_data.get('admission_date')) or reg_date,
-                malnutrition_type=row_data.get('malnutrition_type', 'SAM')[:3].upper(),
+                malnutrition_type=mal_type,
                 status='Active',
                 caregiver_name=row_data.get('caregiver_name', '') or row_data.get('guardian_name', '').strip() or 'Unknown',
                 caregiver_phone=(row_data.get('caregiver_phone', '') or row_data.get('guardian_phone', '')).strip()[:20] or '',
@@ -389,6 +372,15 @@ def _execute_case_import(rows, user, default_facility_id=None, default_malnutrit
                 mebendazole_date=parse_date(row_data.get('mebendazole_date')),
                 counselling=row_data.get('counselling', '') or None,
                 additional_notes=row_data.get('additional_notes', '') or row_data.get('notes', '') or None,
+                # Additional fields
+                admission_criteria=row_data.get('admission_criteria', '') or row_data.get('enrolment_criteria', '') or row_data.get('entry_criteria', '') or None,
+                additional_medical_history=row_data.get('additional_medical_history', '') or None,
+                physical_exam_notes=row_data.get('physical_exam_notes', '') or None,
+                registration_latitude=float(row_data.get('registration_latitude', 0)) if row_data.get('registration_latitude') else None,
+                registration_longitude=float(row_data.get('registration_longitude', 0)) if row_data.get('registration_longitude') else None,
+                # MAM additional fields
+                immunization_action=row_data.get('immunization_action', '') or None,
+                other_medicines=row_data.get('other_medicines', '') or None,
                 created_by=user
             )
             
@@ -678,18 +670,18 @@ def import_template_download(request, model_type):
             'caregiver_name', 'caregiver_phone', 'caregiver_relationship',
             'community', 'house_location', 'travel_time',
             'father_alive', 'mother_alive',
-            'referral_source', 'admission_type',
+            'referral_source', 'admission_type', 'enrolment_criteria',
             'weight_kg', 'height_cm', 'muac_cm',
             'z_score_wfh', 'z_score_wfa', 'z_score_hfa',
             'oedema', 'appetite_test',
             'medical_complications', 'complications_notes',
             'diarrhoea', 'stool_frequency', 'vomiting', 'cough', 'passing_urine',
             'oedema_duration_days', 'breastfeeding_status', 'breastfeeding_prospect',
-            'immunization_status', 'g6pd_status',
+            'immunization_status', 'g6pd_status', 'additional_medical_history',
             'respiratory_rate', 'temperature_celsius', 'chest_indrawing',
             'eyes_condition', 'conjunctiva', 'ears_condition', 'mouth_condition',
             'lymph_nodes', 'hands_feet', 'skin_changes',
-            'disability', 'disability_details',
+            'disability', 'disability_details', 'physical_exam_notes',
             'amoxicillin_date', 'amoxicillin_dosage',
             'vitamin_a_date', 'vitamin_a_dosage',
             'folic_acid_date', 'folic_acid_dosage',
@@ -701,6 +693,7 @@ def import_template_download(request, model_type):
             'other_drug_1', 'other_drug_1_date', 'other_drug_1_dosage',
             'other_drug_2', 'other_drug_2_date', 'other_drug_2_dosage',
             'other_drug_3', 'other_drug_3_date', 'other_drug_3_dosage',
+            'registration_latitude', 'registration_longitude',
             'admission_date', 'registration_date', 'additional_notes'
         ]
         ws.title = "SAM Import Template"
@@ -710,18 +703,18 @@ def import_template_download(request, model_type):
             'Jane Doe', '+1234567890', 'Mother',
             'Community A', 'House 12', '30 mins',
             'Yes', 'Yes',
-            'Direct from community', 'New Admission',
+            'Direct from community', 'New Admission', 'MUAC <11.5cm',
             '8.5', '75.0', '11.0',
             '< -3 SD', '< -3 SD', '< -3 SD',
             'None', 'Good',
             'No', '',
             'No', '', 'No', 'No', 'Yes',
             '', 'Yes', 'Good',
-            'Complete for Age', 'Normal',
+            'Complete for Age', 'Normal', 'No known medical history',
             '', '36.5', 'No',
             'Normal', 'Normal', 'Normal', 'Normal',
             'Normal', 'Normal', 'None',
-            'No', '',
+            'No', '', 'No abnormalities noted',
             '2024-01-20', '25mg twice daily',
             '2024-01-20', '100,000 IU',
             '', '',
@@ -733,6 +726,7 @@ def import_template_download(request, model_type):
             '', '', '',
             '', '', '',
             '', '', '',
+            '6.5', '3.2',
             '2024-01-20', '2024-01-20', 'Sample SAM case'
         ])
         
@@ -740,19 +734,22 @@ def import_template_download(request, model_type):
         headers = [
             'child_name', 'child_gender', 'date_of_birth', 'age_months',
             'caregiver_name', 'caregiver_phone', 'caregiver_relationship',
-            'community',
-            'mam_type', 'admission_type',
+            'community', 'house_location',
+            'mam_type', 'admission_type', 'entry_criteria',
             'weight_kg', 'height_cm', 'muac_cm',
             'z_score_wfh',
             'oedema', 'appetite_test',
             'medical_complications', 'complications_notes',
             'diarrhoea', 'vomiting', 'cough',
-            'breastfeeding_status', 'immunization_status',
+            'breastfeeding_status', 'immunization_status', 'immunization_action',
             'previous_sam_episode', 'failed_counselling_only',
             'hiv_tb_status', 'household_vulnerability',
             'poor_maternal_health', 'mother_deceased',
+            'disability', 'disability_details',
             'food_product_type', 'food_product_quantity',
-            'mebendazole_date', 'counselling',
+            'vitamin_a_date', 'mebendazole_date', 'measles_vaccine_date',
+            'other_medicines', 'counselling',
+            'registration_latitude', 'registration_longitude',
             'admission_date', 'registration_date', 'additional_notes'
         ]
         ws.title = "MAM Import Template"
@@ -760,29 +757,32 @@ def import_template_download(request, model_type):
         ws.append([
             'Jane Smith', 'Female', '2022-06-10', '18',
             'Mary Smith', '+1234567890', 'Mother',
-            'Community B',
-            'High-risk MAM', 'New Admission',
+            'Community B', 'House 34',
+            'High-risk MAM', 'New Admission', 'direct_new',
             '9.0', '70.0', '11.8',
             '>= -3 SD and < -2 SD',
             'None', 'Pass',
             'No', '',
             'No', 'No', 'No',
-            'No', 'Complete for Age',
+            'No', 'Complete for Age', '',
             'No', 'No',
             'None', 'None',
             'No', 'No',
+            'No', '',
             'RUSF', '14 sachets',
+            '2024-01-20', '', '',
             '', 'Nutrition counselling provided',
+            '6.5', '3.2',
             '2024-01-20', '2024-01-20', 'Sample MAM case'
         ])
         
     elif model_type == 'cases-ipc':
         headers = [
             'child_name', 'child_gender', 'date_of_birth', 'age_months',
-            'caregiver_name', 'caregiver_phone',
-            'house_location',
+            'caregiver_name', 'caregiver_phone', 'caregiver_relationship',
+            'house_location', 'travel_time',
             'referral_source',
-            'admission_date',
+            'admission_date', 'admission_type',
             'weight_kg', 'height_cm', 'muac_cm',
             'z_score_wfh',
             'oedema', 'appetite_test',
@@ -790,16 +790,17 @@ def import_template_download(request, model_type):
             'temperature_celsius', 'respiratory_rate',
             'diarrhoea', 'vomiting', 'cough',
             'breastfeeding_status', 'immunization_status',
-            'admission_type', 'registration_date', 'additional_notes'
+            'registration_latitude', 'registration_longitude',
+            'registration_date', 'additional_notes'
         ]
         ws.title = "IPC Import Template"
         ws.append(headers)
         ws.append([
             'Baby Ali', 'Male', '2023-03-01', '15',
-            'Aisha Ali', '+1234567890',
-            'House 45, Village C',
+            'Aisha Ali', '+1234567890', 'Mother',
+            'House 45, Village C', '45 mins',
             'Referred from health facility',
-            '2024-01-20',
+            '2024-01-20', 'New Admission',
             '6.5', '65.0', '10.5',
             '< -3 SD',
             '++', 'Fail',
@@ -807,7 +808,8 @@ def import_template_download(request, model_type):
             '38.5', '45',
             'Yes', 'Yes', 'Yes',
             'No', 'Not Complete for Age',
-            'New Admission', '2024-01-20', 'Sample IPC case'
+            '6.5', '3.2',
+            '2024-01-20', 'Sample IPC case'
         ])
         
     elif model_type == 'inventory':
