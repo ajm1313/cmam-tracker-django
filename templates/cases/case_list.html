@@ -31,24 +31,35 @@
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
                     Import
                 </button>
-                <div id="importMenu" class="hidden absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50">
-                    <div class="px-4 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wide">Download Template</div>
+                <div id="importMenu" class="hidden absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50">
+                    <div class="px-4 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wide">SAM Cases</div>
                     <a href="/api/v1/import/template/cases-sam/" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                         <span class="w-2 h-2 rounded-full bg-red-500"></span>
-                        SAM Template
+                        Download SAM Template
                     </a>
+                    <button type="button" onclick="openImportModal('SAM')" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full text-left">
+                        <svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                        Import SAM Cases
+                    </button>
+                    <div class="border-t border-gray-100 my-1"></div>
+                    <div class="px-4 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wide">MAM Cases</div>
                     <a href="/api/v1/import/template/cases-mam/" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                         <span class="w-2 h-2 rounded-full bg-yellow-500"></span>
-                        MAM Template
+                        Download MAM Template
                     </a>
+                    <button type="button" onclick="openImportModal('MAM')" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full text-left">
+                        <svg class="w-4 h-4 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                        Import MAM Cases
+                    </button>
+                    <div class="border-t border-gray-100 my-1"></div>
+                    <div class="px-4 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wide">IPC Cases</div>
                     <a href="/api/v1/import/template/cases-ipc/" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                         <span class="w-2 h-2 rounded-full bg-purple-500"></span>
-                        IPC Template
+                        Download IPC Template
                     </a>
-                    <div class="border-t border-gray-100 my-1"></div>
-                    <button type="button" onclick="openImportModal()" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full text-left">
-                        <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-                        Import Cases File
+                    <button type="button" onclick="openImportModal('IPC')" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full text-left">
+                        <svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                        Import IPC Cases
                     </button>
                 </div>
             </div>
@@ -413,9 +424,15 @@
         menu.classList.toggle('hidden');
     }
 
-    function openImportModal() {
+    function openImportModal(caseType) {
         document.getElementById('importModal').classList.remove('hidden');
         document.getElementById('importMenu').classList.add('hidden');
+        if (caseType) {
+            document.getElementById('caseTypeSelect').value = caseType;
+            // Update modal title
+            const titles = {SAM: 'Import SAM Cases', MAM: 'Import MAM Cases', IPC: 'Import IPC Cases'};
+            document.querySelector('#importModal h3').textContent = titles[caseType] || 'Import Cases';
+        }
     }
 
     function closeImportModal() {
