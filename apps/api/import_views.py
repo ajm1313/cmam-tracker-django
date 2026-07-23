@@ -24,7 +24,10 @@ def parse_date(date_str):
     """Parse date string in various formats"""
     if not date_str:
         return None
-    formats = ['%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%d-%m-%Y', '%Y/%m/%d']
+    # Handle datetime objects from openpyxl (Excel cells)
+    if hasattr(date_str, 'date'):
+        return date_str.date() if hasattr(date_str, 'date') and callable(getattr(date_str, 'date', None)) else date_str
+    formats = ['%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%d-%m-%Y', '%Y/%m/%d', '%Y-%m-%d %H:%M:%S']
     for fmt in formats:
         try:
             return datetime.strptime(str(date_str).strip(), fmt).date()
@@ -277,6 +280,19 @@ def _execute_case_import(rows, user, default_facility_id=None, default_malnutrit
             
             # Parse dates
             dob = parse_date(row_data.get('date_of_birth'))
+            if not dob:
+                # Try to derive from age_months if no DOB
+                age_m = row_data.get('age_months')
+                if age_m:
+                    try:
+                        from datetime import timedelta
+                        dob = (datetime.now() - timedelta(days=int(float(age_m)) * 30)).date()
+                    except (ValueError, TypeError):
+                        pass
+            if not dob:
+                failed += 1
+                errors.append(f"Row {idx}: Invalid or missing date_of_birth (value: '{row_data.get('date_of_birth')}')")
+                continue
             reg_date = parse_date(row_data.get('registration_date')) or datetime.now().date()
             
             # Create case

@@ -298,7 +298,11 @@
             const result = await response.json();
             
             if (result.success) {
-                alert(`Import complete! Created: ${result.data.created}, Failed: ${result.data.failed}`);
+                let msg = `Import complete! Created: ${result.data.created}, Failed: ${result.data.failed}`;
+                if (result.data.failed > 0 && result.data.errors && result.data.errors.length > 0) {
+                    msg += '\n\nErrors:\n' + result.data.errors.join('\n');
+                }
+                alert(msg);
                 if (result.data.created > 0) {
                     window.location.reload();
                 }
