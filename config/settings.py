@@ -53,6 +53,7 @@ if _RAILWAY_DOMAIN:
 
 # Trust all Railway subdomains regardless of RAILWAY_PUBLIC_DOMAIN detection
 CSRF_TRUSTED_ORIGINS.append('https://*.up.railway.app')
+CSRF_TRUSTED_ORIGINS.append('https://cmam-tracker-django-production.up.railway.app')
 
 # Allow all localhost origins in DEBUG mode
 if DEBUG:
