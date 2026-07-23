@@ -3,7 +3,7 @@ import csv
 import io
 from datetime import datetime
 from django.db import transaction
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -579,7 +579,7 @@ def import_template_download(request, model_type):
     wb.save(output)
     output.seek(0)
     
-    response = Response(
+    response = HttpResponse(
         output.read(),
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
