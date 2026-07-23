@@ -43,6 +43,33 @@
                     <p class="mt-1 text-xs text-gray-400">The fixed weekly day when SAM &amp; MAM OPC visits are held at this facility.</p>
                 </div>
                 <div>
+                    <label class="block text-sm font-medium text-gray-700">Region</label>
+                    <select name="region_id" id="id_region" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <option value="">Select Region</option>
+                        {% for region in regions %}
+                        <option value="{{ region.pk }}" {% if facility.district.region_id == region.pk %}selected{% endif %}>{{ region.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">District</label>
+                    <select name="district_id" id="id_district" required class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <option value="">Select District</option>
+                        {% for district in districts %}
+                        <option value="{{ district.pk }}" data-region="{{ district.region_id }}" {% if facility.district_id == district.pk %}selected{% endif %}>{{ district.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Sub-District</label>
+                    <select name="sub_district_id" id="id_sub_district" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <option value="">Select Sub-District</option>
+                        {% for sd in sub_districts %}
+                        <option value="{{ sd.pk }}" data-district="{{ sd.district_id }}" {% if facility.sub_district_id == sd.pk %}selected{% endif %}>{{ sd.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
                     <label class="block text-sm font-medium text-gray-700">Contact Person</label>
                     <input type="text" name="contact_person" value="{{ facility.contact_person|default:'' }}" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
                 </div>
@@ -142,6 +169,50 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     typeSelect.addEventListener('change', toggleOpcDay);
     toggleOpcDay();
+
+    // Location dropdowns filtering
+    const regionSelect = document.getElementById('id_region');
+    const districtSelect = document.getElementById('id_district');
+    const subDistrictSelect = document.getElementById('id_sub_district');
+    const allDistricts = Array.from(districtSelect.querySelectorAll('option[data-region]'));
+    const allSubDistricts = Array.from(subDistrictSelect.querySelectorAll('option[data-district]'));
+    const currentDistrict = districtSelect.value;
+    const currentSubDistrict = subDistrictSelect.value;
+
+    function filterDistricts() {
+        const regionId = regionSelect.value;
+        const selectedDistrict = districtSelect.value;
+        districtSelect.innerHTML = '<option value="">Select District</option>';
+        allDistricts.forEach(opt => {
+            if (!regionId || opt.dataset.region === regionId) {
+                districtSelect.appendChild(opt.cloneNode(true));
+            }
+        });
+        if (allDistricts.some(o => o.value === selectedDistrict)) {
+            districtSelect.value = selectedDistrict;
+        }
+        filterSubDistricts();
+    }
+
+    function filterSubDistricts() {
+        const districtId = districtSelect.value;
+        const selectedSub = subDistrictSelect.value;
+        subDistrictSelect.innerHTML = '<option value="">Select Sub-District</option>';
+        allSubDistricts.forEach(opt => {
+            if (!districtId || opt.dataset.district === districtId) {
+                subDistrictSelect.appendChild(opt.cloneNode(true));
+            }
+        });
+        if (allSubDistricts.some(o => o.value === selectedSub)) {
+            subDistrictSelect.value = selectedSub;
+        }
+    }
+
+    regionSelect.addEventListener('change', filterDistricts);
+    districtSelect.addEventListener('change', filterSubDistricts);
+    filterDistricts();
+    if (currentDistrict) { districtSelect.value = currentDistrict; filterSubDistricts(); }
+    if (currentSubDistrict) { subDistrictSelect.value = currentSubDistrict; }
 
     const UNDER5 = 0.17, ICF = 2.6, COVERAGE = 0.80;
     const popInput = document.getElementById('id_population');

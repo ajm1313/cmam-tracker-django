@@ -125,7 +125,13 @@ def facility_edit(request, pk):
         facility.latitude = request.POST.get('latitude') or None
         facility.longitude = request.POST.get('longitude') or None
         facility.capacity = request.POST.get('capacity') or None
-        
+
+        district_id = request.POST.get('district_id', '').strip()
+        if district_id:
+            facility.district_id = district_id
+        sub_district_id = request.POST.get('sub_district_id', '').strip()
+        facility.sub_district_id = sub_district_id or None
+
         if not facility.name or not facility.code:
             messages.error(request, 'Name and Code are required')
         elif Facility.objects.filter(code=facility.code).exclude(pk=pk).exists():
@@ -135,7 +141,15 @@ def facility_edit(request, pk):
             messages.success(request, f'Facility "{facility.name}" updated successfully')
             return redirect('facilities:facility_detail', pk=pk)
     
-    context = {'facility': facility}
+    regions = Region.objects.filter(is_active=True)
+    districts = District.objects.filter(is_active=True).select_related('region')
+    sub_districts = SubDistrict.objects.filter(is_active=True).select_related('district')
+    context = {
+        'facility': facility,
+        'regions': regions,
+        'districts': districts,
+        'sub_districts': sub_districts,
+    }
     return render(request, 'facilities/facility_edit.html', context)
 
 

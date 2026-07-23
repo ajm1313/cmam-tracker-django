@@ -751,6 +751,7 @@ def visit_form(request, registration_id):
                     # Outcome
                     visit_outcome=request.POST.get('visit_outcome', 'Continue'),
                     outcome_notes=request.POST.get('outcome_notes') or None,
+                    staff_name=request.POST.get('staff_name') or None,
                     conducted_by=request.user,
                     created_by=request.user,
                 )
@@ -953,6 +954,7 @@ def visit_edit(request, visit_id):
                 visit.home_visit_date = request.POST.get('home_visit_date') or None
                 visit.home_visit_notes = request.POST.get('home_visit_notes') or None
                 visit.community_volunteer = request.POST.get('community_volunteer') or None
+                visit.staff_name = request.POST.get('staff_name') or None
             else:
                 visit.appetite = request.POST.get('appetite_test') or None
                 visit.food_product_type = request.POST.get('food_product_type') or None
