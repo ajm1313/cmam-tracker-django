@@ -1,3 +1,5 @@
+{% load static %}
+{% get_static_prefix as STATIC_PREFIX %}
 {% comment %}
   Inline WHO Growth Chart - drops into any form Anthropometry section.
   Shows/hides automatically when weight + height are both entered.
@@ -20,7 +22,7 @@
         </div>
         <div style="position:relative; display:inline-block; width:100%;">
             <img id="{{ chart_id }}_chart_img"
-                 src="/media/cht-wflh-boys-z-0-5.jpg"
+                 src="{% static 'img/cht-wflh-boys-z-0-5.jpg' %}"
                  alt="WHO Growth Chart"
                  style="width:100%; display:block;">
             <canvas id="{{ chart_id }}_chart_canvas"
@@ -86,8 +88,8 @@
         // Pick correct chart image based on gender
         var gender = getGender();
         var imgSrc = gender === 'Female'
-            ? '/media/cht-wflh-girls-z-0-5.jpg'
-            : '/media/cht-wflh-boys-z-0-5.jpg';
+            ? '{{ STATIC_PREFIX }}img/cht-wflh-girls-z-0-5.jpg'
+            : '{{ STATIC_PREFIX }}img/cht-wflh-boys-z-0-5.jpg';
         if (img.src.indexOf(imgSrc.split('/').pop()) === -1) {
             img.src = imgSrc;
         }

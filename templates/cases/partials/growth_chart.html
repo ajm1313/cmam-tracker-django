@@ -1,3 +1,4 @@
+{% load static %}
 <!-- WHO Growth Chart Overlay - Weight-for-Length/Height -->
 <!-- Expects context: chart_gender ('Male'/'Female'), chart_points (list of {height, weight, label, is_admission}) -->
 
@@ -18,7 +19,7 @@
     <div class="p-4">
         <div id="growthChartContainer" style="position:relative; display:inline-block; width:100%;">
             <img id="growthChartImg"
-                 src="{% if chart_gender == 'Male' %}/media/cht-wflh-boys-z-0-5.jpg{% else %}/media/cht-wflh-girls-z-0-5.jpg{% endif %}"
+                 src="{% if chart_gender == 'Male' %}{% static 'img/cht-wflh-boys-z-0-5.jpg' %}{% else %}{% static 'img/cht-wflh-girls-z-0-5.jpg' %}{% endif %}"
                  alt="WHO Growth Chart"
                  style="width:100%; display:block;"
                  onload="drawGrowthChart()">
