@@ -1080,9 +1080,20 @@ def weekly_sam_report(request):
                                           data['total_exits'][week_idx])
     
     # Calculate totals
+    # For running-balance rows (start_of_week, end_of_week), the TOTAL
+    # column should show the last non-empty week's value (closing balance),
+    # not the sum of all weeks (which would inflate the number).
+    running_balance_keys = {'start_of_week', 'end_of_week'}
     for key in list(data.keys()):
         if isinstance(data[key], list):
-            data[f'{key}_total'] = sum(data[key])
+            if key in running_balance_keys:
+                last_val = 0
+                for v in data[key]:
+                    if v != 0 or last_val != 0:
+                        last_val = v
+                data[f'{key}_total'] = last_val
+            else:
+                data[f'{key}_total'] = sum(data[key])
     
     # Calculate RUTF balance and start for each week
     try:
@@ -1426,9 +1437,20 @@ def weekly_mam_report(request):
                                           data['total_exits'][week_idx])
     
     # Calculate totals
+    # For running-balance rows (start_of_week, end_of_week), the TOTAL
+    # column should show the last non-empty week's value (closing balance),
+    # not the sum of all weeks (which would inflate the number).
+    running_balance_keys = {'start_of_week', 'end_of_week'}
     for key in list(data.keys()):
         if isinstance(data[key], list):
-            data[f'{key}_total'] = sum(data[key])
+            if key in running_balance_keys:
+                last_val = 0
+                for v in data[key]:
+                    if v != 0 or last_val != 0:
+                        last_val = v
+                data[f'{key}_total'] = last_val
+            else:
+                data[f'{key}_total'] = sum(data[key])
     
     # Get facility info
     facility_name = "All Facilities"
