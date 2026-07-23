@@ -201,6 +201,9 @@ class OpcVisitSerializer(serializers.ModelSerializer):
             'diarrhoea_days', 'vomiting_days', 'fever_days', 'cough_days',
             'temperature', 'respiratory_rate', 'dehydrated',
             'anaemia_palmar_pallor', 'skin_infection',
+            'intractable_vomiting', 'lethargic_or_not_alert', 'convulsions',
+            'chest_indrawing', 'unconscious', 'very_pale_or_severe_palmar_pallor',
+            'severe_dehydration',
             'appetite', 'rutf_test', 'breastfeeding_status',
             'general_condition', 'has_complications', 'complications_notes',
             'medical_notes', 'rutf_sachets_given', 'csb_plus_given',
@@ -279,7 +282,7 @@ class OpcRegistrationDetailSerializer(serializers.ModelSerializer):
             'z_score_wfh', 'z_score_wfa', 'z_score_hfa',
             'oedema', 'appetite_test', 'medical_complications', 'complications_notes',
             'status', 'outcome', 'discharge_date', 'outcome_notes',
-            'facility_name', 'facility_code', 'created_by_name',
+            'facility_id', 'facility_name', 'facility_code', 'created_by_name',
             'visit_count', 'next_visit_date', 'is_visit_due', 'visits',
             # Demographic/social
             'father_alive', 'mother_alive', 'house_location', 'travel_time', 'referral_source',

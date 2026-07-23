@@ -841,7 +841,7 @@ def visit_form(request, registration_id):
                 pass
             
             messages.success(request, f'Visit #{next_visit_number} recorded successfully!')
-            return redirect('cases:due_visits')
+            return redirect('cases:case_detail', pk=case.pk)
         except Exception as e:
             messages.error(request, f'Error recording visit: {str(e)}')
     
