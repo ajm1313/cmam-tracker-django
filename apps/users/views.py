@@ -1083,7 +1083,7 @@ def weekly_sam_report(request):
     # For running-balance rows (start_of_week, end_of_week), the TOTAL
     # column should show the last non-empty week's value (closing balance),
     # not the sum of all weeks (which would inflate the number).
-    running_balance_keys = {'start_of_week', 'end_of_week'}
+    running_balance_keys = {'start_of_week', 'end_of_week', 'rutf_start', 'rutf_balance'}
     for key in list(data.keys()):
         if isinstance(data[key], list):
             if key in running_balance_keys:
@@ -1118,9 +1118,12 @@ def weekly_sam_report(request):
             data['rutf_start'][w] = data['rutf_balance'][w] + data['rutf_issued_sam'][w] - data['rutf_received'][w]
         
         # Recalculate totals
-        data['rutf_start_total'] = sum(data['rutf_start'])
+        # rutf_start and rutf_balance are running balances (stock levels),
+        # so their TOTAL should show the last week's closing value, not the sum.
+        # rutf_received is periodic, so summing is correct.
+        data['rutf_start_total'] = data['rutf_start'][4] if data['rutf_start'][4] else (data['rutf_start'][3] if data['rutf_start'][3] else (data['rutf_start'][2] if data['rutf_start'][2] else (data['rutf_start'][1] if data['rutf_start'][1] else data['rutf_start'][0])))
         data['rutf_received_total'] = sum(data['rutf_received'])
-        data['rutf_balance_total'] = sum(data['rutf_balance'])
+        data['rutf_balance_total'] = data['rutf_balance'][4] if data['rutf_balance'][4] else (data['rutf_balance'][3] if data['rutf_balance'][3] else (data['rutf_balance'][2] if data['rutf_balance'][2] else (data['rutf_balance'][1] if data['rutf_balance'][1] else data['rutf_balance'][0])))
     except Exception:
         pass
     
@@ -1440,7 +1443,7 @@ def weekly_mam_report(request):
     # For running-balance rows (start_of_week, end_of_week), the TOTAL
     # column should show the last non-empty week's value (closing balance),
     # not the sum of all weeks (which would inflate the number).
-    running_balance_keys = {'start_of_week', 'end_of_week'}
+    running_balance_keys = {'start_of_week', 'end_of_week', 'rutf_start', 'rutf_balance'}
     for key in list(data.keys()):
         if isinstance(data[key], list):
             if key in running_balance_keys:
