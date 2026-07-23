@@ -9,7 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, PatternFill
-from apps.cases.models import OpcRegistration
+from apps.cases.models import OpcRegistration, IpcCase
 from apps.inventory.models import InventoryItem, StockLevel
 from apps.facilities.models import Facility
 
@@ -39,6 +39,7 @@ def import_cases_preview(request):
     """Preview case import data before actual import"""
     file_obj = request.FILES.get('file')
     facility_id = request.data.get('facility_id')
+    malnutrition_type = request.data.get('malnutrition_type')
     
     if not file_obj:
         return Response({'success': False, 'error': 'No file provided'}, status=400)
@@ -47,9 +48,9 @@ def import_cases_preview(request):
     
     try:
         if file_ext == 'csv':
-            preview_data = _preview_cases_csv(file_obj, facility_id)
+            preview_data = _preview_cases_csv(file_obj, facility_id, malnutrition_type)
         elif file_ext in ['xlsx', 'xls']:
-            preview_data = _preview_cases_excel(file_obj, facility_id)
+            preview_data = _preview_cases_excel(file_obj, facility_id, malnutrition_type)
         else:
             return Response({'success': False, 'error': 'Unsupported file format. Use CSV or Excel.'}, status=400)
         
@@ -67,14 +68,14 @@ def import_cases_preview(request):
         return Response({'success': False, 'error': str(e)}, status=400)
 
 
-def _preview_cases_csv(file_obj, facility_id=None):
+def _preview_cases_csv(file_obj, facility_id=None, malnutrition_type=None):
     """Preview CSV cases data"""
     content = file_obj.read().decode('utf-8')
     reader = csv.DictReader(io.StringIO(content))
-    return _process_case_preview(reader, facility_id)
+    return _process_case_preview(reader, facility_id, malnutrition_type)
 
 
-def _preview_cases_excel(file_obj, facility_id=None):
+def _preview_cases_excel(file_obj, facility_id=None, malnutrition_type=None):
     """Preview Excel cases data"""
     wb = load_workbook(file_obj, data_only=True)
     ws = wb.active
@@ -85,10 +86,10 @@ def _preview_cases_excel(file_obj, facility_id=None):
         row_dict = dict(zip(headers, row))
         rows.append(row_dict)
     
-    return _process_case_preview(rows, facility_id)
+    return _process_case_preview(rows, facility_id, malnutrition_type)
 
 
-def _process_case_preview(rows, default_facility_id=None):
+def _process_case_preview(rows, default_facility_id=None, default_malnutrition_type=None):
     """Process and validate case import preview"""
     results = []
     errors = []
@@ -107,8 +108,23 @@ def _process_case_preview(rows, default_facility_id=None):
         if default_facility_id and not row_data.get('facility_id'):
             row_data['facility_id'] = default_facility_id
         
+        # Apply default malnutrition type if provided and row doesn't have one
+        if default_malnutrition_type and not row_data.get('malnutrition_type'):
+            row_data['malnutrition_type'] = default_malnutrition_type
+        
+        # Determine case type for type-specific validation
+        mal_type = str(row_data.get('malnutrition_type', 'SAM')).strip().upper()
+        is_ipc = mal_type == 'IPC'
+        
+        # IPC cases don't require date_of_birth (they use age_months)
+        row_required = list(required)
+        if is_ipc and 'date_of_birth' in row_required:
+            row_required.remove('date_of_birth')
+        if is_ipc and 'age_months' not in row_required:
+            row_required.append('age_months')
+        
         # Validate required fields
-        missing = validate_required_fields(row_data, required)
+        missing = validate_required_fields(row_data, row_required)
         
         # Validate facility exists
         facility_error = None
@@ -174,6 +190,7 @@ def import_cases_execute(request):
     """Execute case import from preview"""
     file_obj = request.FILES.get('file')
     facility_id = request.data.get('facility_id')
+    malnutrition_type = request.data.get('malnutrition_type')
     if not file_obj:
         return Response({'success': False, 'error': 'No file provided'}, status=400)
     
@@ -181,9 +198,9 @@ def import_cases_execute(request):
     
     try:
         if file_ext == 'csv':
-            result = _import_cases_csv(file_obj, request.user, facility_id)
+            result = _import_cases_csv(file_obj, request.user, facility_id, malnutrition_type)
         elif file_ext in ['xlsx', 'xls']:
-            result = _import_cases_excel(file_obj, request.user, facility_id)
+            result = _import_cases_excel(file_obj, request.user, facility_id, malnutrition_type)
         else:
             return Response({'success': False, 'error': 'Unsupported file format'}, status=400)
         
@@ -195,14 +212,14 @@ def import_cases_execute(request):
         return Response({'success': False, 'error': str(e)}, status=400)
 
 
-def _import_cases_csv(file_obj, user, default_facility_id=None):
+def _import_cases_csv(file_obj, user, default_facility_id=None, default_malnutrition_type=None):
     """Import cases from CSV"""
     content = file_obj.read().decode('utf-8')
     reader = csv.DictReader(io.StringIO(content))
-    return _execute_case_import(reader, user, default_facility_id)
+    return _execute_case_import(reader, user, default_facility_id, default_malnutrition_type)
 
 
-def _import_cases_excel(file_obj, user, default_facility_id=None):
+def _import_cases_excel(file_obj, user, default_facility_id=None, default_malnutrition_type=None):
     """Import cases from Excel"""
     wb = load_workbook(file_obj, data_only=True)
     ws = wb.active
@@ -213,11 +230,11 @@ def _import_cases_excel(file_obj, user, default_facility_id=None):
         row_dict = dict(zip(headers, row))
         rows.append(row_dict)
     
-    return _execute_case_import(rows, user, default_facility_id)
+    return _execute_case_import(rows, user, default_facility_id, default_malnutrition_type)
 
 
 @transaction.atomic
-def _execute_case_import(rows, user, default_facility_id=None):
+def _execute_case_import(rows, user, default_facility_id=None, default_malnutrition_type=None):
     """Execute the actual case import"""
     created = 0
     failed = 0
@@ -237,6 +254,10 @@ def _execute_case_import(rows, user, default_facility_id=None):
             if default_facility_id and not row_data.get('facility_id'):
                 row_data['facility_id'] = default_facility_id
             
+            # Apply default malnutrition type if provided and row doesn't have one
+            if default_malnutrition_type and not row_data.get('malnutrition_type'):
+                row_data['malnutrition_type'] = default_malnutrition_type
+            
             # Check facility access
             facility_id = row_data.get('facility_id')
             if not facility_id:
@@ -250,6 +271,26 @@ def _execute_case_import(rows, user, default_facility_id=None):
             
             # Get facility
             facility = Facility.objects.get(id=facility_id)
+            
+            # Determine malnutrition type
+            mal_type = str(row_data.get('malnutrition_type', 'SAM')).strip().upper()
+            
+            # IPC cases use a separate model
+            if mal_type == 'IPC':
+                adm_date = parse_date(row_data.get('admission_date')) or datetime.now().date()
+                IpcCase.objects.create(
+                    facility=facility,
+                    patient_name=row_data.get('child_name', '').strip(),
+                    patient_age=int(row_data.get('age_months', 0)) if row_data.get('age_months') else 0,
+                    gender=row_data.get('child_gender', 'Male'),
+                    admission_date=adm_date,
+                    weight=float(row_data.get('weight_kg', 0)) if row_data.get('weight_kg') else 0,
+                    height=float(row_data.get('height_cm', 0)) if row_data.get('height_cm') else 0,
+                    muac=float(row_data.get('muac_cm', 0)) if row_data.get('muac_cm') else None,
+                    status='Admitted',
+                )
+                created += 1
+                continue
             
             # Parse dates
             dob = parse_date(row_data.get('date_of_birth'))
@@ -268,10 +309,86 @@ def _execute_case_import(rows, user, default_facility_id=None):
                 status='Active',
                 caregiver_name=row_data.get('caregiver_name', '') or row_data.get('guardian_name', '').strip() or 'Unknown',
                 caregiver_phone=(row_data.get('caregiver_phone', '') or row_data.get('guardian_phone', '')).strip()[:20] or '',
+                caregiver_relationship=row_data.get('caregiver_relationship', '') or None,
+                address=row_data.get('community', '') or row_data.get('address', '') or None,
                 weight_kg=float(row_data.get('weight_kg', 0)) if row_data.get('weight_kg') else 0,
                 muac_cm=float(row_data.get('muac_cm', 0)) if row_data.get('muac_cm') else None,
                 height_cm=float(row_data.get('height_cm', 0)) if row_data.get('height_cm') else 0,
                 oedema=row_data.get('oedema', '') or None,
+                # Extended fields
+                mam_type=row_data.get('mam_type', '') or None,
+                admission_type=row_data.get('admission_type', 'New Admission') or 'New Admission',
+                referral_source=row_data.get('referral_source', '') or None,
+                z_score_wfh=row_data.get('z_score_wfh', '') or None,
+                z_score_wfa=row_data.get('z_score_wfa', '') or None,
+                z_score_hfa=row_data.get('z_score_hfa', '') or None,
+                appetite_test=row_data.get('appetite_test', '') or None,
+                medical_complications=str(row_data.get('medical_complications', '')).lower() in ('yes', 'true', '1'),
+                complications_notes=row_data.get('complications_notes', '') or None,
+                house_location=row_data.get('house_location', '') or None,
+                travel_time=row_data.get('travel_time', '') or None,
+                father_alive=row_data.get('father_alive', '') or None,
+                mother_alive=row_data.get('mother_alive', '') or None,
+                diarrhoea=row_data.get('diarrhoea', '') or None,
+                stool_frequency=row_data.get('stool_frequency', '') or None,
+                vomiting=row_data.get('vomiting', '') or None,
+                cough=row_data.get('cough', '') or None,
+                passing_urine=row_data.get('passing_urine', '') or None,
+                oedema_duration_days=int(row_data.get('oedema_duration_days', 0)) if row_data.get('oedema_duration_days') else None,
+                breastfeeding_status=row_data.get('breastfeeding_status', '') or None,
+                breastfeeding_prospect=row_data.get('breastfeeding_prospect', '') or None,
+                immunization_status=row_data.get('immunization_status', '') or None,
+                g6pd_status=row_data.get('g6pd_status', '') or None,
+                respiratory_rate=row_data.get('respiratory_rate', '') or None,
+                temperature_celsius=float(row_data.get('temperature_celsius', 0)) if row_data.get('temperature_celsius') else None,
+                chest_indrawing=row_data.get('chest_indrawing', '') or None,
+                eyes_condition=row_data.get('eyes_condition', '') or None,
+                conjunctiva=row_data.get('conjunctiva', '') or None,
+                ears_condition=row_data.get('ears_condition', '') or None,
+                mouth_condition=row_data.get('mouth_condition', '') or None,
+                lymph_nodes=row_data.get('lymph_nodes', '') or None,
+                hands_feet=row_data.get('hands_feet', '') or None,
+                skin_changes=row_data.get('skin_changes', '') or None,
+                disability=row_data.get('disability', '') or None,
+                disability_details=row_data.get('disability_details', '') or None,
+                amoxicillin_date=parse_date(row_data.get('amoxicillin_date')),
+                amoxicillin_dosage=row_data.get('amoxicillin_dosage', '') or None,
+                vitamin_a_date=parse_date(row_data.get('vitamin_a_date')),
+                vitamin_a_dosage=row_data.get('vitamin_a_dosage', '') or None,
+                folic_acid_date=parse_date(row_data.get('folic_acid_date')),
+                folic_acid_dosage=row_data.get('folic_acid_dosage', '') or None,
+                deworming_date=parse_date(row_data.get('deworming_date')),
+                deworming_dosage=row_data.get('deworming_dosage', '') or None,
+                measles_vaccine_date=parse_date(row_data.get('measles_vaccine_date')),
+                measles_vaccine_dosage=row_data.get('measles_vaccine_dosage', '') or None,
+                malaria_test_date=parse_date(row_data.get('malaria_test_date')),
+                malaria_test_result=row_data.get('malaria_test_result', '') or None,
+                antimalarial_date=parse_date(row_data.get('antimalarial_date')),
+                antimalarial_dosage=row_data.get('antimalarial_dosage', '') or None,
+                rutf_sachets_given=int(row_data.get('rutf_sachets_given', 0)) if row_data.get('rutf_sachets_given') else None,
+                rutf_ration_per_day=float(row_data.get('rutf_ration_per_day', 0)) if row_data.get('rutf_ration_per_day') else None,
+                next_visit_date=parse_date(row_data.get('next_visit_date')),
+                other_drug_1=row_data.get('other_drug_1', '') or None,
+                other_drug_1_date=parse_date(row_data.get('other_drug_1_date')),
+                other_drug_1_dosage=row_data.get('other_drug_1_dosage', '') or None,
+                other_drug_2=row_data.get('other_drug_2', '') or None,
+                other_drug_2_date=parse_date(row_data.get('other_drug_2_date')),
+                other_drug_2_dosage=row_data.get('other_drug_2_dosage', '') or None,
+                other_drug_3=row_data.get('other_drug_3', '') or None,
+                other_drug_3_date=parse_date(row_data.get('other_drug_3_date')),
+                other_drug_3_dosage=row_data.get('other_drug_3_dosage', '') or None,
+                # MAM-specific
+                previous_sam_episode=str(row_data.get('previous_sam_episode', '')).lower() in ('yes', 'true', '1'),
+                failed_counselling_only=str(row_data.get('failed_counselling_only', '')).lower() in ('yes', 'true', '1'),
+                hiv_tb_status=row_data.get('hiv_tb_status', '') or None,
+                household_vulnerability=row_data.get('household_vulnerability', '') or None,
+                poor_maternal_health=str(row_data.get('poor_maternal_health', '')).lower() in ('yes', 'true', '1'),
+                mother_deceased=str(row_data.get('mother_deceased', '')).lower() in ('yes', 'true', '1'),
+                food_product_type=row_data.get('food_product_type', '') or None,
+                food_product_quantity=row_data.get('food_product_quantity', '') or None,
+                mebendazole_date=parse_date(row_data.get('mebendazole_date')),
+                counselling=row_data.get('counselling', '') or None,
+                additional_notes=row_data.get('additional_notes', '') or row_data.get('notes', '') or None,
                 created_by=user
             )
             
@@ -551,25 +668,146 @@ def _execute_inventory_import(rows, facility_id, user):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def import_template_download(request, model_type):
-    """Download import template for cases or inventory"""
+    """Download import template for cases (SAM/MAM/IPC) or inventory"""
     wb = Workbook()
     ws = wb.active
     
-    if model_type == 'cases':
+    if model_type == 'cases-sam':
         headers = [
             'child_name', 'child_gender', 'date_of_birth', 'age_months',
-            'caregiver_name', 'caregiver_phone',
-            'malnutrition_type', 'weight_kg', 'height_cm', 'muac_cm',
-            'oedema', 'admission_date', 'registration_date', 'notes'
+            'caregiver_name', 'caregiver_phone', 'caregiver_relationship',
+            'community', 'house_location', 'travel_time',
+            'father_alive', 'mother_alive',
+            'referral_source', 'admission_type',
+            'weight_kg', 'height_cm', 'muac_cm',
+            'z_score_wfh', 'z_score_wfa', 'z_score_hfa',
+            'oedema', 'appetite_test',
+            'medical_complications', 'complications_notes',
+            'diarrhoea', 'stool_frequency', 'vomiting', 'cough', 'passing_urine',
+            'oedema_duration_days', 'breastfeeding_status', 'breastfeeding_prospect',
+            'immunization_status', 'g6pd_status',
+            'respiratory_rate', 'temperature_celsius', 'chest_indrawing',
+            'eyes_condition', 'conjunctiva', 'ears_condition', 'mouth_condition',
+            'lymph_nodes', 'hands_feet', 'skin_changes',
+            'disability', 'disability_details',
+            'amoxicillin_date', 'amoxicillin_dosage',
+            'vitamin_a_date', 'vitamin_a_dosage',
+            'folic_acid_date', 'folic_acid_dosage',
+            'deworming_date', 'deworming_dosage',
+            'measles_vaccine_date', 'measles_vaccine_dosage',
+            'malaria_test_date', 'malaria_test_result',
+            'antimalarial_date', 'antimalarial_dosage',
+            'rutf_sachets_given', 'rutf_ration_per_day', 'next_visit_date',
+            'other_drug_1', 'other_drug_1_date', 'other_drug_1_dosage',
+            'other_drug_2', 'other_drug_2_date', 'other_drug_2_dosage',
+            'other_drug_3', 'other_drug_3_date', 'other_drug_3_dosage',
+            'admission_date', 'registration_date', 'additional_notes'
         ]
-        ws.title = "Cases Import Template"
-        
-        # Add sample data
+        ws.title = "SAM Import Template"
         ws.append(headers)
         ws.append([
             'John Doe', 'Male', '2022-01-15', '24',
-            'Jane Doe', '+1234567890', 'SAM', '8.5', '75.0', '11.5',
-            'None', '2024-01-20', '2024-01-20', 'Sample case'
+            'Jane Doe', '+1234567890', 'Mother',
+            'Community A', 'House 12', '30 mins',
+            'Yes', 'Yes',
+            'Direct from community', 'New Admission',
+            '8.5', '75.0', '11.0',
+            '< -3 SD', '< -3 SD', '< -3 SD',
+            'None', 'Good',
+            'No', '',
+            'No', '', 'No', 'No', 'Yes',
+            '', 'Yes', 'Good',
+            'Complete for Age', 'Normal',
+            '', '36.5', 'No',
+            'Normal', 'Normal', 'Normal', 'Normal',
+            'Normal', 'Normal', 'None',
+            'No', '',
+            '2024-01-20', '25mg twice daily',
+            '2024-01-20', '100,000 IU',
+            '', '',
+            '', '',
+            '', '',
+            '', 'Not Done',
+            '', '',
+            '7', '2.0', '2024-01-27',
+            '', '', '',
+            '', '', '',
+            '', '', '',
+            '2024-01-20', '2024-01-20', 'Sample SAM case'
+        ])
+        
+    elif model_type == 'cases-mam':
+        headers = [
+            'child_name', 'child_gender', 'date_of_birth', 'age_months',
+            'caregiver_name', 'caregiver_phone', 'caregiver_relationship',
+            'community',
+            'mam_type', 'admission_type',
+            'weight_kg', 'height_cm', 'muac_cm',
+            'z_score_wfh',
+            'oedema', 'appetite_test',
+            'medical_complications', 'complications_notes',
+            'diarrhoea', 'vomiting', 'cough',
+            'breastfeeding_status', 'immunization_status',
+            'previous_sam_episode', 'failed_counselling_only',
+            'hiv_tb_status', 'household_vulnerability',
+            'poor_maternal_health', 'mother_deceased',
+            'food_product_type', 'food_product_quantity',
+            'mebendazole_date', 'counselling',
+            'admission_date', 'registration_date', 'additional_notes'
+        ]
+        ws.title = "MAM Import Template"
+        ws.append(headers)
+        ws.append([
+            'Jane Smith', 'Female', '2022-06-10', '18',
+            'Mary Smith', '+1234567890', 'Mother',
+            'Community B',
+            'High-risk MAM', 'New Admission',
+            '9.0', '70.0', '11.8',
+            '>= -3 SD and < -2 SD',
+            'None', 'Pass',
+            'No', '',
+            'No', 'No', 'No',
+            'No', 'Complete for Age',
+            'No', 'No',
+            'None', 'None',
+            'No', 'No',
+            'RUSF', '14 sachets',
+            '', 'Nutrition counselling provided',
+            '2024-01-20', '2024-01-20', 'Sample MAM case'
+        ])
+        
+    elif model_type == 'cases-ipc':
+        headers = [
+            'child_name', 'child_gender', 'date_of_birth', 'age_months',
+            'caregiver_name', 'caregiver_phone',
+            'house_location',
+            'referral_source',
+            'admission_date',
+            'weight_kg', 'height_cm', 'muac_cm',
+            'z_score_wfh',
+            'oedema', 'appetite_test',
+            'medical_complications', 'complications_notes',
+            'temperature_celsius', 'respiratory_rate',
+            'diarrhoea', 'vomiting', 'cough',
+            'breastfeeding_status', 'immunization_status',
+            'admission_type', 'registration_date', 'additional_notes'
+        ]
+        ws.title = "IPC Import Template"
+        ws.append(headers)
+        ws.append([
+            'Baby Ali', 'Male', '2023-03-01', '15',
+            'Aisha Ali', '+1234567890',
+            'House 45, Village C',
+            'Referred from health facility',
+            '2024-01-20',
+            '6.5', '65.0', '10.5',
+            '< -3 SD',
+            '++', 'Fail',
+            'Yes', 'Severe dehydration and fever',
+            '38.5', '45',
+            'Yes', 'Yes', 'Yes',
+            'No', 'Not Complete for Age',
+            'New Admission', '2024-01-20', 'Sample IPC case'
         ])
         
     elif model_type == 'inventory':
@@ -584,7 +822,7 @@ def import_template_download(request, model_type):
             '2025-12-31', '1.50', 'Initial stock'
         ])
     else:
-        return Response({'success': False, 'error': 'Invalid template type'}, status=400)
+        return Response({'success': False, 'error': 'Invalid template type. Use: cases-sam, cases-mam, cases-ipc, or inventory'}, status=400)
     
     # Style header
     header_fill = PatternFill(start_color="1e3a8a", end_color="1e3a8a", fill_type="solid")
@@ -593,6 +831,11 @@ def import_template_download(request, model_type):
     for cell in ws[1]:
         cell.fill = header_fill
         cell.font = header_font
+    
+    # Auto-size columns
+    for col in ws.columns:
+        max_len = max(len(str(cell.value or '')) for cell in col)
+        ws.column_dimensions[col[0].column_letter].width = min(max_len + 2, 30)
     
     output = io.BytesIO()
     wb.save(output)

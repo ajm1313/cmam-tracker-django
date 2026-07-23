@@ -31,10 +31,19 @@
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
                     Import
                 </button>
-                <div id="importMenu" class="hidden absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50">
-                    <a href="/api/v1/import/template/cases/" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                        <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                        Download Template
+                <div id="importMenu" class="hidden absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50">
+                    <div class="px-4 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wide">Download Template</div>
+                    <a href="/api/v1/import/template/cases-sam/" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                        <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                        SAM Template
+                    </a>
+                    <a href="/api/v1/import/template/cases-mam/" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                        <span class="w-2 h-2 rounded-full bg-yellow-500"></span>
+                        MAM Template
+                    </a>
+                    <a href="/api/v1/import/template/cases-ipc/" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                        <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+                        IPC Template
                     </a>
                     <div class="border-t border-gray-100 my-1"></div>
                     <button type="button" onclick="openImportModal()" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 w-full text-left">
@@ -304,10 +313,27 @@
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
         </div>
-        <p class="text-sm text-gray-600 mb-4">Upload an Excel or CSV file with case data. <a href="/api/v1/import/template/cases/" class="text-blue-600 hover:underline">Download template</a></p>
+        <p class="text-sm text-gray-600 mb-3">Upload an Excel or CSV file with case data.</p>
+        <div class="flex gap-2 mb-4 text-xs">
+            <a href="/api/v1/import/template/cases-sam/" class="text-red-600 hover:underline font-medium">↓ SAM Template</a>
+            <a href="/api/v1/import/template/cases-mam/" class="text-yellow-600 hover:underline font-medium">↓ MAM Template</a>
+            <a href="/api/v1/import/template/cases-ipc/" class="text-purple-600 hover:underline font-medium">↓ IPC Template</a>
+        </div>
         
         <form id="importForm" enctype="multipart/form-data">
             {% csrf_token %}
+            
+            <!-- Case Type Selection -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Case Type *</label>
+                <select id="caseTypeSelect" name="malnutrition_type" required
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500">
+                    <option value="">Select case type...</option>
+                    <option value="SAM">SAM - Severe Acute Malnutrition</option>
+                    <option value="MAM">MAM - Moderate Acute Malnutrition</option>
+                    <option value="IPC">IPC - Inpatient Care</option>
+                </select>
+            </div>
             
             <!-- Facility Selection -->
             <div class="mb-4">
@@ -420,9 +446,14 @@
     async function previewImport() {
         const fileInput = document.getElementById('importFile');
         const facilitySelect = document.getElementById('facilitySelect');
+        const caseTypeSelect = document.getElementById('caseTypeSelect');
         
         if (!fileInput.files.length) {
             alert('Please select a file');
+            return;
+        }
+        if (!caseTypeSelect.value) {
+            alert('Please select a case type');
             return;
         }
         if (!facilitySelect.value) {
@@ -433,6 +464,7 @@
         const formData = new FormData();
         formData.append('file', fileInput.files[0]);
         formData.append('facility_id', facilitySelect.value);
+        formData.append('malnutrition_type', caseTypeSelect.value);
         formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
 
         try {
@@ -468,9 +500,11 @@
 
         const fileInput = document.getElementById('importFile');
         const facilitySelect = document.getElementById('facilitySelect');
+        const caseTypeSelect = document.getElementById('caseTypeSelect');
         const formData = new FormData();
         formData.append('file', fileInput.files[0]);
         formData.append('facility_id', facilitySelect.value);
+        formData.append('malnutrition_type', caseTypeSelect.value);
         formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
 
         const btn = document.getElementById('importBtn');
