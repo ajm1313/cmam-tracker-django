@@ -853,6 +853,8 @@ def facility_detail_api(request, facility_id):
         'capacity': facility.capacity,
         'latitude': float(facility.latitude) if facility.latitude else None,
         'longitude': float(facility.longitude) if facility.longitude else None,
+        'population': facility.population,
+        'sam_prevalence': float(facility.sam_prevalence) if facility.sam_prevalence else None,
         'is_active': facility.is_active,
         'opc_day': facility.opc_day,
         'district_id': facility.district_id,
@@ -1875,7 +1877,7 @@ def facility_edit_api(request, facility_id):
     data = request.data
 
     # Direct model-field matches
-    for field in ('name', 'address', 'contact_person', 'capacity',
+    for field in ('name', 'code', 'address', 'contact_person', 'capacity',
                   'latitude', 'longitude', 'population', 'sam_prevalence'):
         if field in data:
             setattr(f, field, data[field] if data[field] != '' else None)

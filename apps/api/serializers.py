@@ -84,6 +84,8 @@ class FacilitySerializer(serializers.ModelSerializer):
             'phone', 'contact_phone',          # both for compat
             'email', 'contact_email',          # both for compat
             'capacity',
+            'latitude', 'longitude',
+            'population', 'sam_prevalence',
             'opc_day', 'opc_day_display',
             'expected_sam_cases', 'sam_target',
             'expected_mam_cases', 'mam_target',
