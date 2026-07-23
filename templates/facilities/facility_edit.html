@@ -64,11 +64,18 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Latitude</label>
-                    <input type="number" step="any" name="latitude" value="{{ facility.latitude|default:'' }}" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    <input type="number" step="any" name="latitude" id="id_latitude" value="{{ facility.latitude|default:'' }}" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Longitude</label>
-                    <input type="number" step="any" name="longitude" value="{{ facility.longitude|default:'' }}" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                    <input type="number" step="any" name="longitude" id="id_longitude" value="{{ facility.longitude|default:'' }}" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div class="md:col-span-2">
+                    <button type="button" id="btn_get_location" class="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 font-medium">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        Use My Current Location
+                    </button>
+                    <p id="location_status" class="text-xs text-gray-400 mt-1"></p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Status</label>
@@ -158,6 +165,23 @@ document.addEventListener('DOMContentLoaded', function() {
     popInput.addEventListener('input', calcSAM);
     prevInput.addEventListener('input', calcSAM);
     calcSAM(); // Calculate on page load if values exist
+
+    // Geolocation
+    const btnLoc = document.getElementById('btn_get_location');
+    const locStatus = document.getElementById('location_status');
+    const latInput = document.getElementById('id_latitude');
+    const lngInput = document.getElementById('id_longitude');
+    btnLoc.addEventListener('click', function() {
+        if (!navigator.geolocation) { locStatus.textContent = 'Geolocation not supported by this browser.'; return; }
+        locStatus.textContent = 'Getting location...';
+        navigator.geolocation.getCurrentPosition(function(pos) {
+            latInput.value = pos.coords.latitude.toFixed(6);
+            lngInput.value = pos.coords.longitude.toFixed(6);
+            locStatus.textContent = 'Location captured: ' + pos.coords.latitude.toFixed(6) + ', ' + pos.coords.longitude.toFixed(6);
+        }, function(err) {
+            locStatus.textContent = 'Error: ' + (err.message || 'Unable to get location. Check permissions.');
+        }, { enableHighAccuracy: true, timeout: 10000 });
+    });
 });
 </script>
 {% endblock %}
