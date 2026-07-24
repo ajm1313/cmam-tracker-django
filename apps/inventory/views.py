@@ -78,23 +78,11 @@ def inventory_list(request):
 
 @login_required
 def inventory_track(request):
-    """Track inventory movements (super admin only)"""
+    """Redirect to stock movements page (super admin only)"""
     if not request.user.is_superuser:
         messages.error(request, 'Only Super Admin can view stock movements')
         return redirect('inventory:inventory_dashboard')
-    user = request.user
-    accessible = user.get_accessible_facilities()
-    movements = StockMovement.objects.select_related(
-        'inventory_item', 'created_by'
-    )
-    if accessible is not None:
-        movements = movements.filter(
-            Q(source_facility__in=accessible) | Q(destination_facility__in=accessible) |
-            Q(source_facility__isnull=True, destination_facility__isnull=True)
-        )
-    movements = movements.order_by('-movement_date')[:100]
-    context = {'movements': movements}
-    return render(request, 'inventory/inventory_track.html', context)
+    return redirect('inventory:stock_movements')
 
 
 @login_required
