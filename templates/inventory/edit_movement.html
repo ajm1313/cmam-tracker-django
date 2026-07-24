@@ -130,10 +130,12 @@
 </div>
 
 <script>
-function loadDistricts(regionId, districtSelectId, facilitySelectId, selectedDistrictId, selectedFacilityId) {
+function loadDistricts(regionId, districtSelectId, facilitySelectId, selectedDistrictId, selectedFacilityId, clearFacility) {
     const districtSelect = document.getElementById(districtSelectId);
     districtSelect.innerHTML = '<option value="">-- All / Skip --</option>';
-    if (facilitySelectId) {
+    // Only clear facility dropdown when explicitly requested (user changed region)
+    // On page load, preserve server-rendered facility options
+    if (facilitySelectId && clearFacility) {
         document.getElementById(facilitySelectId).innerHTML = '<option value="">-- All / Skip --</option>';
     }
     if (regionId) {
@@ -193,7 +195,7 @@ function loadFacilities(districtId, facilitySelectId, selectedFacilityId) {
 
 // Source location handlers
 document.getElementById('srcRegion').addEventListener('change', function() {
-    loadDistricts(this.value, 'srcDistrict', 'srcFacility');
+    loadDistricts(this.value, 'srcDistrict', 'srcFacility', null, null, true);
 });
 document.getElementById('srcDistrict').addEventListener('change', function() {
     loadFacilities(this.value, 'srcFacility');
@@ -201,18 +203,19 @@ document.getElementById('srcDistrict').addEventListener('change', function() {
 
 // Destination location handlers
 document.getElementById('dstRegion').addEventListener('change', function() {
-    loadDistricts(this.value, 'dstDistrict', 'dstFacility');
+    loadDistricts(this.value, 'dstDistrict', 'dstFacility', null, null, true);
 });
 document.getElementById('dstDistrict').addEventListener('change', function() {
     loadFacilities(this.value, 'dstFacility');
 });
 
-// On page load, pre-populate districts and facilities if region is already selected
+// On page load, pre-populate districts if region is already selected
+// Don't clear facility dropdown - preserve server-rendered options as fallback
 {% if movement.source_region_id %}
-loadDistricts({{ movement.source_region_id }}, 'srcDistrict', 'srcFacility', {{ movement.source_district_id|default:'null' }}, {{ movement.source_facility_id|default:'null' }});
+loadDistricts({{ movement.source_region_id }}, 'srcDistrict', 'srcFacility', {{ movement.source_district_id|default:'null' }}, {{ movement.source_facility_id|default:'null' }}, false);
 {% endif %}
 {% if movement.destination_region_id %}
-loadDistricts({{ movement.destination_region_id }}, 'dstDistrict', 'dstFacility', {{ movement.destination_district_id|default:'null' }}, {{ movement.destination_facility_id|default:'null' }});
+loadDistricts({{ movement.destination_region_id }}, 'dstDistrict', 'dstFacility', {{ movement.destination_district_id|default:'null' }}, {{ movement.destination_facility_id|default:'null' }}, false);
 {% endif %}
 
 function updateSrcType() {

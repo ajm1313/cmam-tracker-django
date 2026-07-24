@@ -573,43 +573,44 @@ def edit_movement(request, pk):
         dest_region_id = request.POST.get('destination_region', '')
         
         try:
-            # Reverse old movement's stock effect
-            movement._reverse_stock_levels()
-            
-            # Update fields
-            movement.inventory_item_id = item_id
-            movement.movement_type = movement_type
-            movement.quantity = int(quantity)
-            movement.reference_number = reference_number
-            movement.notes = notes
-            movement.source_type = source_type or None
-            movement.source_facility_id = source_facility_id or None
-            movement.source_district_id = source_district_id or None
-            movement.source_region_id = source_region_id or None
-            movement.destination_type = dest_type or None
-            movement.destination_facility_id = dest_facility_id or None
-            movement.destination_district_id = dest_district_id or None
-            movement.destination_region_id = dest_region_id or None
-            
-            # Save without triggering update_stock_levels (we'll do it manually)
-            StockMovement.objects.filter(pk=pk).update(
-                inventory_item_id=item_id,
-                movement_type=movement_type,
-                quantity=int(quantity),
-                reference_number=reference_number,
-                notes=notes,
-                source_type=source_type or None,
-                source_facility_id=source_facility_id or None,
-                source_district_id=source_district_id or None,
-                source_region_id=source_region_id or None,
-                destination_type=dest_type or None,
-                destination_facility_id=dest_facility_id or None,
-                destination_district_id=dest_district_id or None,
-                destination_region_id=dest_region_id or None,
-            )
-            # Re-fetch and apply new stock effect
-            movement = StockMovement.objects.get(pk=pk)
-            movement.update_stock_levels()
+            with transaction.atomic():
+                # Reverse old movement's stock effect
+                movement._reverse_stock_levels()
+                
+                # Update fields
+                movement.inventory_item_id = item_id
+                movement.movement_type = movement_type
+                movement.quantity = int(quantity)
+                movement.reference_number = reference_number
+                movement.notes = notes
+                movement.source_type = source_type or None
+                movement.source_facility_id = source_facility_id or None
+                movement.source_district_id = source_district_id or None
+                movement.source_region_id = source_region_id or None
+                movement.destination_type = dest_type or None
+                movement.destination_facility_id = dest_facility_id or None
+                movement.destination_district_id = dest_district_id or None
+                movement.destination_region_id = dest_region_id or None
+                
+                # Save without triggering update_stock_levels (we'll do it manually)
+                StockMovement.objects.filter(pk=pk).update(
+                    inventory_item_id=item_id,
+                    movement_type=movement_type,
+                    quantity=int(quantity),
+                    reference_number=reference_number,
+                    notes=notes,
+                    source_type=source_type or None,
+                    source_facility_id=source_facility_id or None,
+                    source_district_id=source_district_id or None,
+                    source_region_id=source_region_id or None,
+                    destination_type=dest_type or None,
+                    destination_facility_id=dest_facility_id or None,
+                    destination_district_id=dest_district_id or None,
+                    destination_region_id=dest_region_id or None,
+                )
+                # Re-fetch and apply new stock effect
+                movement = StockMovement.objects.get(pk=pk)
+                movement.update_stock_levels()
             
             messages.success(request, 'Stock movement updated successfully')
             return redirect('inventory:stock_movements')
