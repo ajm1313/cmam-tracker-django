@@ -130,7 +130,7 @@
 </div>
 
 <script>
-function loadDistricts(regionId, districtSelectId, facilitySelectId, selectedDistrictId) {
+function loadDistricts(regionId, districtSelectId, facilitySelectId, selectedDistrictId, selectedFacilityId) {
     const districtSelect = document.getElementById(districtSelectId);
     districtSelect.innerHTML = '<option value="">-- All / Skip --</option>';
     if (facilitySelectId) {
@@ -149,6 +149,10 @@ function loadDistricts(regionId, districtSelectId, facilitySelectId, selectedDis
                     }
                     districtSelect.appendChild(option);
                 });
+                // After districts are loaded, load facilities for the selected district
+                if (selectedDistrictId && facilitySelectId) {
+                    loadFacilities(selectedDistrictId, facilitySelectId, selectedFacilityId);
+                }
             });
     }
 }
@@ -189,12 +193,12 @@ document.getElementById('dstDistrict').addEventListener('change', function() {
     loadFacilities(this.value, 'dstFacility');
 });
 
-// On page load, pre-populate districts if a region is already selected
+// On page load, pre-populate districts and facilities if region is already selected
 {% if movement.source_region_id %}
-loadDistricts({{ movement.source_region_id }}, 'srcDistrict', 'srcFacility', {{ movement.source_district_id|default:'null' }});
+loadDistricts({{ movement.source_region_id }}, 'srcDistrict', 'srcFacility', {{ movement.source_district_id|default:'null' }}, {{ movement.source_facility_id|default:'null' }});
 {% endif %}
 {% if movement.destination_region_id %}
-loadDistricts({{ movement.destination_region_id }}, 'dstDistrict', 'dstFacility', {{ movement.destination_district_id|default:'null' }});
+loadDistricts({{ movement.destination_region_id }}, 'dstDistrict', 'dstFacility', {{ movement.destination_district_id|default:'null' }}, {{ movement.destination_facility_id|default:'null' }});
 {% endif %}
 
 function updateSrcType() {

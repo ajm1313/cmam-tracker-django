@@ -285,17 +285,24 @@ LOGIN_REDIRECT_URL = '/dashboard/'
 LOGOUT_REDIRECT_URL = '/login/'
 
 # Security settings
-if not DEBUG:
-    # Trust the X-Forwarded-Proto header set by reverse proxies (Railway,
-    # Render, etc.) that terminate SSL and forward plain HTTP internally.
-    # Without this, SECURE_SSL_REDIRECT causes an infinite redirect loop.
+# Always trust the X-Forwarded-Proto header on Railway (even in DEBUG mode).
+# Without this, Django sees HTTP internally while the browser uses HTTPS,
+# causing CSRF Origin/Referer checks to fail with a scheme mismatch.
+_is_railway = bool(_RAILWAY_DOMAIN) or '.up.railway.app' in ' '.join(ALLOWED_HOSTS)
+if _is_railway or not DEBUG:
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+if not DEBUG:
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = 'DENY'
+
+# Explicitly set SameSite for CSRF/session cookies (Django defaults to 'Lax')
+CSRF_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SAMESITE = 'Lax'
 
 # Logging - ensure logs directory exists
 LOG_DIR = BASE_DIR / 'logs'
