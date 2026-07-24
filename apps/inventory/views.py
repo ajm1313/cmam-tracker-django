@@ -85,7 +85,7 @@ def inventory_track(request):
     """Redirect to stock movements page (super admin only)"""
     if not request.user.is_superuser:
         messages.error(request, 'Only Super Admin can view stock movements')
-        return redirect('inventory:inventory_dashboard')
+        return redirect('inventory:inventory_list')
     return redirect('inventory:stock_movements')
 
 
@@ -390,7 +390,7 @@ def stock_movements(request):
     """View stock movement history (super admin only)"""
     if not request.user.is_superuser:
         messages.error(request, 'Only Super Admin can view stock movements')
-        return redirect('inventory:inventory_dashboard')
+        return redirect('inventory:inventory_list')
     user = request.user
     
     # Get filter parameters
@@ -463,7 +463,7 @@ def new_movement(request):
     """Create a new stock movement (super admin only)"""
     if not request.user.is_superuser:
         messages.error(request, 'Only Super Admin can create stock movements')
-        return redirect('inventory:inventory_dashboard')
+        return redirect('inventory:inventory_list')
     if request.method == 'POST':
         item_id = request.POST.get('item_id')
         movement_type = request.POST.get('movement_type')
@@ -529,7 +529,7 @@ def movement_detail(request, pk):
     """View a stock movement's details (super admin only)"""
     if not request.user.is_superuser:
         messages.error(request, 'Only Super Admin can view stock movements')
-        return redirect('inventory:inventory_dashboard')
+        return redirect('inventory:inventory_list')
     
     movement = get_object_or_404(StockMovement.objects.select_related(
         'inventory_item', 'created_by',
@@ -547,7 +547,7 @@ def edit_movement(request, pk):
     """Edit a stock movement (super admin only)"""
     if not request.user.is_superuser:
         messages.error(request, 'Only Super Admin can edit stock movements')
-        return redirect('inventory:inventory_dashboard')
+        return redirect('inventory:inventory_list')
     
     movement = get_object_or_404(StockMovement, pk=pk)
     
@@ -631,7 +631,7 @@ def delete_movement(request, pk):
     """Delete a stock movement (super admin only)"""
     if not request.user.is_superuser:
         messages.error(request, 'Only Super Admin can delete stock movements')
-        return redirect('inventory:inventory_dashboard')
+        return redirect('inventory:inventory_list')
     
     movement = get_object_or_404(StockMovement, pk=pk)
     
@@ -764,7 +764,7 @@ def item_management(request):
     """Manage inventory items (admin only)"""
     if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
         messages.error(request, 'You do not have permission to manage inventory items')
-        return redirect('inventory:inventory_dashboard')
+        return redirect('inventory:inventory_list')
     items = InventoryItem.objects.all().order_by('name')
     
     context = {
@@ -780,7 +780,7 @@ def add_item(request):
     """Add a new inventory item (admin only)"""
     if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
         messages.error(request, 'You do not have permission to add inventory items')
-        return redirect('inventory:inventory_dashboard')
+        return redirect('inventory:inventory_list')
     if request.method == 'POST':
         code = request.POST.get('code', '').strip().upper()
         name = request.POST.get('name', '').strip()
@@ -978,7 +978,7 @@ def receive_stock(request):
     """Receive new stock into a location (Stock In) (admin only)"""
     if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
         messages.error(request, 'You do not have permission to receive stock')
-        return redirect('inventory:inventory_dashboard')
+        return redirect('inventory:inventory_list')
     if request.method == 'POST':
         item_id = request.POST.get('item_id')
         quantity = int(request.POST.get('quantity', 0))
@@ -1060,7 +1060,7 @@ def distribute_stock(request):
     """Distribute/transfer stock from one location to another (admin only)"""
     if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
         messages.error(request, 'You do not have permission to distribute stock')
-        return redirect('inventory:inventory_dashboard')
+        return redirect('inventory:inventory_list')
     if request.method == 'POST':
         item_id = request.POST.get('item_id')
         quantity = int(request.POST.get('quantity', 0))
