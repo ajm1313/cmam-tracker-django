@@ -64,6 +64,7 @@ def inventory_dashboard(request):
         'facilities_count': facilities_count,
         'recent_movements': recent_movements,
         'items': items,
+        'can_manage': request.user.is_superuser or request.user.can_create_users_and_facilities(),
     }
     return render(request, 'inventory/inventory_dashboard.html', context)
 
@@ -72,7 +73,10 @@ def inventory_dashboard(request):
 def inventory_list(request):
     """List all inventory items"""
     items = InventoryItem.objects.filter(is_active=True)
-    context = {'items': items}
+    context = {
+        'items': items,
+        'can_manage': request.user.is_superuser or request.user.can_create_users_and_facilities(),
+    }
     return render(request, 'inventory/inventory_list.html', context)
 
 
@@ -159,7 +163,10 @@ def inventory_detail(request, pk):
 
 @login_required
 def inventory_edit(request, pk):
-    """Edit inventory item"""
+    """Edit inventory item (admin only)"""
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        messages.error(request, 'You do not have permission to edit inventory items')
+        return redirect('inventory:inventory_list')
     item = get_object_or_404(InventoryItem, pk=pk)
     
     if request.method == 'POST':
@@ -220,7 +227,10 @@ def inventory_edit(request, pk):
 
 @login_required
 def inventory_delete(request, pk):
-    """Delete inventory item"""
+    """Delete inventory item (admin only)"""
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        messages.error(request, 'You do not have permission to delete inventory items')
+        return redirect('inventory:inventory_list')
     item = get_object_or_404(InventoryItem, pk=pk)
     
     if request.method == 'POST':
@@ -325,7 +335,10 @@ def stock_levels(request):
 
 @login_required
 def update_stock(request):
-    """Update stock levels for an item at a location"""
+    """Update stock levels for an item at a location (admin only)"""
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        messages.error(request, 'You do not have permission to update stock levels')
+        return redirect('inventory:stock_levels')
     if request.method == 'POST':
         item_id = request.POST.get('item_id')
         facility_id = request.POST.get('facility_id')
@@ -748,7 +761,10 @@ def new_request(request):
 
 @login_required
 def item_management(request):
-    """Manage inventory items"""
+    """Manage inventory items (admin only)"""
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        messages.error(request, 'You do not have permission to manage inventory items')
+        return redirect('inventory:inventory_dashboard')
     items = InventoryItem.objects.all().order_by('name')
     
     context = {
@@ -761,7 +777,10 @@ def item_management(request):
 
 @login_required
 def add_item(request):
-    """Add a new inventory item"""
+    """Add a new inventory item (admin only)"""
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        messages.error(request, 'You do not have permission to add inventory items')
+        return redirect('inventory:inventory_dashboard')
     if request.method == 'POST':
         code = request.POST.get('code', '').strip().upper()
         name = request.POST.get('name', '').strip()
@@ -867,17 +886,27 @@ def expiry_management(request):
 def inventory_reports(request):
     """Generate inventory reports"""
     report_type = request.GET.get('report_type', 'stock')
+    user = request.user
+    accessible = user.get_accessible_facilities()
     
     if report_type == 'stock':
         # Stock level report
         data = StockLevel.objects.select_related(
             'inventory_item', 'facility'
         ).order_by('inventory_item__name')
+        if accessible is not None:
+            data = data.filter(Q(facility__in=accessible) | Q(facility__isnull=True))
     else:
         # Movement report
         data = StockMovement.objects.select_related(
             'inventory_item', 'created_by'
         ).order_by('-movement_date')[:100]
+        if accessible is not None:
+            data = data.filter(
+                Q(source_facility__in=accessible) |
+                Q(destination_facility__in=accessible) |
+                Q(source_facility__isnull=True, destination_facility__isnull=True)
+            )
     
     context = {
         'report_type': report_type,
@@ -911,7 +940,9 @@ def api_get_facilities_by_district(request):
 
 @login_required
 def api_issue_stock(request):
-    """Issue stock to a facility"""
+    """Issue stock to a facility (admin only)"""
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        return JsonResponse({'success': False, 'error': 'Permission denied'})
     if request.method == 'POST':
         item_id = request.POST.get('item_id')
         facility_id = request.POST.get('facility_id')
@@ -944,7 +975,10 @@ def api_issue_stock(request):
 
 @login_required
 def receive_stock(request):
-    """Receive new stock into a location (Stock In)"""
+    """Receive new stock into a location (Stock In) (admin only)"""
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        messages.error(request, 'You do not have permission to receive stock')
+        return redirect('inventory:inventory_dashboard')
     if request.method == 'POST':
         item_id = request.POST.get('item_id')
         quantity = int(request.POST.get('quantity', 0))
@@ -1023,7 +1057,10 @@ def receive_stock(request):
 
 @login_required
 def distribute_stock(request):
-    """Distribute/transfer stock from one location to another"""
+    """Distribute/transfer stock from one location to another (admin only)"""
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        messages.error(request, 'You do not have permission to distribute stock')
+        return redirect('inventory:inventory_dashboard')
     if request.method == 'POST':
         item_id = request.POST.get('item_id')
         quantity = int(request.POST.get('quantity', 0))

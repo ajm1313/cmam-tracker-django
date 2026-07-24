@@ -99,9 +99,9 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
         
         user_roles = self.get_active_roles()
         
-        # User with no role assigned — fall back to all active facilities
+        # User with no role assigned — no facility access
         if not user_roles.exists():
-            return Facility.objects.filter(is_active=True)
+            return Facility.objects.none()
         
         facility_ids = set()
         
