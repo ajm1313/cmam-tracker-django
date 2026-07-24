@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate, login, logout
 from django.contrib import messages
-from django.db.models import Count, Q, F, Max
+from django.db.models import Count, Q, F, Max, Sum
 from django.http import HttpResponseForbidden, JsonResponse
 from datetime import datetime, timedelta
 import calendar
@@ -772,6 +772,122 @@ def reports(request):
     return render(request, 'users/reports.html', context)
 
 
+def _calculate_rutf_stock_data(facility_ids, week_ranges):
+    """Calculate RUTF stock data from inventory for weekly tally reports.
+    
+    Fetches 'Quantity of RUTF at the start of week' and 'Quantity of RUTF received'
+    from the inventory system (StockLevel / StockMovement) for the given facilities.
+    
+    Returns dict with keys: rutf_start, rutf_received, rutf_issued_total, rutf_balance
+    (each a list of 5 values, one per week).
+    """
+    from apps.inventory.models import InventoryItem, StockLevel, StockMovement
+    
+    result = {
+        'rutf_start': [0, 0, 0, 0, 0],
+        'rutf_received': [0, 0, 0, 0, 0],
+        'rutf_issued_total': [0, 0, 0, 0, 0],
+        'rutf_balance': [0, 0, 0, 0, 0],
+    }
+    
+    if not facility_ids:
+        return result
+    
+    try:
+        rutf_items = InventoryItem.objects.filter(category='RUTF')
+        if not rutf_items.exists():
+            return result
+        
+        # Per-week received and issued from stock movements
+        for week_idx, (week_start, week_end) in enumerate(week_ranges):
+            if week_start is None:
+                continue
+            
+            # Received: IN + TRANSFER incoming to facility
+            received = StockMovement.objects.filter(
+                inventory_item__in=rutf_items,
+                destination_facility_id__in=facility_ids,
+                movement_type__in=['IN', 'TRANSFER'],
+                movement_date__date__gte=week_start,
+                movement_date__date__lte=week_end
+            ).aggregate(total=Sum('quantity'))['total'] or 0
+            result['rutf_received'][week_idx] = received
+            
+            # Issued: ALL outgoing movements from facility
+            issued = StockMovement.objects.filter(
+                inventory_item__in=rutf_items,
+                source_facility_id__in=facility_ids,
+                movement_type__in=['OUT', 'TRANSFER', 'CONSUMPTION', 'ADJUSTMENT'],
+                movement_date__date__gte=week_start,
+                movement_date__date__lte=week_end
+            ).aggregate(total=Sum('quantity'))['total'] or 0
+            result['rutf_issued_total'][week_idx] = issued
+        
+        # Get current stock level for RUTF at these facilities
+        current_stock = StockLevel.objects.filter(
+            inventory_item__in=rutf_items,
+            facility_id__in=facility_ids
+        ).aggregate(total=Sum('current_stock'))['total'] or 0
+        
+        # Find the last valid week end date
+        last_week_end = None
+        last_valid_idx = None
+        for w in range(4, -1, -1):
+            if week_ranges[w][1] is not None:
+                last_week_end = week_ranges[w][1]
+                last_valid_idx = w
+                break
+        
+        if last_week_end is None:
+            return result
+        
+        # Adjust current stock for movements AFTER the reporting period
+        # stock_at_end_of_report = current_stock - received_after + issued_after
+        received_after = StockMovement.objects.filter(
+            inventory_item__in=rutf_items,
+            destination_facility_id__in=facility_ids,
+            movement_type__in=['IN', 'TRANSFER'],
+            movement_date__date__gt=last_week_end
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+        
+        issued_after = StockMovement.objects.filter(
+            inventory_item__in=rutf_items,
+            source_facility_id__in=facility_ids,
+            movement_type__in=['OUT', 'TRANSFER', 'CONSUMPTION', 'ADJUSTMENT'],
+            movement_date__date__gt=last_week_end
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+        
+        stock_at_end = current_stock - received_after + issued_after
+        
+        # Last valid week's balance = stock at end of reporting period
+        result['rutf_balance'][last_valid_idx] = stock_at_end
+        
+        # Back-calculate earlier weeks: balance[w] = balance[w+1] - received[w+1] + issued[w+1]
+        for w in range(last_valid_idx - 1, -1, -1):
+            if week_ranges[w][0] is None:
+                continue
+            result['rutf_balance'][w] = (
+                result['rutf_balance'][w + 1] -
+                result['rutf_received'][w + 1] +
+                result['rutf_issued_total'][w + 1]
+            )
+        
+        # Start of week = balance + issued - received (for that week)
+        for w in range(5):
+            if week_ranges[w][0] is None:
+                continue
+            result['rutf_start'][w] = (
+                result['rutf_balance'][w] +
+                result['rutf_issued_total'][w] -
+                result['rutf_received'][w]
+            )
+        
+    except Exception:
+        pass
+    
+    return result
+
+
 @login_required
 def weekly_sam_report(request):
     """Generate Weekly SAM Report (Health Facility Tally Sheet)"""
@@ -1011,42 +1127,6 @@ def weekly_sam_report(request):
         )
         rutf_issued = sum(v.rutf_sachets_given or 0 for v in sam_visits)
         data['rutf_issued_sam'][week_idx] = rutf_issued
-        
-        # RUTF stock movements for this week
-        try:
-            from apps.inventory.models import InventoryItem, StockLevel, StockMovement
-            rutf_items = InventoryItem.objects.filter(category='RUTF')
-            for rutf_item in rutf_items:
-                # Received this week (IN + TRANSFER in)
-                received_w = sum(m.quantity for m in StockMovement.objects.filter(
-                    inventory_item=rutf_item,
-                    destination_facility_id__in=facility_ids,
-                    movement_type__in=['IN', 'TRANSFER'],
-                    movement_date__gte=week_start,
-                    movement_date__lte=week_end
-                ))
-                data['rutf_received'][week_idx] += received_w
-                
-                # Issued this week (CONSUMPTION + OUT + TRANSFER out)
-                issued_w = sum(m.quantity for m in StockMovement.objects.filter(
-                    inventory_item=rutf_item,
-                    source_facility_id__in=facility_ids,
-                    movement_type__in=['CONSUMPTION', 'OUT', 'TRANSFER'],
-                    movement_date__gte=week_start,
-                    movement_date__lte=week_end
-                ))
-                
-                # Balance at end of week = current stock
-                stock_levels = StockLevel.objects.filter(
-                    inventory_item=rutf_item,
-                    facility_id__in=facility_ids
-                )
-                balance_w = sum(sl.current_stock or 0 for sl in stock_levels)
-                data['rutf_balance'][week_idx] = balance_w
-                # Start of week = balance + issued - received (back-calculated)
-                data['rutf_start'][week_idx] += (balance_w + issued_w - received_w)
-        except Exception:
-            pass
     
     # Calculate start of week (A) with continuity (CMAM guide)
     # Week 1: Calculate from previous month end
@@ -1096,37 +1176,23 @@ def weekly_sam_report(request):
             else:
                 data[f'{key}_total'] = sum(data[key])
     
-    # Calculate RUTF balance and start for each week
-    try:
-        from apps.inventory.models import InventoryItem, StockLevel
-        rutf_items = InventoryItem.objects.filter(category='RUTF')
-        current_balance = 0
-        for rutf_item in rutf_items:
-            stock_levels = StockLevel.objects.filter(
-                inventory_item=rutf_item,
-                facility_id__in=facility_ids
-            )
-            current_balance += sum(sl.current_stock for sl in stock_levels)
-        
-        # Last week balance = current stock
-        data['rutf_balance'][4] = current_balance
-        # Back-calculate: balance[w] = balance[w+1] - received[w+1] + issued[w+1]
-        for w in range(3, -1, -1):
-            data['rutf_balance'][w] = data['rutf_balance'][w + 1] - data['rutf_received'][w + 1] + data['rutf_issued_sam'][w + 1]
-        
-        # start[w] = balance[w] + issued[w] - received[w]
-        for w in range(5):
-            data['rutf_start'][w] = data['rutf_balance'][w] + data['rutf_issued_sam'][w] - data['rutf_received'][w]
-        
-        # Recalculate totals
-        # rutf_start and rutf_balance are running balances (stock levels),
-        # so their TOTAL should show the last week's closing value, not the sum.
-        # rutf_received is periodic, so summing is correct.
-        data['rutf_start_total'] = data['rutf_start'][4] if data['rutf_start'][4] else (data['rutf_start'][3] if data['rutf_start'][3] else (data['rutf_start'][2] if data['rutf_start'][2] else (data['rutf_start'][1] if data['rutf_start'][1] else data['rutf_start'][0])))
-        data['rutf_received_total'] = sum(data['rutf_received'])
-        data['rutf_balance_total'] = data['rutf_balance'][4] if data['rutf_balance'][4] else (data['rutf_balance'][3] if data['rutf_balance'][3] else (data['rutf_balance'][2] if data['rutf_balance'][2] else (data['rutf_balance'][1] if data['rutf_balance'][1] else data['rutf_balance'][0])))
-    except Exception:
-        pass
+    # Calculate RUTF stock data from inventory (start, received, balance)
+    rutf_stock = _calculate_rutf_stock_data(facility_ids, week_ranges)
+    data['rutf_start'] = rutf_stock['rutf_start']
+    data['rutf_received'] = rutf_stock['rutf_received']
+    data['rutf_balance'] = rutf_stock['rutf_balance']
+    
+    # Recalculate totals for RUTF
+    # rutf_start and rutf_balance are running balances (stock levels),
+    # so their TOTAL should show the last non-zero week's closing value.
+    # rutf_received is periodic, so summing is correct.
+    for rb_key in ('rutf_start', 'rutf_balance'):
+        last_val = 0
+        for v in data[rb_key]:
+            if v != 0:
+                last_val = v
+        data[f'{rb_key}_total'] = last_val
+    data['rutf_received_total'] = sum(data['rutf_received'])
     
     # Validate report data (CMAM guide compliance)
     errors, warnings = validate_weekly_sam_report(data)
@@ -1376,38 +1442,6 @@ def weekly_mam_report(request):
             (float(v.csb_plus_given or 0) + float(v.oil_given or 0))
             for v in mam_visits
         )
-        
-        # RUTF stock movements for this week
-        try:
-            from apps.inventory.models import InventoryItem, StockLevel, StockMovement
-            rutf_items = InventoryItem.objects.filter(category='RUTF')
-            for rutf_item in rutf_items:
-                received_w = sum(m.quantity for m in StockMovement.objects.filter(
-                    inventory_item=rutf_item,
-                    destination_facility_id__in=facility_ids,
-                    movement_type__in=['IN', 'TRANSFER'],
-                    movement_date__gte=week_start,
-                    movement_date__lte=week_end
-                ))
-                data['rutf_received'][week_idx] += received_w
-                
-                issued_w = sum(m.quantity for m in StockMovement.objects.filter(
-                    inventory_item=rutf_item,
-                    source_facility_id__in=facility_ids,
-                    movement_type__in=['CONSUMPTION', 'OUT', 'TRANSFER'],
-                    movement_date__gte=week_start,
-                    movement_date__lte=week_end
-                ))
-                
-                stock_levels = StockLevel.objects.filter(
-                    inventory_item=rutf_item,
-                    facility_id__in=facility_ids
-                )
-                balance_w = sum(sl.current_stock or 0 for sl in stock_levels)
-                data['rutf_balance'][week_idx] = balance_w
-                data['rutf_start'][week_idx] += (balance_w + issued_w - received_w)
-        except Exception:
-            pass
     
     # Calculate start of week (A) with continuity (matching SAM report)
     # Week 1: Calculate from previous month end
@@ -1456,6 +1490,21 @@ def weekly_mam_report(request):
                 data[f'{key}_total'] = last_val
             else:
                 data[f'{key}_total'] = sum(data[key])
+    
+    # Calculate RUTF stock data from inventory (start, received, balance)
+    rutf_stock = _calculate_rutf_stock_data(facility_ids, week_ranges)
+    data['rutf_start'] = rutf_stock['rutf_start']
+    data['rutf_received'] = rutf_stock['rutf_received']
+    data['rutf_balance'] = rutf_stock['rutf_balance']
+    
+    # Recalculate totals for RUTF
+    for rb_key in ('rutf_start', 'rutf_balance'):
+        last_val = 0
+        for v in data[rb_key]:
+            if v != 0:
+                last_val = v
+        data[f'{rb_key}_total'] = last_val
+    data['rutf_received_total'] = sum(data['rutf_received'])
     
     # Get facility info
     facility_name = "All Facilities"
