@@ -249,6 +249,18 @@ def inventory_delete(request, pk):
 
 # ============== STOCK LEVELS ==============
 
+def _validate_facility_access(user, facility_id):
+    """Check if user can access the given facility. Returns True if allowed."""
+    if not facility_id:
+        return True
+    if user.is_superuser or user.is_staff:
+        return True
+    accessible = user.get_accessible_facilities()
+    if accessible is None:
+        return True
+    return accessible.filter(id=facility_id).exists()
+
+
 @login_required
 def stock_levels(request):
     """View and manage stock levels across facilities"""
@@ -347,6 +359,10 @@ def update_stock(request):
         item_id = request.POST.get('item_id')
         facility_id = request.POST.get('facility_id')
         current_stock = request.POST.get('current_stock')
+        
+        if not _validate_facility_access(request.user, facility_id):
+            messages.error(request, 'You do not have access to this facility')
+            return redirect('inventory:stock_levels')
         
         try:
             with transaction.atomic():
@@ -717,6 +733,15 @@ def new_request(request):
         quantities = request.POST.getlist('quantity[]')
         unit_costs = request.POST.getlist('unit_cost[]')
         
+        # RBAC: validate facility access
+        if not _validate_facility_access(request.user, requesting_facility_id):
+            messages.error(request, 'You do not have access to the requesting facility')
+            return redirect('inventory:new_request')
+        
+        if not _validate_facility_access(request.user, supplier_facility_id):
+            messages.error(request, 'You do not have access to the supplier facility')
+            return redirect('inventory:new_request')
+        
         try:
             stock_request = StockRequest(
                 requesting_region_id=requesting_region_id or None,
@@ -971,6 +996,9 @@ def api_issue_stock(request):
         facility_id = request.POST.get('facility_id')
         quantity = int(request.POST.get('quantity', 0))
         
+        if not _validate_facility_access(request.user, facility_id):
+            return JsonResponse({'success': False, 'error': 'You do not have access to this facility'})
+        
         try:
             item = InventoryItem.objects.get(id=item_id)
             facility = Facility.objects.get(id=facility_id)
@@ -1016,6 +1044,10 @@ def receive_stock(request):
         
         if not item_id or quantity <= 0:
             messages.error(request, 'Please select an item and enter a valid quantity')
+            return redirect('inventory:receive_stock')
+        
+        if not _validate_facility_access(request.user, destination_facility_id):
+            messages.error(request, 'You do not have access to the destination facility')
             return redirect('inventory:receive_stock')
         
         try:
@@ -1119,6 +1151,14 @@ def distribute_stock(request):
         
         if not source_type or not destination_type:
             messages.error(request, 'Please specify both source and destination locations')
+            return redirect('inventory:distribute_stock')
+        
+        if not _validate_facility_access(request.user, source_facility_id):
+            messages.error(request, 'You do not have access to the source facility')
+            return redirect('inventory:distribute_stock')
+        
+        if not _validate_facility_access(request.user, destination_facility_id):
+            messages.error(request, 'You do not have access to the destination facility')
             return redirect('inventory:distribute_stock')
         
         # Prevent transferring to the same location
