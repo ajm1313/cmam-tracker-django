@@ -169,8 +169,11 @@ document.getElementById('requestingRegion').addEventListener('change', function(
     districtSelect.innerHTML = '<option value="">Select District</option>';
     
     if (regionId) {
-        fetch(`/api/inventory/districts/?region_id=${regionId}`)
-            .then(response => response.json())
+        fetch(`/api/inventory/districts/?region_id=${regionId}`, {credentials: 'same-origin'})
+            .then(response => {
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                return response.json();
+            })
             .then(data => {
                 data.districts.forEach(district => {
                     const option = document.createElement('option');
@@ -178,6 +181,10 @@ document.getElementById('requestingRegion').addEventListener('change', function(
                     option.textContent = district.name;
                     districtSelect.appendChild(option);
                 });
+            })
+            .catch(err => {
+                console.error('Error loading districts:', err);
+                districtSelect.innerHTML = '<option value="">Error loading districts</option>';
             });
     }
 });
@@ -189,8 +196,11 @@ document.getElementById('supplierRegion').addEventListener('change', function() 
     districtSelect.innerHTML = '<option value="">Select District</option>';
     
     if (regionId) {
-        fetch(`/api/inventory/districts/?region_id=${regionId}`)
-            .then(response => response.json())
+        fetch(`/api/inventory/districts/?region_id=${regionId}`, {credentials: 'same-origin'})
+            .then(response => {
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                return response.json();
+            })
             .then(data => {
                 data.districts.forEach(district => {
                     const option = document.createElement('option');
@@ -198,6 +208,10 @@ document.getElementById('supplierRegion').addEventListener('change', function() 
                     option.textContent = district.name;
                     districtSelect.appendChild(option);
                 });
+            })
+            .catch(err => {
+                console.error('Error loading districts:', err);
+                districtSelect.innerHTML = '<option value="">Error loading districts</option>';
             });
     }
 });

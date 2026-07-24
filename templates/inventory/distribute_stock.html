@@ -215,8 +215,11 @@ function loadDistricts(regionId, districtSelectId, facilitySelectId, placeholder
     fs.disabled = true;
 
     if (regionId) {
-        fetch('/api/inventory/districts/?region_id=' + regionId)
-            .then(function(r) { return r.json(); })
+        fetch('/api/inventory/districts/?region_id=' + regionId, {credentials: 'same-origin'})
+            .then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
             .then(function(data) {
                 ds.innerHTML = '<option value="">-- Select District --</option>';
                 data.districts.forEach(function(d) {
@@ -226,6 +229,10 @@ function loadDistricts(regionId, districtSelectId, facilitySelectId, placeholder
                     ds.appendChild(opt);
                 });
                 ds.disabled = false;
+            })
+            .catch(function(err) {
+                console.error('loadDistricts error:', err);
+                ds.innerHTML = '<option value="">Error loading districts</option>';
             });
     }
     updateTypes();
@@ -238,8 +245,11 @@ function loadFacilities(districtId, facilitySelectId) {
     fs.disabled = true;
 
     if (districtId) {
-        fetch('/api/inventory/facilities/?district_id=' + districtId)
-            .then(function(r) { return r.json(); })
+        fetch('/api/inventory/facilities/?district_id=' + districtId, {credentials: 'same-origin'})
+            .then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
             .then(function(data) {
                 fs.innerHTML = '<option value="">-- Select Facility --</option>';
                 data.facilities.forEach(function(f) {
@@ -249,6 +259,10 @@ function loadFacilities(districtId, facilitySelectId) {
                     fs.appendChild(opt);
                 });
                 fs.disabled = false;
+            })
+            .catch(function(err) {
+                console.error('loadFacilities error:', err);
+                fs.innerHTML = '<option value="">Error loading facilities</option>';
             });
     }
     updateTypes();

@@ -149,8 +149,11 @@ function loadDistricts(regionId) {
     facilitySelect.disabled = true;
 
     if (regionId) {
-        fetch(`/api/inventory/districts/?region_id=${regionId}`)
-            .then(r => r.json())
+        fetch(`/api/inventory/districts/?region_id=${regionId}`, {credentials: 'same-origin'})
+            .then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
             .then(data => {
                 districtSelect.innerHTML = '<option value="">-- Select District --</option>';
                 data.districts.forEach(d => {
@@ -171,8 +174,11 @@ function loadFacilities(districtId) {
     facilitySelect.disabled = true;
 
     if (districtId) {
-        fetch(`/api/inventory/facilities/?district_id=${districtId}`)
-            .then(r => r.json())
+        fetch(`/api/inventory/facilities/?district_id=${districtId}`, {credentials: 'same-origin'})
+            .then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
             .then(data => {
                 facilitySelect.innerHTML = '<option value="">-- Select Facility --</option>';
                 data.facilities.forEach(f => {
