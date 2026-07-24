@@ -1087,9 +1087,10 @@ def weekly_sam_report(request):
     for key in list(data.keys()):
         if isinstance(data[key], list):
             if key in running_balance_keys:
+                # Use the last non-zero value as the closing balance
                 last_val = 0
                 for v in data[key]:
-                    if v != 0 or last_val != 0:
+                    if v != 0:
                         last_val = v
                 data[f'{key}_total'] = last_val
             else:
@@ -1447,9 +1448,10 @@ def weekly_mam_report(request):
     for key in list(data.keys()):
         if isinstance(data[key], list):
             if key in running_balance_keys:
+                # Use the last non-zero value as the closing balance
                 last_val = 0
                 for v in data[key]:
-                    if v != 0 or last_val != 0:
+                    if v != 0:
                         last_val = v
                 data[f'{key}_total'] = last_val
             else:
