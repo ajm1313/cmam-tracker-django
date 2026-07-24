@@ -14,6 +14,7 @@ urlpatterns = [
     # Stock Movements
     path('manage/inventory/movements/', views.stock_movements, name='stock_movements'),
     path('manage/inventory/movements/new/', views.new_movement, name='new_movement'),
+    path('manage/inventory/movements/<int:pk>/', views.movement_detail, name='movement_detail'),
     path('manage/inventory/movements/<int:pk>/edit/', views.edit_movement, name='edit_movement'),
     path('manage/inventory/movements/<int:pk>/delete/', views.delete_movement, name='delete_movement'),
     

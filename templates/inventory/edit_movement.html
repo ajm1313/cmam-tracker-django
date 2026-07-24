@@ -130,6 +130,73 @@
 </div>
 
 <script>
+function loadDistricts(regionId, districtSelectId, facilitySelectId, selectedDistrictId) {
+    const districtSelect = document.getElementById(districtSelectId);
+    districtSelect.innerHTML = '<option value="">-- All / Skip --</option>';
+    if (facilitySelectId) {
+        document.getElementById(facilitySelectId).innerHTML = '<option value="">-- All / Skip --</option>';
+    }
+    if (regionId) {
+        fetch(`/api/inventory/districts/?region_id=${regionId}`)
+            .then(response => response.json())
+            .then(data => {
+                data.districts.forEach(district => {
+                    const option = document.createElement('option');
+                    option.value = district.id;
+                    option.textContent = district.name;
+                    if (selectedDistrictId && district.id == selectedDistrictId) {
+                        option.selected = true;
+                    }
+                    districtSelect.appendChild(option);
+                });
+            });
+    }
+}
+
+function loadFacilities(districtId, facilitySelectId, selectedFacilityId) {
+    const facilitySelect = document.getElementById(facilitySelectId);
+    facilitySelect.innerHTML = '<option value="">-- All / Skip --</option>';
+    if (districtId) {
+        fetch(`/api/inventory/facilities/?district_id=${districtId}`)
+            .then(response => response.json())
+            .then(data => {
+                data.facilities.forEach(facility => {
+                    const option = document.createElement('option');
+                    option.value = facility.id;
+                    option.textContent = facility.name;
+                    if (selectedFacilityId && facility.id == selectedFacilityId) {
+                        option.selected = true;
+                    }
+                    facilitySelect.appendChild(option);
+                });
+            });
+    }
+}
+
+// Source location handlers
+document.getElementById('srcRegion').addEventListener('change', function() {
+    loadDistricts(this.value, 'srcDistrict', 'srcFacility');
+});
+document.getElementById('srcDistrict').addEventListener('change', function() {
+    loadFacilities(this.value, 'srcFacility');
+});
+
+// Destination location handlers
+document.getElementById('dstRegion').addEventListener('change', function() {
+    loadDistricts(this.value, 'dstDistrict', 'dstFacility');
+});
+document.getElementById('dstDistrict').addEventListener('change', function() {
+    loadFacilities(this.value, 'dstFacility');
+});
+
+// On page load, pre-populate districts if a region is already selected
+{% if movement.source_region_id %}
+loadDistricts({{ movement.source_region_id }}, 'srcDistrict', 'srcFacility', {{ movement.source_district_id|default:'null' }});
+{% endif %}
+{% if movement.destination_region_id %}
+loadDistricts({{ movement.destination_region_id }}, 'dstDistrict', 'dstFacility', {{ movement.destination_district_id|default:'null' }});
+{% endif %}
+
 function updateSrcType() {
     const r = document.getElementById('srcRegion').value;
     const d = document.getElementById('srcDistrict').value;

@@ -524,6 +524,24 @@ def new_movement(request):
 
 
 @login_required
+def movement_detail(request, pk):
+    """View a stock movement's details (super admin only)"""
+    if not request.user.is_superuser:
+        messages.error(request, 'Only Super Admin can view stock movements')
+        return redirect('inventory:inventory_dashboard')
+    
+    movement = get_object_or_404(StockMovement.objects.select_related(
+        'inventory_item', 'created_by',
+        'source_facility', 'destination_facility',
+        'source_region', 'destination_region',
+        'source_district', 'destination_district'
+    ), pk=pk)
+    
+    context = {'movement': movement}
+    return render(request, 'inventory/movement_detail.html', context)
+
+
+@login_required
 def edit_movement(request, pk):
     """Edit a stock movement (super admin only)"""
     if not request.user.is_superuser:
