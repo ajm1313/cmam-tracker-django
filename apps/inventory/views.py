@@ -154,6 +154,10 @@ def inventory_detail(request, pk):
     """View inventory item details"""
     item = get_object_or_404(InventoryItem, pk=pk)
     stock_levels = StockLevel.objects.filter(inventory_item=item)
+    # RBAC: filter stock levels to user's accessible facilities
+    accessible = request.user.get_accessible_facilities()
+    if accessible is not None:
+        stock_levels = stock_levels.filter(Q(facility__in=accessible) | Q(facility__isnull=True))
     context = {
         'item': item,
         'stock_levels': stock_levels
@@ -745,8 +749,15 @@ def new_request(request):
     
     # GET request - show form
     items = InventoryItem.objects.filter(is_active=True)
-    regions = Region.objects.all().order_by('name')
-    facilities = Facility.objects.filter(is_active=True).order_by('name')
+    accessible = request.user.get_accessible_facilities()
+    
+    if request.user.is_superuser:
+        regions = Region.objects.all().order_by('name')
+        facilities = Facility.objects.filter(is_active=True).order_by('name')
+    else:
+        facilities = accessible.order_by('name')
+        region_ids = set(facilities.values_list('district__region_id', flat=True))
+        regions = Region.objects.filter(id__in=region_ids).order_by('name')
     
     context = {
         'items': items,
@@ -920,20 +931,31 @@ def inventory_reports(request):
 
 @login_required
 def api_get_districts_by_region(request):
-    """Get districts for a region"""
+    """Get districts for a region (RBAC-filtered)"""
     region_id = request.GET.get('region_id')
     districts = District.objects.filter(region_id=region_id).order_by('name')
+    # RBAC: filter to user's accessible districts
+    if not request.user.is_superuser:
+        accessible = request.user.get_accessible_facilities()
+        if accessible is not None:
+            accessible_district_ids = set(accessible.values_list('district_id', flat=True))
+            districts = districts.filter(id__in=accessible_district_ids)
     data = [{'id': d.id, 'name': d.name} for d in districts]
     return JsonResponse({'districts': data})
 
 
 @login_required
 def api_get_facilities_by_district(request):
-    """Get facilities for a district"""
+    """Get facilities for a district (RBAC-filtered)"""
     district_id = request.GET.get('district_id')
     facilities = Facility.objects.filter(
         district_id=district_id, is_active=True
     ).order_by('name')
+    # RBAC: filter to user's accessible facilities
+    if not request.user.is_superuser:
+        accessible = request.user.get_accessible_facilities()
+        if accessible is not None:
+            facilities = facilities.filter(id__in=accessible.values_list('id', flat=True))
     data = [{'id': f.id, 'name': f.name} for f in facilities]
     return JsonResponse({'facilities': data})
 
@@ -1042,9 +1064,19 @@ def receive_stock(request):
     
     # GET request - show form
     items = InventoryItem.objects.filter(is_active=True)
-    regions = Region.objects.all().order_by('name')
-    districts = District.objects.all().order_by('name')
-    facilities = Facility.objects.filter(is_active=True).order_by('name')
+    accessible = request.user.get_accessible_facilities()
+    
+    if request.user.is_superuser:
+        regions = Region.objects.all().order_by('name')
+        districts = District.objects.all().order_by('name')
+        facilities = Facility.objects.filter(is_active=True).order_by('name')
+    else:
+        facilities = accessible.order_by('name')
+        facility_ids = list(facilities.values_list('id', flat=True))
+        district_ids = set(facilities.values_list('district_id', flat=True))
+        region_ids = set(facilities.values_list('district__region_id', flat=True))
+        regions = Region.objects.filter(id__in=region_ids).order_by('name')
+        districts = District.objects.filter(id__in=district_ids).order_by('name')
     
     context = {
         'items': items,
@@ -1159,14 +1191,26 @@ def distribute_stock(request):
     
     # GET request - show form
     items = InventoryItem.objects.filter(is_active=True)
-    regions = Region.objects.all().order_by('name')
-    districts = District.objects.all().order_by('name')
-    facilities = Facility.objects.filter(is_active=True).order_by('name')
+    accessible = request.user.get_accessible_facilities()
     
-    # Get current stock levels for display
+    if request.user.is_superuser:
+        regions = Region.objects.all().order_by('name')
+        districts = District.objects.all().order_by('name')
+        facilities = Facility.objects.filter(is_active=True).order_by('name')
+    else:
+        facilities = accessible.order_by('name')
+        facility_ids = list(facilities.values_list('id', flat=True))
+        district_ids = set(facilities.values_list('district_id', flat=True))
+        region_ids = set(facilities.values_list('district__region_id', flat=True))
+        regions = Region.objects.filter(id__in=region_ids).order_by('name')
+        districts = District.objects.filter(id__in=district_ids).order_by('name')
+    
+    # Get current stock levels for display (RBAC-filtered)
     stock_summary = []
     for item in items:
         levels = StockLevel.objects.filter(inventory_item=item)
+        if accessible is not None:
+            levels = levels.filter(Q(facility__in=accessible) | Q(facility__isnull=True))
         total = sum(sl.current_stock for sl in levels)
         if total > 0:
             stock_summary.append({'item': item, 'total_stock': total})
