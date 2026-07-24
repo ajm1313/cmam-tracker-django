@@ -27,6 +27,8 @@ urlpatterns = [
     path('v1/inventory/stock-levels/update/', views.update_stock_api, name='update_stock'),
     path('v1/inventory/movements/', views.stock_movements_api, name='stock_movements'),
     path('v1/inventory/movements/create/', views.stock_movement_create_api, name='stock_movement_create'),
+    path('v1/inventory/movements/<int:pk>/edit/', views.stock_movement_edit_api, name='stock_movement_edit'),
+    path('v1/inventory/movements/<int:pk>/delete/', views.stock_movement_delete_api, name='stock_movement_delete'),
 
     # Inventory - requests
     path('v1/inventory/requests/', views.stock_requests_api, name='stock_requests'),

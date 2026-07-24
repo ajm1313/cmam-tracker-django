@@ -2264,9 +2264,12 @@ def update_stock_api(request):
 @permission_classes([IsAuthenticated])
 def stock_movements_api(request):
     """Get stock movements"""
+    if not request.user.is_superuser:
+        return Response({'success': False, 'message': 'Only Super Admin can view stock movements'}, status=status.HTTP_403_FORBIDDEN)
     accessible = request.user.get_accessible_facilities()
     qs = StockMovement.objects.filter(
-        Q(source_facility__in=accessible) | Q(destination_facility__in=accessible)
+        Q(source_facility__in=accessible) | Q(destination_facility__in=accessible) |
+        Q(source_facility__isnull=True, destination_facility__isnull=True)
     ).select_related('inventory_item', 'created_by', 'source_facility', 'destination_facility').order_by('-movement_date')
 
     item_id = request.query_params.get('item_id')
@@ -2307,7 +2310,9 @@ def stock_movements_api(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def stock_movement_create_api(request):
-    """Create a stock movement"""
+    """Create a stock movement (super admin only)"""
+    if not request.user.is_superuser:
+        return Response({'success': False, 'message': 'Only Super Admin can create stock movements'}, status=status.HTTP_403_FORBIDDEN)
     data = request.data
     required = ['item_id', 'movement_type', 'quantity']
     missing = [f for f in required if not data.get(f)]
@@ -2338,6 +2343,65 @@ def stock_movement_create_api(request):
         reference_number=data.get('reference_number', ''),
     )
     return Response({'success': True, 'message': 'Movement created'}, status=status.HTTP_201_CREATED)
+
+
+@api_view(['PUT', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def stock_movement_edit_api(request, pk):
+    """Edit a stock movement (super admin only)"""
+    if not request.user.is_superuser:
+        return Response({'success': False, 'message': 'Only Super Admin can edit stock movements'}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        movement = StockMovement.objects.get(pk=pk)
+    except StockMovement.DoesNotExist:
+        return Response({'success': False, 'message': 'Movement not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    data = request.data
+    
+    # Reverse old stock effect
+    movement._reverse_stock_levels()
+    
+    # Update fields
+    update_fields = {}
+    for field in ['movement_type', 'quantity', 'reference_number', 'notes',
+                  'source_type', 'source_facility_id', 'source_region_id', 'source_district_id',
+                  'destination_type', 'destination_facility_id', 'destination_region_id', 'destination_district_id']:
+        if field in data:
+            val = data[field]
+            if field == 'quantity':
+                val = int(val)
+            update_fields[field] = val if val else None
+    
+    if 'item_id' in data:
+        update_fields['inventory_item_id'] = data['item_id']
+    
+    StockMovement.objects.filter(pk=pk).update(**update_fields)
+    
+    # Re-fetch and apply new stock effect
+    movement = StockMovement.objects.get(pk=pk)
+    movement.update_stock_levels()
+    
+    return Response({'success': True, 'message': 'Movement updated'})
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def stock_movement_delete_api(request, pk):
+    """Delete a stock movement (super admin only)"""
+    if not request.user.is_superuser:
+        return Response({'success': False, 'message': 'Only Super Admin can delete stock movements'}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        movement = StockMovement.objects.get(pk=pk)
+    except StockMovement.DoesNotExist:
+        return Response({'success': False, 'message': 'Movement not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Reverse stock effect before deleting
+    movement._reverse_stock_levels()
+    movement.delete()
+    
+    return Response({'success': True, 'message': 'Movement deleted'})
 
 
 # ── Stock Requests ───────────────────────────────────────────────────────────

@@ -78,7 +78,10 @@ def inventory_list(request):
 
 @login_required
 def inventory_track(request):
-    """Track inventory movements"""
+    """Track inventory movements (super admin only)"""
+    if not request.user.is_superuser:
+        messages.error(request, 'Only Super Admin can view stock movements')
+        return redirect('inventory:inventory_dashboard')
     user = request.user
     accessible = user.get_accessible_facilities()
     movements = StockMovement.objects.select_related(
@@ -86,7 +89,8 @@ def inventory_track(request):
     )
     if accessible is not None:
         movements = movements.filter(
-            Q(source_facility__in=accessible) | Q(destination_facility__in=accessible)
+            Q(source_facility__in=accessible) | Q(destination_facility__in=accessible) |
+            Q(source_facility__isnull=True, destination_facility__isnull=True)
         )
     movements = movements.order_by('-movement_date')[:100]
     context = {'movements': movements}
@@ -382,7 +386,10 @@ def update_stock(request):
 
 @login_required
 def stock_movements(request):
-    """View stock movement history"""
+    """View stock movement history (super admin only)"""
+    if not request.user.is_superuser:
+        messages.error(request, 'Only Super Admin can view stock movements')
+        return redirect('inventory:inventory_dashboard')
     user = request.user
     
     # Get filter parameters
@@ -400,9 +407,7 @@ def stock_movements(request):
         'source_district', 'destination_district'
     ).order_by('-movement_date')
     
-    # RBAC: filter to user's accessible facilities
-    # Also include higher-level movements (national/regional/district) where
-    # source_facility or destination_facility is NULL.
+    # Super admin sees all movements
     accessible = user.get_accessible_facilities()
     if accessible is not None:
         movements = movements.filter(
@@ -447,13 +452,17 @@ def stock_movements(request):
         'selected_type': movement_type,
         'from_date': from_date,
         'to_date': to_date,
+        'is_superuser': request.user.is_superuser,
     }
     return render(request, 'inventory/stock_movements.html', context)
 
 
 @login_required
 def new_movement(request):
-    """Create a new stock movement"""
+    """Create a new stock movement (super admin only)"""
+    if not request.user.is_superuser:
+        messages.error(request, 'Only Super Admin can create stock movements')
+        return redirect('inventory:inventory_dashboard')
     if request.method == 'POST':
         item_id = request.POST.get('item_id')
         movement_type = request.POST.get('movement_type')
@@ -512,6 +521,113 @@ def new_movement(request):
         'movement_types': StockMovement.MOVEMENT_TYPES,
     }
     return render(request, 'inventory/new_movement.html', context)
+
+
+@login_required
+def edit_movement(request, pk):
+    """Edit a stock movement (super admin only)"""
+    if not request.user.is_superuser:
+        messages.error(request, 'Only Super Admin can edit stock movements')
+        return redirect('inventory:inventory_dashboard')
+    
+    movement = get_object_or_404(StockMovement, pk=pk)
+    
+    if request.method == 'POST':
+        item_id = request.POST.get('item_id')
+        movement_type = request.POST.get('movement_type')
+        quantity = request.POST.get('quantity')
+        reference_number = request.POST.get('reference_number', '')
+        notes = request.POST.get('notes', '')
+        
+        source_type = request.POST.get('source_type', '')
+        source_facility_id = request.POST.get('source_facility', '')
+        source_district_id = request.POST.get('source_district', '')
+        source_region_id = request.POST.get('source_region', '')
+        
+        dest_type = request.POST.get('destination_type', '')
+        dest_facility_id = request.POST.get('destination_facility', '')
+        dest_district_id = request.POST.get('destination_district', '')
+        dest_region_id = request.POST.get('destination_region', '')
+        
+        try:
+            # Reverse old movement's stock effect
+            movement._reverse_stock_levels()
+            
+            # Update fields
+            movement.inventory_item_id = item_id
+            movement.movement_type = movement_type
+            movement.quantity = int(quantity)
+            movement.reference_number = reference_number
+            movement.notes = notes
+            movement.source_type = source_type or None
+            movement.source_facility_id = source_facility_id or None
+            movement.source_district_id = source_district_id or None
+            movement.source_region_id = source_region_id or None
+            movement.destination_type = dest_type or None
+            movement.destination_facility_id = dest_facility_id or None
+            movement.destination_district_id = dest_district_id or None
+            movement.destination_region_id = dest_region_id or None
+            
+            # Save without triggering update_stock_levels (we'll do it manually)
+            StockMovement.objects.filter(pk=pk).update(
+                inventory_item_id=item_id,
+                movement_type=movement_type,
+                quantity=int(quantity),
+                reference_number=reference_number,
+                notes=notes,
+                source_type=source_type or None,
+                source_facility_id=source_facility_id or None,
+                source_district_id=source_district_id or None,
+                source_region_id=source_region_id or None,
+                destination_type=dest_type or None,
+                destination_facility_id=dest_facility_id or None,
+                destination_district_id=dest_district_id or None,
+                destination_region_id=dest_region_id or None,
+            )
+            # Re-fetch and apply new stock effect
+            movement = StockMovement.objects.get(pk=pk)
+            movement.update_stock_levels()
+            
+            messages.success(request, 'Stock movement updated successfully')
+            return redirect('inventory:stock_movements')
+        except Exception as e:
+            messages.error(request, f'Error updating movement: {str(e)}')
+    
+    items = InventoryItem.objects.filter(is_active=True)
+    regions = Region.objects.all().order_by('name')
+    facilities = Facility.objects.filter(is_active=True).order_by('name')
+    
+    context = {
+        'movement': movement,
+        'items': items,
+        'regions': regions,
+        'facilities': facilities,
+        'movement_types': StockMovement.MOVEMENT_TYPES,
+    }
+    return render(request, 'inventory/edit_movement.html', context)
+
+
+@login_required
+def delete_movement(request, pk):
+    """Delete a stock movement (super admin only)"""
+    if not request.user.is_superuser:
+        messages.error(request, 'Only Super Admin can delete stock movements')
+        return redirect('inventory:inventory_dashboard')
+    
+    movement = get_object_or_404(StockMovement, pk=pk)
+    
+    if request.method == 'POST':
+        try:
+            # Reverse the stock effect before deleting
+            movement._reverse_stock_levels()
+            movement.delete()
+            messages.success(request, 'Stock movement deleted successfully')
+        except Exception as e:
+            messages.error(request, f'Error deleting movement: {str(e)}')
+        return redirect('inventory:stock_movements')
+    
+    context = {'movement': movement}
+    return render(request, 'inventory/delete_movement.html', context)
 
 
 # ============== STOCK REQUESTS ==============

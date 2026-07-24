@@ -235,6 +235,49 @@ class StockMovement(TimeStampedModel):
         except StockLevel.DoesNotExist:
             pass
 
+    def _reverse_stock_levels(self):
+        """Reverse the stock effect of this movement (for edit/delete)"""
+        if self.movement_type == 'IN':
+            self._decrease_destination_stock()
+        elif self.movement_type == 'OUT':
+            self._increase_source_stock()
+        elif self.movement_type == 'TRANSFER':
+            self._increase_source_stock()
+            self._decrease_destination_stock()
+        elif self.movement_type == 'CONSUMPTION':
+            self._increase_source_stock()
+        elif self.movement_type == 'ADJUSTMENT':
+            if self.quantity > 0:
+                self._decrease_destination_stock()
+            else:
+                self._increase_source_stock()
+
+    def _decrease_destination_stock(self):
+        """Decrease destination stock (reverse of IN)"""
+        try:
+            stock_level = StockLevel.objects.get(
+                inventory_item=self.inventory_item,
+                location_type=self.destination_type,
+                region=self.destination_region,
+                district=self.destination_district,
+                facility=self.destination_facility
+            )
+            stock_level.update_stock(-self.quantity, 'current')
+        except StockLevel.DoesNotExist:
+            pass
+
+    def _increase_source_stock(self):
+        """Increase source stock (reverse of OUT/CONSUMPTION)"""
+        stock_level, created = StockLevel.objects.get_or_create(
+            inventory_item=self.inventory_item,
+            location_type=self.source_type,
+            region=self.source_region,
+            district=self.source_district,
+            facility=self.source_facility,
+            defaults={'current_stock': 0, 'reserved_stock': 0}
+        )
+        stock_level.update_stock(self.quantity, 'current')
+
 
 class StockRequest(TimeStampedModel):
     """Stock Request model for hierarchical stock requisition workflow"""

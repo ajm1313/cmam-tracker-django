@@ -36,7 +36,8 @@
                     </div>
                 </div>
 
-                <!-- Stock Movements -->
+                <!-- Stock Movements (Super Admin only) -->
+                {% if request.user.is_superuser %}
                 <div class="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow">
                     <div class="flex items-start space-x-3">
                         <div class="p-2 bg-green-100 rounded-lg">
@@ -54,6 +55,7 @@
                         </div>
                     </div>
                 </div>
+                {% endif %}
 
                 <!-- Receive Stock -->
                 <div class="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow border-l-4 border-green-500">
