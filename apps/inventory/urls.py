@@ -21,6 +21,10 @@ urlpatterns = [
     # Stock Requests
     path('manage/inventory/requests/', views.stock_requests, name='stock_requests'),
     path('manage/inventory/requests/new/', views.new_request, name='new_request'),
+    path('manage/inventory/requests/<int:pk>/', views.request_detail, name='request_detail'),
+    path('manage/inventory/requests/<int:pk>/approve/', views.approve_request, name='approve_request'),
+    path('manage/inventory/requests/<int:pk>/reject/', views.reject_request, name='reject_request'),
+    path('manage/inventory/requests/<int:pk>/fulfill/', views.fulfill_request, name='fulfill_request'),
     
     # Item Management
     path('manage/inventory/items/', views.item_management, name='item_management'),

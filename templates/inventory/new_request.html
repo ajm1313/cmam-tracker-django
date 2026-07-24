@@ -18,75 +18,160 @@
         </a>
     </div>
 
+    <!-- Info Banner -->
+    <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>
+            </div>
+            <div class="ml-3">
+                <p class="text-sm text-blue-700">Stock requests follow a hierarchical routing:</p>
+                <ul class="text-sm text-blue-600 mt-1 list-disc list-inside">
+                    <li><strong>Facility</strong> requests stock from its parent <strong>District</strong></li>
+                    <li><strong>District</strong> requests stock from its parent <strong>Region</strong></li>
+                    <li><strong>Region</strong> requests stock from <strong>National</strong> level</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal Form -->
     <div class="bg-white rounded-lg shadow p-6">
         <h3 class="text-lg font-semibold text-gray-900 mb-6">New Stock Request</h3>
         <form method="post" id="stockRequestForm">
             {% csrf_token %}
+            <input type="hidden" name="request_level" id="requestLevel" value="{{ user_level }}">
             
-            <!-- Requesting Location -->
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Region</label>
-                    <select name="requesting_region" id="requestingRegion" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
-                        <option value="">Select Region</option>
-                        {% for region in regions %}
-                        <option value="{{ region.id }}">{{ region.name }}</option>
-                        {% endfor %}
-                    </select>
+            <!-- Request Level Selector -->
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Request Level</label>
+                <div class="flex space-x-4" id="levelSelector">
+                    <label class="inline-flex items-center {% if user_level != 'facility' %}cursor-not-allowed opacity-50{% endif %}">
+                        <input type="radio" name="level_radio" value="facility" {% if user_level == 'facility' %}checked{% endif %} {% if user_level != 'facility' and user_level != 'national' %}disabled{% endif %} class="mr-2" onchange="switchLevel('facility')">
+                        <span class="text-sm">Facility &rarr; District</span>
+                    </label>
+                    <label class="inline-flex items-center {% if user_level != 'district' and user_level != 'national' %}cursor-not-allowed opacity-50{% endif %}">
+                        <input type="radio" name="level_radio" value="district" {% if user_level == 'district' %}checked{% endif %} {% if user_level != 'district' and user_level != 'national' %}disabled{% endif %} class="mr-2" onchange="switchLevel('district')">
+                        <span class="text-sm">District &rarr; Region</span>
+                    </label>
+                    <label class="inline-flex items-center {% if user_level != 'region' and user_level != 'national' %}cursor-not-allowed opacity-50{% endif %}">
+                        <input type="radio" name="level_radio" value="region" {% if user_level == 'region' %}checked{% endif %} {% if user_level != 'region' and user_level != 'national' %}disabled{% endif %} class="mr-2" onchange="switchLevel('region')">
+                        <span class="text-sm">Region &rarr; National</span>
+                    </label>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">District</label>
-                    <select name="requesting_district" id="requestingDistrict" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
-                        <option value="">Select District</option>
-                    </select>
+            </div>
+
+            <!-- Requesting Location (changes based on level) -->
+            <div class="bg-gray-50 rounded-lg p-4 mb-6">
+                <h4 class="text-sm font-bold text-gray-600 uppercase tracking-widest mb-3">Requesting Location</h4>
+                
+                <!-- Facility level: show region > district > facility -->
+                <div id="facilityLevelFields" class="{% if user_level != 'facility' and user_level != 'national' %}hidden{% endif %}">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Region</label>
+                            <select name="requesting_region" id="requestingRegion" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                                <option value="">Select Region</option>
+                                {% for region in regions %}
+                                <option value="{{ region.id }}" {% if region.id == user_region_id %}selected{% endif %}>{{ region.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">District</label>
+                            <select name="requesting_district" id="requestingDistrict" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                                <option value="">Select District</option>
+                                {% for district in districts %}
+                                <option value="{{ district.id }}" {% if district.id == user_district_id %}selected{% endif %}>{{ district.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Facility *</label>
+                            <select name="requesting_facility" id="requestingFacility" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" required>
+                                <option value="">Select Facility</option>
+                                {% for facility in facilities %}
+                                <option value="{{ facility.id }}" {% if facility.id == user_facility_id %}selected{% endif %}>{{ facility.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
                 </div>
+
+                <!-- District level: show region > district -->
+                <div id="districtLevelFields" class="{% if user_level != 'district' and user_level != 'national' %}hidden{% endif %}">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Region</label>
+                            <select name="requesting_region" id="requestingRegionD" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                                <option value="">Select Region</option>
+                                {% for region in regions %}
+                                <option value="{{ region.id }}" {% if region.id == user_region_id %}selected{% endif %}>{{ region.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">District *</label>
+                            <select name="requesting_district" id="requestingDistrictD" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" required>
+                                <option value="">Select District</option>
+                                {% for district in districts %}
+                                <option value="{{ district.id }}" {% if district.id == user_district_id %}selected{% endif %}>{{ district.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Region level: show region only -->
+                <div id="regionLevelFields" class="{% if user_level != 'region' and user_level != 'national' %}hidden{% endif %}">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Region *</label>
+                            <select name="requesting_region" id="requestingRegionR" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" required>
+                                <option value="">Select Region</option>
+                                {% for region in regions %}
+                                <option value="{{ region.id }}" {% if region.id == user_region_id %}selected{% endif %}>{{ region.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Supplier Location (auto-routed, read-only display) -->
+            <div class="bg-blue-50 rounded-lg p-4 mb-6">
+                <h4 class="text-sm font-bold text-blue-600 uppercase tracking-widest mb-3">Supplier Location (Auto-Routed)</h4>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Supplier Region</label>
+                        <input type="text" id="supplierRegionDisplay" readonly class="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-100 text-gray-600" placeholder="Auto-determined">
+                        <input type="hidden" name="supplier_region" id="supplierRegion" value="">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Supplier District</label>
+                        <input type="text" id="supplierDistrictDisplay" readonly class="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-100 text-gray-600" placeholder="Auto-determined">
+                        <input type="hidden" name="supplier_district" id="supplierDistrict" value="">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Supplier Facility</label>
+                        <input type="text" id="supplierFacilityDisplay" readonly class="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-100 text-gray-600" placeholder="Auto-determined">
+                        <input type="hidden" name="supplier_facility" id="supplierFacility" value="">
+                    </div>
+                </div>
+                <p class="text-xs text-blue-600 mt-2" id="supplierHint">The supplier is automatically determined based on the request level.</p>
+            </div>
+
+            <!-- Required Date and Priority -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Facility *</label>
-                    <select name="requesting_facility" id="requestingFacility" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
-                        <option value="">Select Facility</option>
-                        {% for facility in facilities %}
-                        <option value="{{ facility.id }}">{{ facility.name }}</option>
-                        {% endfor %}
-                    </select>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Required Date</label>
+                    <input type="date" name="required_date" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Priority</label>
                     <select name="priority" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
                         {% for priority in priority_choices %}
                         <option value="{{ priority.0 }}" {% if priority.0 == 'normal' %}selected{% endif %}>{{ priority.1 }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-            </div>
-
-            <!-- Required Date and Supplier Location -->
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Required Date</label>
-                    <input type="date" name="required_date" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Supplier Region</label>
-                    <select name="supplier_region" id="supplierRegion" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
-                        <option value="">Select Region</option>
-                        {% for region in regions %}
-                        <option value="{{ region.id }}">{{ region.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Supplier District</label>
-                    <select name="supplier_district" id="supplierDistrict" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
-                        <option value="">Select District</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Supplier Facility</label>
-                    <select name="supplier_facility" id="supplierFacility" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
-                        <option value="">Select Supplier</option>
-                        {% for facility in facilities %}
-                        <option value="{{ facility.id }}">{{ facility.name }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -162,7 +247,70 @@ function removeItem(btn) {
     }
 }
 
-// Cascading dropdowns for requesting location
+function switchLevel(level) {
+    document.getElementById('requestLevel').value = level;
+    
+    // Show/hide field groups
+    document.getElementById('facilityLevelFields').classList.add('hidden');
+    document.getElementById('districtLevelFields').classList.add('hidden');
+    document.getElementById('regionLevelFields').classList.add('hidden');
+    
+    if (level === 'facility') {
+        document.getElementById('facilityLevelFields').classList.remove('hidden');
+    } else if (level === 'district') {
+        document.getElementById('districtLevelFields').classList.remove('hidden');
+    } else if (level === 'region') {
+        document.getElementById('regionLevelFields').classList.remove('hidden');
+    }
+    
+    updateSupplierDisplay();
+}
+
+function updateSupplierDisplay() {
+    const level = document.getElementById('requestLevel').value;
+    const regionDisplay = document.getElementById('supplierRegionDisplay');
+    const districtDisplay = document.getElementById('supplierDistrictDisplay');
+    const facilityDisplay = document.getElementById('supplierFacilityDisplay');
+    const regionHidden = document.getElementById('supplierRegion');
+    const districtHidden = document.getElementById('supplierDistrict');
+    const facilityHidden = document.getElementById('supplierFacility');
+    const hint = document.getElementById('supplierHint');
+    
+    if (level === 'facility') {
+        // Supplier = parent district of selected facility
+        const facilitySelect = document.getElementById('requestingFacility');
+        const facilityText = facilitySelect.options[facilitySelect.selectedIndex].text;
+        facilityDisplay.value = '';
+        facilityHidden.value = '';
+        districtDisplay.value = 'Parent district of ' + facilityText;
+        districtHidden.value = '';
+        regionDisplay.value = '';
+        regionHidden.value = '';
+        hint.textContent = 'Stock will be requested from the district that manages this facility.';
+    } else if (level === 'district') {
+        // Supplier = parent region of selected district
+        const districtSelect = document.getElementById('requestingDistrictD');
+        const districtText = districtSelect.options[districtSelect.selectedIndex].text;
+        facilityDisplay.value = '';
+        facilityHidden.value = '';
+        districtDisplay.value = '';
+        districtHidden.value = '';
+        regionDisplay.value = 'Parent region of ' + districtText;
+        regionHidden.value = '';
+        hint.textContent = 'Stock will be requested from the region that manages this district.';
+    } else if (level === 'region') {
+        // Supplier = National
+        facilityDisplay.value = '';
+        facilityHidden.value = '';
+        districtDisplay.value = '';
+        districtHidden.value = '';
+        regionDisplay.value = 'National Level';
+        regionHidden.value = '';
+        hint.textContent = 'Stock will be requested from the national level inventory.';
+    }
+}
+
+// Cascading dropdowns for facility-level requesting location
 document.getElementById('requestingRegion').addEventListener('change', function() {
     const regionId = this.value;
     const districtSelect = document.getElementById('requestingDistrict');
@@ -189,31 +337,13 @@ document.getElementById('requestingRegion').addEventListener('change', function(
     }
 });
 
-// Cascading dropdowns for supplier location
-document.getElementById('supplierRegion').addEventListener('change', function() {
-    const regionId = this.value;
-    const districtSelect = document.getElementById('supplierDistrict');
-    districtSelect.innerHTML = '<option value="">Select District</option>';
-    
-    if (regionId) {
-        fetch(`/api/inventory/districts/?region_id=${regionId}`, {credentials: 'same-origin'})
-            .then(response => {
-                if (!response.ok) throw new Error('HTTP ' + response.status);
-                return response.json();
-            })
-            .then(data => {
-                data.districts.forEach(district => {
-                    const option = document.createElement('option');
-                    option.value = district.id;
-                    option.textContent = district.name;
-                    districtSelect.appendChild(option);
-                });
-            })
-            .catch(err => {
-                console.error('Error loading districts:', err);
-                districtSelect.innerHTML = '<option value="">Error loading districts</option>';
-            });
-    }
+// Update supplier display when facility or district selection changes
+document.getElementById('requestingFacility').addEventListener('change', updateSupplierDisplay);
+document.getElementById('requestingDistrictD').addEventListener('change', updateSupplierDisplay);
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    updateSupplierDisplay();
 });
 </script>
 {% endblock %}

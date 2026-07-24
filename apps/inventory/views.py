@@ -711,14 +711,55 @@ def stock_requests(request):
 
 @login_required
 def new_request(request):
-    """Create a new stock request"""
+    """Create a new stock request with hierarchical routing.
+    
+    Supports three request levels:
+    - Facility → District (facility requests from its parent district)
+    - District → Region (district requests from its parent region)
+    - Region → National (region requests from national level)
+    """
+    user = request.user
+    
+    # Determine user's hierarchy level and pre-populate locations
+    user_level = 'facility'  # default
+    user_region_id = None
+    user_district_id = None
+    user_facility_id = None
+    
+    if user.is_superuser or user.is_staff:
+        user_level = 'national'
+    else:
+        active_roles = user.get_active_roles()
+        if active_roles.exists():
+            has_region = active_roles.filter(region_id__isnull=False, district_id__isnull=True).exists()
+            has_district = active_roles.filter(district_id__isnull=False, sub_district_id__isnull=True, facility_id__isnull=True).exists()
+            has_facility = active_roles.filter(facility_id__isnull=False).exists()
+            
+            if has_region and not has_district and not has_facility:
+                user_level = 'region'
+                first_role = active_roles.filter(region_id__isnull=False, district_id__isnull=True).first()
+                user_region_id = first_role.region_id
+            elif has_district and not has_facility:
+                user_level = 'district'
+                first_role = active_roles.filter(district_id__isnull=False, facility_id__isnull=True).first()
+                user_district_id = first_role.district_id
+                user_region_id = first_role.district.region_id if first_role.district else None
+            elif has_facility:
+                user_level = 'facility'
+                first_role = active_roles.filter(facility_id__isnull=False).first()
+                user_facility_id = first_role.facility_id
+                user_district_id = first_role.facility.district_id if first_role.facility else None
+                user_region_id = first_role.facility.district.region_id if first_role.facility and first_role.facility.district else None
+    
     if request.method == 'POST':
-        # Requesting location
+        request_level = request.POST.get('request_level', user_level)
+        
+        # Requesting location (based on level)
         requesting_region_id = request.POST.get('requesting_region', '')
         requesting_district_id = request.POST.get('requesting_district', '')
         requesting_facility_id = request.POST.get('requesting_facility', '')
         
-        # Supplier location
+        # Supplier location (auto-determined based on request level)
         supplier_region_id = request.POST.get('supplier_region', '')
         supplier_district_id = request.POST.get('supplier_district', '')
         supplier_facility_id = request.POST.get('supplier_facility', '')
@@ -733,14 +774,35 @@ def new_request(request):
         quantities = request.POST.getlist('quantity[]')
         unit_costs = request.POST.getlist('unit_cost[]')
         
-        # RBAC: validate facility access
-        if not _validate_facility_access(request.user, requesting_facility_id):
-            messages.error(request, 'You do not have access to the requesting facility')
-            return redirect('inventory:new_request')
+        # RBAC: validate facility access for facility-level requests
+        if request_level == 'facility' and requesting_facility_id:
+            if not _validate_facility_access(user, requesting_facility_id):
+                messages.error(request, 'You do not have access to the requesting facility')
+                return redirect('inventory:new_request')
         
-        if not _validate_facility_access(request.user, supplier_facility_id):
-            messages.error(request, 'You do not have access to the supplier facility')
-            return redirect('inventory:new_request')
+        # Auto-set supplier based on request level (hierarchical routing)
+        if request_level == 'facility':
+            # Facility → District: supplier is the district the facility belongs to
+            if requesting_facility_id:
+                try:
+                    fac = Facility.objects.get(id=requesting_facility_id)
+                    supplier_district_id = str(fac.district_id) if fac.district_id else ''
+                    supplier_region_id = str(fac.district.region_id) if fac.district and fac.district.region_id else ''
+                except Facility.DoesNotExist:
+                    pass
+        elif request_level == 'district':
+            # District → Region: supplier is the region the district belongs to
+            if requesting_district_id:
+                try:
+                    dist = District.objects.get(id=requesting_district_id)
+                    supplier_region_id = str(dist.region_id) if dist.region_id else ''
+                except District.DoesNotExist:
+                    pass
+        elif request_level == 'region':
+            # Region → National: no supplier location (national level)
+            supplier_region_id = ''
+            supplier_district_id = ''
+            supplier_facility_id = ''
         
         try:
             stock_request = StockRequest(
@@ -754,18 +816,18 @@ def new_request(request):
                 required_date=required_date if required_date else None,
                 justification=justification,
                 notes=notes,
-                requested_by=request.user,
+                requested_by=user,
             )
             stock_request.save()
             
             # Add items
             for i, item_id in enumerate(item_ids):
-                if item_id and quantities[i]:
+                if item_id and i < len(quantities) and quantities[i]:
                     StockRequestItem.objects.create(
                         request=stock_request,
                         inventory_item_id=item_id,
                         quantity_requested=int(quantities[i]),
-                        unit_cost=float(unit_costs[i]) if unit_costs[i] else None,
+                        unit_cost=float(unit_costs[i]) if i < len(unit_costs) and unit_costs[i] else None,
                     )
             
             messages.success(request, f'Stock request {stock_request.request_number} created successfully')
@@ -775,23 +837,229 @@ def new_request(request):
     
     # GET request - show form
     items = InventoryItem.objects.filter(is_active=True)
-    accessible = request.user.get_accessible_facilities()
+    accessible = user.get_accessible_facilities()
     
-    if request.user.is_superuser:
+    if user.is_superuser:
         regions = Region.objects.all().order_by('name')
         facilities = Facility.objects.filter(is_active=True).order_by('name')
+        districts = District.objects.all().order_by('name')
     else:
-        facilities = accessible.order_by('name')
+        facilities = accessible.order_by('name') if accessible is not None else Facility.objects.none()
         region_ids = set(facilities.values_list('district__region_id', flat=True))
         regions = Region.objects.filter(id__in=region_ids).order_by('name')
+        district_ids = set(facilities.values_list('district_id', flat=True))
+        districts = District.objects.filter(id__in=district_ids).order_by('name')
     
     context = {
         'items': items,
         'regions': regions,
+        'districts': districts,
         'facilities': facilities,
         'priority_choices': StockRequest.PRIORITY_CHOICES,
+        'user_level': user_level,
+        'user_region_id': user_region_id,
+        'user_district_id': user_district_id,
+        'user_facility_id': user_facility_id,
     }
     return render(request, 'inventory/new_request.html', context)
+
+
+@login_required
+def request_detail(request, pk):
+    """View details of a stock request"""
+    stock_request = get_object_or_404(
+        StockRequest.objects.select_related(
+            'requested_by', 'approved_by', 'fulfilled_by',
+            'requesting_facility', 'requesting_district', 'requesting_region',
+            'supplier_facility', 'supplier_district', 'supplier_region'
+        ).prefetch_related('items__inventory_item'),
+        pk=pk
+    )
+    
+    # RBAC: ensure user can see this request
+    accessible = request.user.get_accessible_facilities()
+    if accessible is not None:
+        can_see = (
+            (stock_request.requesting_facility_id and stock_request.requesting_facility_id in accessible.values_list('id', flat=True)) or
+            (stock_request.supplier_facility_id and stock_request.supplier_facility_id in accessible.values_list('id', flat=True)) or
+            stock_request.requested_by_id == request.user.id
+        )
+        if not can_see:
+            messages.error(request, 'You do not have access to this request')
+            return redirect('inventory:stock_requests')
+    
+    # Determine if user can approve/fulfill
+    can_approve = (
+        request.user.is_superuser or
+        request.user.can_create_users_and_facilities() or
+        stock_request.status == 'pending'
+    )
+    can_fulfill = (
+        stock_request.status == 'approved' and
+        (request.user.is_superuser or request.user.can_create_users_and_facilities())
+    )
+    
+    context = {
+        'stock_request': stock_request,
+        'can_approve': can_approve,
+        'can_fulfill': can_fulfill,
+    }
+    return render(request, 'inventory/request_detail.html', context)
+
+
+@login_required
+def approve_request(request, pk):
+    """Approve a pending stock request"""
+    stock_request = get_object_or_404(StockRequest, pk=pk, status='pending')
+    
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        messages.error(request, 'You do not have permission to approve requests')
+        return redirect('inventory:request_detail', pk=pk)
+    
+    if request.method == 'POST':
+        approved_quantities = {}
+        for key, value in request.POST.items():
+            if key.startswith('approved_qty_'):
+                item_id = key.replace('approved_qty_', '')
+                try:
+                    approved_quantities[item_id] = int(value)
+                except (ValueError, TypeError):
+                    pass
+        
+        try:
+            with transaction.atomic():
+                stock_request.status = 'approved'
+                stock_request.approved_by = request.user
+                stock_request.approved_date = timezone.now()
+                stock_request.save()
+                
+                # Update approved quantities for each item
+                for item in stock_request.items.all():
+                    qty_key = str(item.id)
+                    if qty_key in approved_quantities:
+                        item.quantity_approved = approved_quantities[qty_key]
+                    else:
+                        item.quantity_approved = item.quantity_requested
+                    item.save()
+                
+                messages.success(request, f'Request {stock_request.request_number} approved successfully')
+        except Exception as e:
+            messages.error(request, f'Error approving request: {str(e)}')
+    
+    return redirect('inventory:request_detail', pk=pk)
+
+
+@login_required
+def reject_request(request, pk):
+    """Reject a pending stock request"""
+    stock_request = get_object_or_404(StockRequest, pk=pk, status='pending')
+    
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        messages.error(request, 'You do not have permission to reject requests')
+        return redirect('inventory:request_detail', pk=pk)
+    
+    if request.method == 'POST':
+        rejection_reason = request.POST.get('rejection_reason', '')
+        try:
+            stock_request.status = 'rejected'
+            stock_request.approved_by = request.user
+            stock_request.approved_date = timezone.now()
+            if rejection_reason:
+                stock_request.notes = (stock_request.notes or '') + f'\n[Rejection reason: {rejection_reason}]'
+            stock_request.save()
+            messages.success(request, f'Request {stock_request.request_number} rejected')
+        except Exception as e:
+            messages.error(request, f'Error rejecting request: {str(e)}')
+    
+    return redirect('inventory:request_detail', pk=pk)
+
+
+@login_required
+def fulfill_request(request, pk):
+    """Fulfill an approved stock request by creating stock movements"""
+    stock_request = get_object_or_404(StockRequest, pk=pk, status='approved')
+    
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        messages.error(request, 'You do not have permission to fulfill requests')
+        return redirect('inventory:request_detail', pk=pk)
+    
+    if request.method == 'POST':
+        try:
+            with transaction.atomic():
+                # Determine source and destination locations
+                src_type = None
+                src_facility_id = None
+                src_district_id = None
+                src_region_id = None
+                dst_type = None
+                dst_facility_id = None
+                dst_district_id = None
+                dst_region_id = None
+                
+                # Source = supplier location
+                if stock_request.supplier_facility_id:
+                    src_type = 'facility'
+                    src_facility_id = stock_request.supplier_facility_id
+                elif stock_request.supplier_district_id:
+                    src_type = 'district'
+                    src_district_id = stock_request.supplier_district_id
+                elif stock_request.supplier_region_id:
+                    src_type = 'region'
+                    src_region_id = stock_request.supplier_region_id
+                else:
+                    src_type = 'national'
+                
+                # Destination = requesting location
+                if stock_request.requesting_facility_id:
+                    dst_type = 'facility'
+                    dst_facility_id = stock_request.requesting_facility_id
+                elif stock_request.requesting_district_id:
+                    dst_type = 'district'
+                    dst_district_id = stock_request.requesting_district_id
+                elif stock_request.requesting_region_id:
+                    dst_type = 'region'
+                    dst_region_id = stock_request.requesting_region_id
+                else:
+                    dst_type = 'national'
+                
+                # Create a TRANSFER movement for each item
+                for item in stock_request.items.all():
+                    qty = item.quantity_approved or item.quantity_requested
+                    if qty <= 0:
+                        continue
+                    
+                    StockMovement.objects.create(
+                        inventory_item=item.inventory_item,
+                        movement_type='TRANSFER',
+                        quantity=qty,
+                        reference_number=stock_request.request_number,
+                        source_type=src_type,
+                        source_facility_id=src_facility_id,
+                        source_district_id=src_district_id,
+                        source_region_id=src_region_id,
+                        destination_type=dst_type,
+                        destination_facility_id=dst_facility_id,
+                        destination_district_id=dst_district_id,
+                        destination_region_id=dst_region_id,
+                        notes=f'Fulfilled from request {stock_request.request_number}',
+                        created_by=request.user,
+                        movement_date=timezone.now(),
+                    )
+                    
+                    # Update fulfilled quantity
+                    item.quantity_fulfilled = qty
+                    item.save()
+                
+                stock_request.status = 'fulfilled'
+                stock_request.fulfilled_by = request.user
+                stock_request.fulfilled_date = timezone.now()
+                stock_request.save()
+                
+                messages.success(request, f'Request {stock_request.request_number} fulfilled. Stock transferred successfully.')
+        except Exception as e:
+            messages.error(request, f'Error fulfilling request: {str(e)}')
+    
+    return redirect('inventory:request_detail', pk=pk)
 
 
 # ============== ITEM MANAGEMENT ==============
