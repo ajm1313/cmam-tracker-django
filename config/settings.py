@@ -285,12 +285,12 @@ LOGIN_REDIRECT_URL = '/dashboard/'
 LOGOUT_REDIRECT_URL = '/login/'
 
 # Security settings
-# Always trust the X-Forwarded-Proto header on Railway (even in DEBUG mode).
-# Without this, Django sees HTTP internally while the browser uses HTTPS,
-# causing CSRF Origin/Referer checks to fail with a scheme mismatch.
-_is_railway = bool(_RAILWAY_DOMAIN) or '.up.railway.app' in ' '.join(ALLOWED_HOSTS)
-if _is_railway or not DEBUG:
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+# Always trust the X-Forwarded-Proto header. Safe even when not behind a proxy
+# because the header simply won't be present. This is critical for Railway/Heroku
+# where SSL is terminated at the proxy and Django sees HTTP internally.
+# Without this, Django's CSRF Referer check fails due to scheme mismatch
+# (browser sends HTTPS Referer, Django thinks request is HTTP).
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 if not DEBUG:
     SECURE_SSL_REDIRECT = True
