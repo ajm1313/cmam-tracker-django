@@ -358,17 +358,24 @@ def record_consumption(request):
     if denied:
         return denied
     
-    # Create stock movement
-    movement = StockMovement.objects.create(
-        inventory_item=inventory_item,
-        movement_type='CONSUMPTION',
-        quantity=data['quantity'],
-        source_type='facility',
-        source_facility=facility,
-        notes=data.get('notes', ''),
-        created_by=request.user,
-        movement_date=timezone.now()
-    )
+    quantity = data['quantity']
+    if quantity <= 0:
+        return Response({'success': False, 'message': 'Quantity must be greater than zero'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Create stock movement (model validates that the facility has enough stock)
+    try:
+        movement = StockMovement.objects.create(
+            inventory_item=inventory_item,
+            movement_type='CONSUMPTION',
+            quantity=quantity,
+            source_type='facility',
+            source_facility=facility,
+            notes=data.get('notes', ''),
+            created_by=request.user,
+            movement_date=timezone.now()
+        )
+    except Exception as e:
+        return Response({'success': False, 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     
     # Check if stock level is now low/critical and push a notification
     try:
@@ -714,8 +721,8 @@ def case_create_api(request):
     try:
         deduct_stock_for_registration(case, user=request.user)
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"Stock deduction failed for registration {case.id}: {e}")
+        case.delete()
+        return Response({'success': False, 'message': f'Stock deduction failed: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
     
     serializer = OpcRegistrationDetailSerializer(case, context={'request': request})
     return Response({'success': True, 'message': 'Case created successfully', 'data': serializer.data},
@@ -816,8 +823,8 @@ def record_visit_api(request, registration_id):
     try:
         deduct_stock_for_visit(visit, user=request.user)
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"Stock deduction failed for visit {visit.id}: {e}")
+        visit.delete()
+        return Response({'success': False, 'message': f'Stock deduction failed: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
     
     serializer = OpcVisitSerializer(visit)
     return Response({'success': True, 'message': 'Visit recorded successfully', 'data': serializer.data},
@@ -2228,7 +2235,10 @@ def stock_levels_api(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def update_stock_api(request):
-    """Update stock level for an item at a facility"""
+    """Update stock level for an item at a facility (admin/facility manager only)"""
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        return Response({'success': False, 'message': 'Admin permission required'}, status=status.HTTP_403_FORBIDDEN)
+
     item_id = request.data.get('item_id')
     facility_id = request.data.get('facility_id')
     quantity = request.data.get('quantity')
@@ -2236,6 +2246,20 @@ def update_stock_api(request):
 
     if not all([item_id, facility_id, quantity]):
         return Response({'success': False, 'message': 'item_id, facility_id, quantity required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if movement_type not in [m[0] for m in StockMovement.MOVEMENT_TYPES] or movement_type == 'TRANSFER':
+        return Response({'success': False, 'message': 'Invalid movement type'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        quantity = int(quantity)
+    except (ValueError, TypeError):
+        return Response({'success': False, 'message': 'Quantity must be an integer'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if quantity == 0:
+        return Response({'success': False, 'message': 'Quantity cannot be zero'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if movement_type in ('OUT', 'CONSUMPTION') and quantity < 0:
+        return Response({'success': False, 'message': 'Quantity must be positive for this movement type'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         item = InventoryItem.objects.get(pk=item_id)
@@ -2248,13 +2272,17 @@ def update_stock_api(request):
     if denied:
         return denied
 
-    StockMovement.objects.create(
-        inventory_item=item, movement_type=movement_type, quantity=int(quantity),
-        source_type='facility', source_facility=facility,
-        destination_type='facility', destination_facility=facility,
-        notes=request.data.get('notes', ''), created_by=request.user,
-        movement_date=timezone.now(),
-    )
+    try:
+        StockMovement.objects.create(
+            inventory_item=item, movement_type=movement_type, quantity=quantity,
+            source_type='facility', source_facility=facility,
+            destination_type='facility', destination_facility=facility,
+            notes=request.data.get('notes', ''), created_by=request.user,
+            movement_date=timezone.now(),
+        )
+    except Exception as e:
+        return Response({'success': False, 'message': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
     return Response({'success': True, 'message': 'Stock updated'})
 
 

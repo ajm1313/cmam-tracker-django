@@ -54,25 +54,6 @@
                 </div>
             </div>
             
-            <!-- Batch and Expiry Information -->
-            <div class="border-t pt-6">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">Batch & Expiry Information</h3>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Batch/Lot Number</label>
-                        <input type="text" name="batch_number" value="{{ item.batch_number|default:'' }}" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Manufacture Date</label>
-                        <input type="date" name="manufacture_date" value="{{ item.manufacture_date|date:'Y-m-d'|default:'' }}" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Expiry Date</label>
-                        <input type="date" name="expiry_date" value="{{ item.expiry_date|date:'Y-m-d'|default:'' }}" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                    </div>
-                </div>
-            </div>
-            
             <!-- Supplier Information -->
             <div class="border-t pt-6">
                 <h3 class="text-lg font-medium text-gray-900 mb-4">Supplier Information</h3>

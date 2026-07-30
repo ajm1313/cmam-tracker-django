@@ -100,6 +100,8 @@
                             <span class="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">Approved</span>
                             {% elif req.status == 'rejected' %}
                             <span class="px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">Rejected</span>
+                            {% elif req.status == 'partially_fulfilled' %}
+                            <span class="px-2 py-1 text-xs font-medium bg-purple-100 text-purple-800 rounded-full">Partially Fulfilled</span>
                             {% elif req.status == 'fulfilled' %}
                             <span class="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">Fulfilled</span>
                             {% else %}

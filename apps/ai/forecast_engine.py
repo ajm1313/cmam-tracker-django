@@ -47,6 +47,10 @@ def forecast_stock(inventory_item, facility=None):
     if not weekly_consumption or len(weekly_consumption) < 2:
         # Not enough data for forecasting
         current_stock = _get_current_stock(inventory_item, facility)
+        reorder_recommended = current_stock < inventory_item.reorder_level
+        recommended_quantity = max(0, inventory_item.reorder_level * 2 - current_stock)
+        if reorder_recommended and facility:
+            _notify_reorder_if_needed(inventory_item, facility, recommended_quantity)
         return {
             'item_name': inventory_item.name,
             'item_id': inventory_item.id,
@@ -56,8 +60,8 @@ def forecast_stock(inventory_item, facility=None):
             'forecast_periods': [],
             'total_forecast': 0,
             'days_until_stockout': None,
-            'reorder_recommended': current_stock < inventory_item.reorder_level,
-            'recommended_quantity': max(0, inventory_item.reorder_level * 2 - current_stock),
+            'reorder_recommended': reorder_recommended,
+            'recommended_quantity': recommended_quantity,
             'method': 'insufficient_data',
             'accuracy_score': None,
             'message': 'Insufficient historical data for forecasting (need 2+ weeks)',
@@ -90,6 +94,9 @@ def forecast_stock(inventory_item, facility=None):
     elif current_stock < inventory_item.reorder_level:
         reorder_recommended = True
         recommended_quantity = max(0, inventory_item.reorder_level * 2 - current_stock)
+
+    if reorder_recommended and facility:
+        _notify_reorder_if_needed(inventory_item, facility, recommended_quantity)
 
     return {
         'item_name': inventory_item.name,
@@ -265,6 +272,39 @@ def _estimate_stockout(current_stock, forecast_periods):
             return days
 
     return None  # Won't run out within forecast period
+
+
+def _notify_reorder_if_needed(inventory_item, facility, recommended_quantity):
+    """Send push alerts when a forecast recommends a reorder."""
+    try:
+        from apps.api.push_service import notify_facility_staff, notify_admins
+        from apps.ai.models import StockForecast
+
+        today = timezone.now().date()
+        already_today = StockForecast.objects.filter(
+            item=inventory_item,
+            facility=facility,
+            reorder_recommended=True,
+            created_at__date=today
+        ).exists()
+        if already_today:
+            return
+
+        msg = (f"{inventory_item.name} at {facility.name} is forecasted to run out. "
+               f"Recommended reorder: {recommended_quantity} {inventory_item.unit_of_measure}.")
+        notify_facility_staff(
+            facility,
+            'Reorder Recommended',
+            msg,
+            {'type': 'reorder_recommended', 'itemId': inventory_item.pk, 'facilityId': facility.pk}
+        )
+        notify_admins(
+            'Reorder Recommended',
+            msg,
+            {'type': 'reorder_recommended', 'itemId': inventory_item.pk, 'facilityId': facility.pk}
+        )
+    except Exception as e:
+        logger.warning(f"Failed to send reorder notification: {e}")
 
 
 def batch_forecast(facility=None):

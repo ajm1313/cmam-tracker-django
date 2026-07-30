@@ -102,9 +102,6 @@ def inventory_create(request):
         unit_of_measure = request.POST.get('unit_of_measure', '')
         unit_cost = request.POST.get('unit_cost') or None
         initial_stock = request.POST.get('initial_stock') or 0
-        batch_number = request.POST.get('batch_number', '').strip() or None
-        manufacture_date = request.POST.get('manufacture_date') or None
-        expiry_date = request.POST.get('expiry_date') or None
         manufacturer = request.POST.get('manufacturer', '').strip() or None
         supplier = request.POST.get('supplier', '').strip() or None
         storage_conditions = request.POST.get('storage_conditions') or None
@@ -126,9 +123,6 @@ def inventory_create(request):
                 unit_of_measure=unit_of_measure,
                 unit_cost=unit_cost,
                 initial_stock=initial_stock,
-                batch_number=batch_number,
-                manufacture_date=manufacture_date if manufacture_date else None,
-                expiry_date=expiry_date if expiry_date else None,
                 manufacturer=manufacturer,
                 supplier=supplier,
                 storage_conditions=storage_conditions,
@@ -180,9 +174,6 @@ def inventory_edit(request, pk):
         unit_of_measure = request.POST.get('unit_of_measure', '')
         unit_cost = request.POST.get('unit_cost') or None
         initial_stock = request.POST.get('initial_stock') or 0
-        batch_number = request.POST.get('batch_number', '').strip() or None
-        manufacture_date = request.POST.get('manufacture_date') or None
-        expiry_date = request.POST.get('expiry_date') or None
         manufacturer = request.POST.get('manufacturer', '').strip() or None
         supplier = request.POST.get('supplier', '').strip() or None
         storage_conditions = request.POST.get('storage_conditions') or None
@@ -204,9 +195,6 @@ def inventory_edit(request, pk):
             item.unit_of_measure = unit_of_measure
             item.unit_cost = unit_cost
             item.initial_stock = initial_stock
-            item.batch_number = batch_number
-            item.manufacture_date = manufacture_date if manufacture_date else None
-            item.expiry_date = expiry_date if expiry_date else None
             item.manufacturer = manufacturer
             item.supplier = supplier
             item.storage_conditions = storage_conditions
@@ -895,7 +883,7 @@ def request_detail(request, pk):
         stock_request.status == 'pending'
     )
     can_fulfill = (
-        stock_request.status == 'approved' and
+        stock_request.status in ('approved', 'partially_fulfilled') and
         (request.user.is_superuser or request.user.can_create_users_and_facilities())
     )
     
@@ -976,8 +964,8 @@ def reject_request(request, pk):
 
 @login_required
 def fulfill_request(request, pk):
-    """Fulfill an approved stock request by creating stock movements"""
-    stock_request = get_object_or_404(StockRequest, pk=pk, status='approved')
+    """Fulfill an approved/partially-fulfilled stock request by creating stock movements."""
+    stock_request = get_object_or_404(StockRequest, pk=pk, status__in=['approved', 'partially_fulfilled'])
     
     if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
         messages.error(request, 'You do not have permission to fulfill requests')
@@ -1022,16 +1010,53 @@ def fulfill_request(request, pk):
                 else:
                     dst_type = 'national'
                 
-                # Create a TRANSFER movement for each item
+                # Read shipped quantities from form
+                shipped_quantities = {}
                 for item in stock_request.items.all():
-                    qty = item.quantity_approved or item.quantity_requested
-                    if qty <= 0:
+                    qty_str = request.POST.get(f'ship_qty_{item.id}', '0')
+                    try:
+                        ship_qty = int(qty_str)
+                    except (ValueError, TypeError):
+                        ship_qty = 0
+                    approved = item.quantity_approved or item.quantity_requested
+                    already_fulfilled = item.quantity_fulfilled or 0
+                    remaining = approved - already_fulfilled
+                    if ship_qty < 0 or ship_qty > remaining:
+                        raise Exception(
+                            f"Invalid ship quantity for {item.inventory_item.name}. "
+                            f"Maximum remaining: {remaining}."
+                        )
+                    shipped_quantities[item.id] = ship_qty
+                
+                # Pre-check supplier stock
+                for item in stock_request.items.all():
+                    ship_qty = shipped_quantities.get(item.id, 0)
+                    if ship_qty <= 0:
+                        continue
+                    supplier_stock = StockLevel.objects.filter(
+                        inventory_item=item.inventory_item,
+                        location_type=src_type,
+                        region_id=src_region_id,
+                        district_id=src_district_id,
+                        facility_id=src_facility_id,
+                    ).first()
+                    available = supplier_stock.current_stock if supplier_stock else 0
+                    if available < ship_qty:
+                        raise Exception(
+                            f"Insufficient stock for {item.inventory_item.name} at supplier. "
+                            f"Available: {available}, requested: {ship_qty}."
+                        )
+                
+                # Create a TRANSFER movement for each shipped item
+                for item in stock_request.items.all():
+                    ship_qty = shipped_quantities.get(item.id, 0)
+                    if ship_qty <= 0:
                         continue
                     
                     StockMovement.objects.create(
                         inventory_item=item.inventory_item,
                         movement_type='TRANSFER',
-                        quantity=qty,
+                        quantity=ship_qty,
                         reference_number=stock_request.request_number,
                         source_type=src_type,
                         source_facility_id=src_facility_id,
@@ -1047,10 +1072,15 @@ def fulfill_request(request, pk):
                     )
                     
                     # Update fulfilled quantity
-                    item.quantity_fulfilled = qty
+                    item.quantity_fulfilled = (item.quantity_fulfilled or 0) + ship_qty
                     item.save()
                 
-                stock_request.status = 'fulfilled'
+                # Determine new status
+                all_fulfilled = all(
+                    (item.quantity_fulfilled or 0) >= (item.quantity_approved or item.quantity_requested)
+                    for item in stock_request.items.all()
+                )
+                stock_request.status = 'fulfilled' if all_fulfilled else 'partially_fulfilled'
                 stock_request.fulfilled_by = request.user
                 stock_request.fulfilled_date = timezone.now()
                 stock_request.save()
@@ -1267,15 +1297,19 @@ def api_issue_stock(request):
         if not _validate_facility_access(request.user, facility_id):
             return JsonResponse({'success': False, 'error': 'You do not have access to this facility'})
         
+        if quantity <= 0:
+            return JsonResponse({'success': False, 'error': 'Quantity must be greater than zero'})
+        
         try:
             item = InventoryItem.objects.get(id=item_id)
             facility = Facility.objects.get(id=facility_id)
             
-            # Create stock movement
+            # Issue from national stock to the facility as a TRANSFER
             movement = StockMovement.objects.create(
                 inventory_item=item,
-                movement_type='OUT',
+                movement_type='TRANSFER',
                 quantity=quantity,
+                source_type='national',
                 destination_type='facility',
                 destination_facility=facility,
                 created_by=request.user,
@@ -1283,7 +1317,9 @@ def api_issue_stock(request):
                 notes=f'Issued to {facility.name}'
             )
             
-            return JsonResponse({'success': True, 'message': f'Issued {quantity} {item.unit_of_measure} to {facility.name}'})
+            return JsonResponse({'success': True, 'message': f'Issued {quantity} {item.unit_of_measure} of {item.name} to {facility.name}', 'movement_id': movement.id})
+        except (InventoryItem.DoesNotExist, Facility.DoesNotExist):
+            return JsonResponse({'success': False, 'error': 'Item or facility not found'})
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)})
     
@@ -1321,6 +1357,20 @@ def receive_stock(request):
         try:
             item = InventoryItem.objects.get(id=item_id)
             
+            # Create batch record if batch info provided (before movement so it can be linked)
+            item_batch = None
+            if batch_number:
+                item_batch = ItemBatch.objects.create(
+                    inventory_item=item,
+                    batch_number=batch_number,
+                    expiry_date=expiry_date if expiry_date else None,
+                    quantity=quantity,
+                    location_type=destination_type,
+                    region_id=destination_region_id,
+                    district_id=destination_district_id,
+                    facility_id=destination_facility_id,
+                )
+
             # Create stock movement (IN)
             movement = StockMovement(
                 inventory_item=item,
@@ -1334,21 +1384,9 @@ def receive_stock(request):
                 destination_region_id=destination_region_id,
                 destination_district_id=destination_district_id,
                 destination_facility_id=destination_facility_id,
+                batch=item_batch,
             )
             movement.save()
-            
-            # Create batch record if batch info provided
-            if batch_number:
-                ItemBatch.objects.create(
-                    inventory_item=item,
-                    batch_number=batch_number,
-                    expiry_date=expiry_date if expiry_date else None,
-                    quantity=quantity,
-                    location_type=destination_type,
-                    region_id=destination_region_id,
-                    district_id=destination_district_id,
-                    facility_id=destination_facility_id,
-                )
             
             dest_name = 'National Level'
             if destination_facility_id:

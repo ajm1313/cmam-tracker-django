@@ -336,8 +336,8 @@ def case_create(request):
                 try:
                     with transaction.atomic():
                         deduct_stock_for_registration(registration, user=request.user)
-                except Exception:
-                    pass
+                except Exception as e:
+                    messages.warning(request, f'Case saved, but stock deduction failed: {str(e)}')
                 
                 messages.success(request, f'Case registered successfully — {reg_number}')
                 return redirect('cases:case_detail', pk=registration.pk)
@@ -567,8 +567,8 @@ def case_delete(request, pk):
             reverse_stock_for_registration(case, user=request.user)
             for visit in case.visits.all():
                 reverse_stock_for_visit(visit, user=request.user)
-        except Exception:
-            pass
+        except Exception as e:
+            messages.warning(request, f'Case closed, but stock reversal failed: {str(e)}')
         case.status = 'Discharged'
         case.save()
         messages.success(request, 'Case closed successfully')
@@ -837,8 +837,8 @@ def visit_form(request, registration_id):
             try:
                 with transaction.atomic():
                     deduct_stock_for_visit(visit, user=request.user)
-            except Exception:
-                pass
+            except Exception as e:
+                messages.warning(request, f'Visit saved, but stock deduction failed: {str(e)}')
             
             messages.success(request, f'Visit #{next_visit_number} recorded successfully!')
             return redirect('cases:case_detail', pk=case.pk)

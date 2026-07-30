@@ -1,4 +1,6 @@
-from django.db import models
+from django.db import models, transaction
+from django.db.models import F
+from django.core.exceptions import ValidationError
 from apps.core.models import TimeStampedModel
 from django.conf import settings
 
@@ -58,9 +60,6 @@ class InventoryItem(TimeStampedModel):
     
     # Batch and expiry tracking
     has_expiry = models.BooleanField(default=False, help_text='Does this item have expiry dates?')
-    batch_number = models.CharField(max_length=100, null=True, blank=True)
-    expiry_date = models.DateField(null=True, blank=True)
-    manufacture_date = models.DateField(null=True, blank=True)
     
     # Supplier information
     manufacturer = models.CharField(max_length=255, null=True, blank=True)
@@ -71,6 +70,15 @@ class InventoryItem(TimeStampedModel):
     
     # Initial stock
     initial_stock = models.IntegerField(default=0)
+    
+    # Conversion factor from case input units to stock units
+    # e.g. 1 kg of CSB = 10 sachets in stock -> conversion_factor = 10.0
+    conversion_factor = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        default=1.0,
+        help_text='Multiplier to convert case-entry quantities (e.g. kg) into stock units (e.g. sachets).'
+    )
     
     is_active = models.BooleanField(default=True)
     
@@ -118,12 +126,19 @@ class StockLevel(TimeStampedModel):
         return self.current_stock - self.reserved_stock
     
     def update_stock(self, quantity, stock_type='current'):
-        """Update stock levels"""
+        """Update stock levels using F() expressions and enforce non-negative stock."""
         if stock_type == 'current':
-            self.current_stock += quantity
+            self.current_stock = F('current_stock') + quantity
+            self.save(update_fields=['current_stock', 'last_updated'])
         elif stock_type == 'reserved':
-            self.reserved_stock += quantity
-        self.save()
+            self.reserved_stock = F('reserved_stock') + quantity
+            self.save(update_fields=['reserved_stock', 'last_updated'])
+        self.refresh_from_db()
+        if stock_type == 'current' and self.current_stock < 0:
+            raise ValidationError(
+                f"Insufficient stock for {self.inventory_item.name} at {self.location_type}. "
+                f"Stock would become {self.current_stock}."
+            )
 
 
 class StockMovement(TimeStampedModel):
@@ -157,6 +172,7 @@ class StockMovement(TimeStampedModel):
     notes = models.TextField(null=True, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='stock_movements')
     movement_date = models.DateTimeField()
+    batch = models.ForeignKey('ItemBatch', on_delete=models.SET_NULL, null=True, blank=True, related_name='movements')
     
     class Meta:
         db_table = 'stock_movements'
@@ -187,30 +203,56 @@ class StockMovement(TimeStampedModel):
             return self.destination_region.name
         return 'National Level'
     
+    def clean(self):
+        """Derive source/destination location_type from the deepest supplied location."""
+        if self.source_facility:
+            self.source_type = 'facility'
+        elif self.source_district:
+            self.source_type = 'district'
+        elif self.source_region:
+            self.source_type = 'region'
+        else:
+            self.source_type = 'national'
+
+        if self.destination_facility:
+            self.destination_type = 'facility'
+        elif self.destination_district:
+            self.destination_type = 'district'
+        elif self.destination_region:
+            self.destination_type = 'region'
+        else:
+            self.destination_type = 'national'
+
+        if self.movement_type == 'TRANSFER' and (not self.source_type or not self.destination_type):
+            raise ValidationError("TRANSFER movements require both a source and a destination location.")
+    
     def save(self, *args, **kwargs):
-        """Override save to update stock levels"""
-        super().save(*args, **kwargs)
-        self.update_stock_levels()
+        """Override save to update stock levels atomically."""
+        self.full_clean()
+        with transaction.atomic():
+            super().save(*args, **kwargs)
+            self.update_stock_levels()
     
     def update_stock_levels(self):
-        """Update stock levels based on movement type"""
-        if self.movement_type == 'IN':
-            self._increase_destination_stock()
-        elif self.movement_type == 'OUT':
-            self._decrease_source_stock()
-        elif self.movement_type == 'TRANSFER':
-            self._decrease_source_stock()
-            self._increase_destination_stock()
-        elif self.movement_type == 'CONSUMPTION':
-            self._decrease_source_stock()
-        elif self.movement_type == 'ADJUSTMENT':
-            if self.quantity > 0:
+        """Update stock levels based on movement type in an atomic block."""
+        with transaction.atomic():
+            if self.movement_type == 'IN':
                 self._increase_destination_stock()
-            else:
+            elif self.movement_type == 'OUT':
                 self._decrease_source_stock()
+            elif self.movement_type == 'TRANSFER':
+                self._decrease_source_stock()
+                self._increase_destination_stock()
+            elif self.movement_type == 'CONSUMPTION':
+                self._decrease_source_stock()
+            elif self.movement_type == 'ADJUSTMENT':
+                if self.quantity > 0:
+                    self._increase_destination_stock()
+                else:
+                    self._decrease_source_stock()
     
     def _increase_destination_stock(self):
-        """Increase destination stock"""
+        """Increase destination stock, locking the row."""
         stock_level, created = StockLevel.objects.get_or_create(
             inventory_item=self.inventory_item,
             location_type=self.destination_type,
@@ -219,12 +261,14 @@ class StockMovement(TimeStampedModel):
             facility=self.destination_facility,
             defaults={'current_stock': 0, 'reserved_stock': 0}
         )
+        if not created:
+            stock_level = StockLevel.objects.select_for_update().get(pk=stock_level.pk)
         stock_level.update_stock(self.quantity, 'current')
     
     def _decrease_source_stock(self):
-        """Decrease source stock"""
+        """Decrease source stock, raising if there is no or insufficient stock."""
         try:
-            stock_level = StockLevel.objects.get(
+            stock_level = StockLevel.objects.select_for_update().get(
                 inventory_item=self.inventory_item,
                 location_type=self.source_type,
                 region=self.source_region,
@@ -233,29 +277,32 @@ class StockMovement(TimeStampedModel):
             )
             stock_level.update_stock(-self.quantity, 'current')
         except StockLevel.DoesNotExist:
-            pass
+            raise ValidationError(
+                f"No stock found for {self.inventory_item.name} at {self.get_source_location()}."
+            )
 
     def _reverse_stock_levels(self):
         """Reverse the stock effect of this movement (for edit/delete)"""
-        if self.movement_type == 'IN':
-            self._decrease_destination_stock()
-        elif self.movement_type == 'OUT':
-            self._increase_source_stock()
-        elif self.movement_type == 'TRANSFER':
-            self._increase_source_stock()
-            self._decrease_destination_stock()
-        elif self.movement_type == 'CONSUMPTION':
-            self._increase_source_stock()
-        elif self.movement_type == 'ADJUSTMENT':
-            if self.quantity > 0:
+        with transaction.atomic():
+            if self.movement_type == 'IN':
                 self._decrease_destination_stock()
-            else:
+            elif self.movement_type == 'OUT':
                 self._increase_source_stock()
+            elif self.movement_type == 'TRANSFER':
+                self._increase_source_stock()
+                self._decrease_destination_stock()
+            elif self.movement_type == 'CONSUMPTION':
+                self._increase_source_stock()
+            elif self.movement_type == 'ADJUSTMENT':
+                if self.quantity > 0:
+                    self._decrease_destination_stock()
+                else:
+                    self._increase_source_stock()
 
     def _decrease_destination_stock(self):
         """Decrease destination stock (reverse of IN)"""
         try:
-            stock_level = StockLevel.objects.get(
+            stock_level = StockLevel.objects.select_for_update().get(
                 inventory_item=self.inventory_item,
                 location_type=self.destination_type,
                 region=self.destination_region,
@@ -264,7 +311,9 @@ class StockMovement(TimeStampedModel):
             )
             stock_level.update_stock(-self.quantity, 'current')
         except StockLevel.DoesNotExist:
-            pass
+            raise ValidationError(
+                f"No stock found for {self.inventory_item.name} at {self.get_destination_location()}."
+            )
 
     def _increase_source_stock(self):
         """Increase source stock (reverse of OUT/CONSUMPTION)"""
@@ -276,6 +325,8 @@ class StockMovement(TimeStampedModel):
             facility=self.source_facility,
             defaults={'current_stock': 0, 'reserved_stock': 0}
         )
+        if not created:
+            stock_level = StockLevel.objects.select_for_update().get(pk=stock_level.pk)
         stock_level.update_stock(self.quantity, 'current')
 
 
@@ -286,6 +337,7 @@ class StockRequest(TimeStampedModel):
         ('pending', 'Pending'),
         ('approved', 'Approved'),
         ('rejected', 'Rejected'),
+        ('partially_fulfilled', 'Partially Fulfilled'),
         ('fulfilled', 'Fulfilled'),
         ('cancelled', 'Cancelled'),
     ]
@@ -367,6 +419,12 @@ class StockRequestItem(TimeStampedModel):
         if self.unit_cost and self.quantity_requested:
             return self.unit_cost * self.quantity_requested
         return None
+    
+    @property
+    def remaining_to_fulfill(self):
+        approved = self.quantity_approved or self.quantity_requested or 0
+        fulfilled = self.quantity_fulfilled or 0
+        return max(0, approved - fulfilled)
 
 
 class ItemBatch(TimeStampedModel):

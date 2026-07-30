@@ -225,8 +225,6 @@ def _export_inventory_excel(qs):
         ws.cell(row=idx, column=8, value=item.min_stock_level if item else '')
         ws.cell(row=idx, column=9, value=item.reorder_level if item else '')
         ws.cell(row=idx, column=10, value=stock.last_updated.strftime('%Y-%m-%d %H:%M') if stock.last_updated else '')
-        ws.cell(row=idx, column=11, value=item.batch_number or '')
-        ws.cell(row=idx, column=12, value=item.expiry_date.strftime('%Y-%m-%d') if item and item.expiry_date else '')
     
     # Adjust column widths
     for col in ws.columns:
@@ -261,7 +259,7 @@ def _export_inventory_csv(qs):
     
     headers = [
         'Item Name', 'Category', 'Facility', 'Current Quantity', 'Unit',
-        'Minimum Stock', 'Reorder Level', 'Last Updated', 'Batch Number', 'Expiry Date'
+        'Minimum Stock', 'Reorder Level', 'Last Updated'
     ]
     writer.writerow(headers)
     
@@ -276,8 +274,6 @@ def _export_inventory_csv(qs):
             item.min_stock_level if item else '',
             item.reorder_level if item else '',
             stock.last_updated.strftime('%Y-%m-%d %H:%M') if stock.last_updated else '',
-            item.batch_number or '',
-            item.expiry_date.strftime('%Y-%m-%d') if item and item.expiry_date else '',
         ])
     
     response = HttpResponse(output.getvalue(), content_type='text/csv')
