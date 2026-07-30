@@ -178,11 +178,12 @@ class StockLevelSerializer(serializers.ModelSerializer):
 class StockMovementSerializer(serializers.ModelSerializer):
     item_name = serializers.CharField(source='inventory_item.name', read_only=True)
     created_by_name = serializers.CharField(source='created_by.name', read_only=True)
+    batch_number = serializers.CharField(source='batch.batch_number', read_only=True, allow_null=True)
     
     class Meta:
         model = StockMovement
         fields = ['id', 'inventory_item', 'item_name', 'movement_type', 'quantity',
-                  'reference_number', 'movement_date', 'created_by', 'created_by_name', 'notes']
+                  'reference_number', 'batch_number', 'movement_date', 'created_by', 'created_by_name', 'notes']
 
 
 class ConsumptionSerializer(serializers.Serializer):

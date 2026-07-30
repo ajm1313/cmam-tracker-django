@@ -2582,7 +2582,78 @@ def stock_request_update_api(request, pk):
         sr.approved_by = request.user
         sr.approved_date = timezone.now()
     elif action == 'fulfill':
-        sr.status = 'fulfilled'
+        # Determine source and destination locations
+        src_type = 'national'
+        src_facility_id = sr.supplier_facility_id
+        src_district_id = sr.supplier_district_id
+        src_region_id = sr.supplier_region_id
+        dst_type = 'national'
+        dst_facility_id = sr.requesting_facility_id
+        dst_district_id = sr.requesting_district_id
+        dst_region_id = sr.requesting_region_id
+        if src_facility_id:
+            src_type = 'facility'
+        elif src_district_id:
+            src_type = 'district'
+        elif src_region_id:
+            src_type = 'region'
+        if dst_facility_id:
+            dst_type = 'facility'
+        elif dst_district_id:
+            dst_type = 'district'
+        elif dst_region_id:
+            dst_type = 'region'
+
+        shipped = request.data.get('shipped_quantities') or {}
+        for sri in sr.items.all():
+            ship_qty = int(shipped.get(str(sri.id), 0)) if shipped else 0
+            if ship_qty <= 0:
+                # If no quantity supplied for this item, ship the full remaining approved amount
+                approved = sri.quantity_approved or sri.quantity_requested
+                already = sri.quantity_fulfilled or 0
+                ship_qty = (approved or 0) - already
+            approved = sri.quantity_approved or sri.quantity_requested
+            already = sri.quantity_fulfilled or 0
+            remaining = (approved or 0) - already
+            if ship_qty < 0 or ship_qty > remaining:
+                return Response({'success': False, 'message': f'Invalid ship quantity for {sri.inventory_item.name}. Max remaining: {remaining}'}, status=status.HTTP_400_BAD_REQUEST)
+            if ship_qty <= 0:
+                continue
+            supplier_stock = StockLevel.objects.filter(
+                inventory_item=sri.inventory_item,
+                location_type=src_type,
+                region_id=src_region_id,
+                district_id=src_district_id,
+                facility_id=src_facility_id,
+            ).first()
+            available = supplier_stock.available_stock if supplier_stock else 0
+            if available < ship_qty:
+                return Response({'success': False, 'message': f'Insufficient stock for {sri.inventory_item.name}. Available: {available}, requested: {ship_qty}'}, status=status.HTTP_400_BAD_REQUEST)
+            StockMovement.objects.create(
+                inventory_item=sri.inventory_item,
+                movement_type='TRANSFER',
+                quantity=ship_qty,
+                reference_number=sr.request_number,
+                source_type=src_type,
+                source_facility_id=src_facility_id,
+                source_district_id=src_district_id,
+                source_region_id=src_region_id,
+                destination_type=dst_type,
+                destination_facility_id=dst_facility_id,
+                destination_district_id=dst_district_id,
+                destination_region_id=dst_region_id,
+                notes=f'Fulfilled from request {sr.request_number}',
+                created_by=request.user,
+                movement_date=timezone.now(),
+            )
+            sri.quantity_fulfilled = (sri.quantity_fulfilled or 0) + ship_qty
+            sri.save()
+
+        all_fulfilled = all(
+            (sri.quantity_fulfilled or 0) >= (sri.quantity_approved or sri.quantity_requested)
+            for sri in sr.items.all()
+        )
+        sr.status = 'fulfilled' if all_fulfilled else 'partially_fulfilled'
         sr.fulfilled_by = request.user
         sr.fulfilled_date = timezone.now()
     elif action == 'cancel':
