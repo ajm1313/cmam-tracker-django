@@ -158,8 +158,11 @@ class FacilitySerializer(serializers.ModelSerializer):
 class InventoryItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = InventoryItem
-        fields = ['id', 'name', 'code', 'category', 'description', 
-                  'unit_of_measure', 'reorder_level', 'is_active']
+        fields = ['id', 'name', 'code', 'category', 'description',
+                  'unit_of_measure', 'conversion_factor', 'reorder_level',
+                  'min_stock_level', 'max_stock_level', 'has_expiry',
+                  'manufacturer', 'supplier', 'storage_conditions', 'unit_cost',
+                  'initial_stock', 'is_active']
 
 
 class StockLevelSerializer(serializers.ModelSerializer):

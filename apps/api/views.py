@@ -2100,6 +2100,7 @@ def inventory_item_create_api(request):
         name=data['name'], code=data['code'], category=data['category'],
         unit_of_measure=data['unit_of_measure'],
         description=data.get('description', ''),
+        conversion_factor=data.get('conversion_factor', 1.0),
         reorder_level=data.get('reorder_level', 0),
         min_stock_level=data.get('min_stock_level', 0),
         max_stock_level=data.get('max_stock_level', 0),
@@ -2107,6 +2108,7 @@ def inventory_item_create_api(request):
         manufacturer=data.get('manufacturer', ''), supplier=data.get('supplier', ''),
         storage_conditions=data.get('storage_conditions', ''),
         unit_cost=data.get('unit_cost'),
+        initial_stock=data.get('initial_stock', 0),
     )
     return Response({'success': True, 'message': 'Item created', 'data': InventoryItemSerializer(item).data},
                     status=status.HTTP_201_CREATED)
@@ -2155,9 +2157,10 @@ def inventory_item_edit_api(request, pk):
         return Response({'success': False, 'message': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
 
     data = request.data
-    for field in ('name', 'category', 'description', 'unit_of_measure', 'reorder_level',
-                  'min_stock_level', 'max_stock_level', 'has_expiry', 'manufacturer',
-                  'supplier', 'storage_conditions', 'unit_cost'):
+    for field in ('name', 'category', 'description', 'unit_of_measure', 'conversion_factor',
+                  'reorder_level', 'min_stock_level', 'max_stock_level', 'has_expiry',
+                  'manufacturer', 'supplier', 'storage_conditions', 'unit_cost',
+                  'initial_stock'):
         if field in data:
             setattr(item, field, data[field] if data[field] != '' else None)
     item.save()
@@ -2361,6 +2364,27 @@ def stock_movement_create_api(request):
         if src_fac and int(src_fac) not in accessible_ids and dst_fac and int(dst_fac) not in accessible_ids:
             return Response({'success': False, 'message': 'You do not have access to the source or destination facility.'}, status=status.HTTP_403_FORBIDDEN)
 
+    # Create linked ItemBatch for IN movements if batch info provided
+    item_batch = None
+    if data['movement_type'] == 'IN' and data.get('batch_number', '').strip():
+        dest_type = 'national'
+        if data.get('destination_facility_id'):
+            dest_type = 'facility'
+        elif data.get('destination_district_id'):
+            dest_type = 'district'
+        elif data.get('destination_region_id'):
+            dest_type = 'region'
+        item_batch = ItemBatch.objects.create(
+            inventory_item=item,
+            batch_number=data['batch_number'].strip(),
+            expiry_date=data.get('expiry_date') or None,
+            quantity=int(data['quantity']),
+            location_type=dest_type,
+            region_id=data.get('destination_region_id'),
+            district_id=data.get('destination_district_id'),
+            facility_id=data.get('destination_facility_id'),
+        )
+
     m = StockMovement.objects.create(
         inventory_item=item, movement_type=data['movement_type'], quantity=int(data['quantity']),
         source_type=data.get('source_type', ''), source_facility_id=data.get('source_facility_id'),
@@ -2369,6 +2393,7 @@ def stock_movement_create_api(request):
         destination_region_id=data.get('destination_region_id'), destination_district_id=data.get('destination_district_id'),
         notes=data.get('notes', ''), created_by=request.user, movement_date=timezone.now(),
         reference_number=data.get('reference_number', ''),
+        batch=item_batch,
     )
     return Response({'success': True, 'message': 'Movement created'}, status=status.HTTP_201_CREATED)
 
@@ -2443,6 +2468,10 @@ def stock_requests_api(request):
         Q(requesting_facility__in=accessible) | Q(supplier_facility__in=accessible)
         | Q(requested_by=request.user)
     ).select_related('requested_by', 'approved_by', 'requesting_facility', 'supplier_facility').prefetch_related('items__inventory_item').distinct().order_by('-created_at')
+
+    status_filter = request.query_params.get('status')
+    if status_filter:
+        qs = qs.filter(status=status_filter)
 
     page = int(request.query_params.get('page', 1))
     page_size = int(request.query_params.get('page_size', 50))
