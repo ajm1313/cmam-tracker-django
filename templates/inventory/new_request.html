@@ -292,7 +292,7 @@ function updateSupplierDisplay() {
         regionHidden.value = regionId;
         hint.textContent = 'Choose the parent district store, or pick a specific facility in this district.';
 
-        loadSupplierFacilities(districtId, facilitySelectReq ? facilitySelectReq.value : '');
+        loadSupplierFacilities(facilitySelectReq ? facilitySelectReq.value : '');
     } else if (level === 'district') {
         const districtSelect = document.getElementById('requestingDistrictD');
         const districtText = districtSelect && districtSelect.selectedIndex >= 0 ? districtSelect.options[districtSelect.selectedIndex].text : '';
@@ -314,13 +314,13 @@ function updateSupplierDisplay() {
     }
 }
 
-function loadSupplierFacilities(districtId, requestingFacilityId) {
+function loadSupplierFacilities(requestingFacilityId) {
     const supplierSelect = document.getElementById('supplierFacility');
     supplierSelect.innerHTML = '<option value="">-- Parent District Store --</option>';
     supplierSelect.disabled = false;
-    if (!districtId) return;
+    if (!requestingFacilityId) return;
 
-    fetch(`/api/v1/facilities/?district=${districtId}`, {credentials: 'same-origin'})
+    fetch(`/api/v1/inventory/supplier-facilities/?requesting_facility_id=${requestingFacilityId}`, {credentials: 'same-origin'})
         .then(response => {
             if (!response.ok) throw new Error('HTTP ' + response.status);
             return response.json();
@@ -328,7 +328,6 @@ function loadSupplierFacilities(districtId, requestingFacilityId) {
         .then(result => {
             const facilities = result.data || [];
             facilities.forEach(facility => {
-                if (String(facility.id) === String(requestingFacilityId)) return;
                 const option = document.createElement('option');
                 option.value = facility.id;
                 option.textContent = facility.name;

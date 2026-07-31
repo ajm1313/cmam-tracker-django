@@ -34,6 +34,7 @@ urlpatterns = [
     path('v1/inventory/requests/', views.stock_requests_api, name='stock_requests'),
     path('v1/inventory/requests/create/', views.stock_request_create_api, name='stock_request_create'),
     path('v1/inventory/requests/<int:pk>/', views.stock_request_update_api, name='stock_request_update'),
+    path('v1/inventory/supplier-facilities/', views.supplier_facilities_api, name='supplier_facilities'),
 
     # Inventory - batches / expiry
     path('v1/inventory/batches/', views.item_batches_api, name='item_batches'),

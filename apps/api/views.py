@@ -476,6 +476,34 @@ def facilities_list(request):
 
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def supplier_facilities_api(request):
+    """List other facilities in the same district as the requesting facility.
+    Used for facility-level stock requests to pick a supplier facility."""
+    req_facility_id = request.query_params.get('requesting_facility_id')
+    if not req_facility_id:
+        return Response({'success': False, 'message': 'requesting_facility_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        req_facility = Facility.objects.get(pk=int(req_facility_id))
+    except (ValueError, Facility.DoesNotExist):
+        return Response({'success': False, 'message': 'Requesting facility not found'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Verify user can request from this facility
+    accessible = request.user.get_accessible_facilities()
+    if accessible is not None and req_facility.id not in [f.id for f in accessible]:
+        return Response({'success': False, 'message': 'You do not have access to this facility'}, status=status.HTTP_403_FORBIDDEN)
+
+    district_id = req_facility.district_id
+    if not district_id:
+        return Response({'success': True, 'data': []})
+
+    peers = Facility.objects.filter(district_id=district_id, is_active=True).exclude(pk=req_facility.id).order_by('name')
+    serializer = FacilitySerializer(peers, many=True)
+    return Response({'success': True, 'data': serializer.data})
+
+
+@api_view(['GET'])
 @permission_classes([])
 def system_info(request):
     """Get system information"""
