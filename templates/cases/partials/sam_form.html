@@ -720,7 +720,7 @@
     </div>
 
     <!-- Form Actions -->
-    <div class="flex justify-between items-center pt-4">
+    <div class="sticky bottom-0 left-0 right-0 z-20 bg-white/95 border-t border-gray-200 p-4 -mx-6 -mb-6 flex justify-between items-center">
         <a href="{% if edit_mode %}{% url 'cases:case_detail' case.pk %}{% else %}{% url 'cases:case_list' %}{% endif %}" class="bg-gray-500 text-white px-6 py-3 rounded-lg hover:bg-gray-600">Cancel</a>
         <button type="submit" class="bg-red-600 text-white px-8 py-3 rounded-lg hover:bg-red-700 font-semibold">{% if edit_mode %}Update SAM Case{% else %}Register SAM Case{% endif %}</button>
     </div>
