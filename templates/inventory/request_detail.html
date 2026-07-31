@@ -48,6 +48,49 @@
         </div>
     </div>
 
+    <!-- Status Timeline -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Status Timeline</h3>
+        <div class="relative">
+            <div class="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200"></div>
+            <div class="space-y-6 pl-10">
+                <div class="relative">
+                    <div class="absolute -left-6 w-3 h-3 rounded-full bg-yellow-500 border-2 border-white shadow"></div>
+                    <p class="text-sm font-semibold text-gray-900">Requested</p>
+                    <p class="text-xs text-gray-500">{{ stock_request.created_at|date:"M d, Y H:i" }}</p>
+                    <p class="text-xs text-gray-500">by {{ stock_request.requested_by.get_full_name|default:stock_request.requested_by.email }}</p>
+                </div>
+                {% if stock_request.approved_by %}
+                <div class="relative">
+                    <div class="absolute -left-6 w-3 h-3 rounded-full bg-green-500 border-2 border-white shadow"></div>
+                    <p class="text-sm font-semibold text-gray-900">Approved</p>
+                    {% if stock_request.approved_date %}
+                    <p class="text-xs text-gray-500">{{ stock_request.approved_date|date:"M d, Y H:i" }}</p>
+                    {% endif %}
+                    <p class="text-xs text-gray-500">by {{ stock_request.approved_by.get_full_name|default:stock_request.approved_by.email }}</p>
+                </div>
+                {% endif %}
+                {% if stock_request.fulfilled_by %}
+                <div class="relative">
+                    <div class="absolute -left-6 w-3 h-3 rounded-full {% if stock_request.status == 'partially_fulfilled' %}bg-purple-500{% else %}bg-blue-500{% endif %} border-2 border-white shadow"></div>
+                    <p class="text-sm font-semibold text-gray-900">{% if stock_request.status == 'partially_fulfilled' %}Partially Fulfilled{% else %}Fulfilled{% endif %}</p>
+                    {% if stock_request.fulfilled_date %}
+                    <p class="text-xs text-gray-500">{{ stock_request.fulfilled_date|date:"M d, Y H:i" }}</p>
+                    {% endif %}
+                    <p class="text-xs text-gray-500">by {{ stock_request.fulfilled_by.get_full_name|default:stock_request.fulfilled_by.email }}</p>
+                </div>
+                {% endif %}
+                {% if stock_request.status == 'rejected' %}
+                <div class="relative">
+                    <div class="absolute -left-6 w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow"></div>
+                    <p class="text-sm font-semibold text-gray-900">Rejected</p>
+                    <p class="text-xs text-gray-500">Request was rejected.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
     <!-- Request Info Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <!-- Requesting Location -->
