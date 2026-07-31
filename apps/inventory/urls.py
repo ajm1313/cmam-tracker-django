@@ -21,6 +21,7 @@ urlpatterns = [
     # Stock Requests
     path('manage/inventory/requests/', views.stock_requests, name='stock_requests'),
     path('manage/inventory/requests/export/', views.export_stock_requests, name='export_stock_requests'),
+    path('manage/inventory/requests/bulk-action/', views.bulk_request_action, name='bulk_request_action'),
     path('manage/inventory/requests/new/', views.new_request, name='new_request'),
     path('manage/inventory/requests/<int:pk>/', views.request_detail, name='request_detail'),
     path('manage/inventory/requests/<int:pk>/approve/', views.approve_request, name='approve_request'),

@@ -62,9 +62,26 @@
         </div>
         <div class="overflow-x-auto">
             {% if requests %}
+            <form method="post" action="{% url 'inventory:bulk_request_action' %}" id="bulkForm">
+                {% csrf_token %}
+                <div class="flex items-center gap-3 p-4 border-b border-gray-200 bg-gray-50">
+                    <label class="flex items-center text-sm text-gray-700">
+                        <input type="checkbox" id="selectAll" class="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                        Select all visible
+                    </label>
+                    <select name="action" class="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500" required>
+                        <option value="">-- Bulk action --</option>
+                        <option value="approve">Approve</option>
+                        <option value="reject">Reject</option>
+                    </select>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-md text-sm" onclick="return confirm('Apply this action to the selected requests?')">Apply</button>
+                </div>
             <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
                     <tr>
+                        <th class="px-4 py-3 text-left">
+                            <span class="sr-only">Select</span>
+                        </th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none" onclick="sortTable(0)">Request # <span class="sort-indicator">↕</span></th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none" onclick="sortTable(1)">Requesting Location <span class="sort-indicator">↕</span></th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none" onclick="sortTable(2)">Supplier Location <span class="sort-indicator">↕</span></th>
@@ -79,6 +96,9 @@
                 <tbody class="bg-white divide-y divide-gray-200">
                     {% for req in requests %}
                     <tr class="hover:bg-gray-50">
+                        <td class="px-4 py-4 whitespace-nowrap">
+                            <input type="checkbox" name="selected_requests" value="{{ req.id }}" class="request-checkbox rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                        </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600" data-sort="{{ req.request_number }}">{{ req.request_number }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900" data-sort="{% if req.requesting_facility %}{{ req.requesting_facility.name }}{% elif req.requesting_district %}{{ req.requesting_district.name }}{% elif req.requesting_region %}{{ req.requesting_region.name }}{% else %}National{% endif %}">
                             {% if req.requesting_facility %}{{ req.requesting_facility.name }}
@@ -128,6 +148,7 @@
                     {% endfor %}
                 </tbody>
             </table>
+            </form>
             {% else %}
             <div class="py-16 text-center">
                 <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -184,5 +205,18 @@
         });
     };
 })();
+
+document.getElementById('selectAll').addEventListener('change', function () {
+    const checked = this.checked;
+    document.querySelectorAll('.request-checkbox').forEach((cb) => { cb.checked = checked; });
+});
+
+document.querySelectorAll('.request-checkbox').forEach((cb) => {
+    cb.addEventListener('change', function () {
+        const all = document.querySelectorAll('.request-checkbox');
+        const checked = document.querySelectorAll('.request-checkbox:checked');
+        document.getElementById('selectAll').checked = all.length === checked.length;
+    });
+});
 </script>
 {% endblock %}

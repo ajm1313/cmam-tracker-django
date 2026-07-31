@@ -1608,6 +1608,49 @@ def api_receive_stock(request):
 
 
 @login_required
+def bulk_request_action(request):
+    """Bulk approve or reject pending stock requests."""
+    if request.method != 'POST':
+        return redirect('inventory:stock_requests')
+
+    action = request.POST.get('action')
+    ids = request.POST.getlist('selected_requests')
+    if not ids or action not in ('approve', 'reject'):
+        messages.error(request, 'No requests selected or invalid action.')
+        return redirect('inventory:stock_requests')
+
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        messages.error(request, 'You do not have permission to perform bulk actions.')
+        return redirect('inventory:stock_requests')
+
+    requests_qs = StockRequest.objects.filter(id__in=ids, status='pending')
+    updated = 0
+    for stock_request in requests_qs:
+        if action == 'approve':
+            stock_request.status = 'approved'
+            stock_request.approved_by = request.user
+            stock_request.approved_date = timezone.now()
+            for item in stock_request.items.all():
+                if item.quantity_approved is None or item.quantity_approved == 0:
+                    item.quantity_approved = item.quantity_requested
+                    item.save()
+            stock_request.save()
+            updated += 1
+        elif action == 'reject':
+            stock_request.status = 'rejected'
+            stock_request.approved_by = request.user
+            stock_request.approved_date = timezone.now()
+            stock_request.save()
+            updated += 1
+
+    if updated:
+        messages.success(request, f'{updated} request(s) {action}d successfully.')
+    else:
+        messages.warning(request, 'No pending requests were updated.')
+    return redirect('inventory:stock_requests')
+
+
+@login_required
 def export_stock_requests(request):
     """Export stock requests to Excel or CSV."""
     fmt = request.GET.get('format', 'excel')
