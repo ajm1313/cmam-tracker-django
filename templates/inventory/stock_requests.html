@@ -54,35 +54,35 @@
             <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Request #</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requesting Location</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Supplier Location</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Items</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Requested By</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none" onclick="sortTable(0)">Request # <span class="sort-indicator">↕</span></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none" onclick="sortTable(1)">Requesting Location <span class="sort-indicator">↕</span></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none" onclick="sortTable(2)">Supplier Location <span class="sort-indicator">↕</span></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none" onclick="sortTable(3)">Items <span class="sort-indicator">↕</span></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none" onclick="sortTable(4)">Priority <span class="sort-indicator">↕</span></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none" onclick="sortTable(5)">Status <span class="sort-indicator">↕</span></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none" onclick="sortTable(6)">Requested By <span class="sort-indicator">↕</span></th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none" onclick="sortTable(7)">Date <span class="sort-indicator">↕</span></th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
                     {% for req in requests %}
                     <tr class="hover:bg-gray-50">
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">{{ req.request_number }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600" data-sort="{{ req.request_number }}">{{ req.request_number }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900" data-sort="{% if req.requesting_facility %}{{ req.requesting_facility.name }}{% elif req.requesting_district %}{{ req.requesting_district.name }}{% elif req.requesting_region %}{{ req.requesting_region.name }}{% else %}National{% endif %}">
                             {% if req.requesting_facility %}{{ req.requesting_facility.name }}
                             {% elif req.requesting_district %}{{ req.requesting_district.name }}
                             {% elif req.requesting_region %}{{ req.requesting_region.name }}
                             {% else %}National{% endif %}
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" data-sort="{% if req.supplier_facility %}{{ req.supplier_facility.name }}{% elif req.supplier_district %}{{ req.supplier_district.name }}{% elif req.supplier_region %}{{ req.supplier_region.name }}{% else %}National{% endif %}">
                             {% if req.supplier_facility %}{{ req.supplier_facility.name }}
                             {% elif req.supplier_district %}{{ req.supplier_district.name }}
                             {% elif req.supplier_region %}{{ req.supplier_region.name }}
                             {% else %}National{% endif %}
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ req.items.count }} item(s)</td>
-                        <td class="px-6 py-4 whitespace-nowrap">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" data-sort="{{ req.items.count }}">{{ req.items.count }} item(s)</td>
+                        <td class="px-6 py-4 whitespace-nowrap" data-sort="{% if req.priority == 'urgent' %}1{% elif req.priority == 'high' %}2{% elif req.priority == 'normal' %}3{% else %}4{% endif %}">
                             {% if req.priority == 'urgent' %}
                             <span class="px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">Urgent</span>
                             {% elif req.priority == 'high' %}
@@ -93,7 +93,7 @@
                             <span class="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded-full">Low</span>
                             {% endif %}
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
+                        <td class="px-6 py-4 whitespace-nowrap" data-sort="{{ req.status }}">
                             {% if req.status == 'pending' %}
                             <span class="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">Pending</span>
                             {% elif req.status == 'approved' %}
@@ -108,8 +108,8 @@
                             <span class="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded-full">{{ req.get_status_display }}</span>
                             {% endif %}
                         </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ req.requested_by.get_full_name|default:req.requested_by.email }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ req.created_at|date:"M d, Y" }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" data-sort="{{ req.requested_by.get_full_name|default:req.requested_by.email }}">{{ req.requested_by.get_full_name|default:req.requested_by.email }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" data-sort="{{ req.created_at|date:'Y-m-d' }}">{{ req.created_at|date:"M d, Y" }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm">
                             <a href="{% url 'inventory:request_detail' req.pk %}" class="text-blue-600 hover:text-blue-800">View</a>
                         </td>
@@ -135,4 +135,43 @@
         </div>
     </div>
 </div>
+
+<script>
+(function () {
+    const table = document.querySelector('table');
+    if (!table) return;
+    const ths = table.querySelectorAll('th');
+    let sortDir = {};
+
+    function getValue(row, col) {
+        const td = row.cells[col];
+        return td.getAttribute('data-sort') || td.textContent.trim();
+    }
+
+    window.sortTable = function (col) {
+        const tbody = table.querySelector('tbody');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        const dir = sortDir[col] === 'asc' ? 'desc' : 'asc';
+        sortDir = { [col]: dir };
+
+        rows.sort((a, b) => {
+            const av = getValue(a, col);
+            const bv = getValue(b, col);
+            const an = parseFloat(av);
+            const bn = parseFloat(bv);
+            if (!isNaN(an) && !isNaN(bn) && av === String(an) && bv === String(bn)) {
+                return dir === 'asc' ? an - bn : bn - an;
+            }
+            return dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+        });
+
+        rows.forEach((r) => tbody.appendChild(r));
+
+        ths.forEach((th, i) => {
+            const ind = th.querySelector('.sort-indicator');
+            if (ind) ind.textContent = i === col ? (dir === 'asc' ? '↑' : '↓') : '↕';
+        });
+    };
+})();
+</script>
 {% endblock %}
