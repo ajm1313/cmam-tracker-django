@@ -276,9 +276,9 @@
                         <option value="Continue" {% if visit and visit.visit_outcome == 'Continue' %}selected{% endif %}>Continue Treatment</option>
                         <option value="Absent" {% if visit and visit.visit_outcome == 'Absent' %}selected{% endif %}>A - Absent</option>
                         <option value="Cured" {% if visit and visit.visit_outcome == 'Cured' %}selected{% endif %}>1. Cured</option>
-                        <option value="Died" {% if visit and visit.visit_outcome == 'Died' %}selected{% endif %}>2. Died</option>
+                        <option value="Death" {% if visit and visit.visit_outcome == 'Death' %}selected{% endif %}>2. Death</option>
                         <option value="Defaulted" {% if visit and visit.visit_outcome == 'Defaulted' %}selected{% endif %}>3. Defaulted</option>
-                        <option value="Non-recovered" {% if visit and visit.visit_outcome == 'Non-recovered' %}selected{% endif %}>4. Non-recovered</option>
+                        <option value="Non-Response" {% if visit and visit.visit_outcome == 'Non-Response' %}selected{% endif %}>4. Non-Response</option>
                         <option value="Referral" {% if visit and visit.visit_outcome == 'Referral' %}selected{% endif %}>5. Referral</option>
                     </select>
                 </div>
@@ -287,7 +287,7 @@
                     <textarea name="outcome_notes" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">{% if visit %}{{ visit.outcome_notes|default:'' }}{% endif %}</textarea>
                 </div>
             </div>
-            <p class="mt-2 text-xs text-gray-500">Discharge outcomes: 1=Cured; 2=Died; 3=Defaulted; 4=Non-recovered; 5=Referral</p>
+            <p class="mt-2 text-xs text-gray-500">Discharge outcomes: 1=Cured; 2=Death; 3=Defaulted; 4=Non-Response; 5=Referral</p>
         </div>
 
         <!-- Form Actions -->

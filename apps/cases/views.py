@@ -435,8 +435,8 @@ def case_edit(request, pk):
             case.mam_type = request.POST.get('mam_type') or None
             case.admission_date = request.POST.get('admission_date') or case.admission_date
             case.registration_date = request.POST.get('admission_date') or case.registration_date
-            case.weight_kg = request.POST.get('weight_kg') or case.weight_kg
-            case.height_cm = request.POST.get('height_cm') or case.height_cm
+            case.weight_kg = request.POST.get('weight_kg') or None
+            case.height_cm = request.POST.get('height_cm') or None
             case.muac_cm = request.POST.get('muac_cm') or None
             case.z_score_wfh = request.POST.get('z_score_wfh') or request.POST.get('z_score_value') or None
             case.z_score_wfa = request.POST.get('z_score_wfa') or None
@@ -716,7 +716,19 @@ def visit_form(request, registration_id):
                 unconscious = request.POST.get('unconscious') == 'Y'
                 very_pale_or_severe_palmar_pallor = request.POST.get('very_pale_or_severe_palmar_pallor') == 'Y'
                 severe_dehydration = request.POST.get('severe_dehydration') == 'Y'
-                
+
+                # Validate required fields unless outcome is Absent/Defaulted
+                outcome = request.POST.get('visit_outcome') or 'Continue'
+                if outcome not in ('Absent', 'Defaulted'):
+                    if not request.POST.get('weight_kg'):
+                        raise ValueError('Weight is required.')
+                    if not request.POST.get('muac_cm'):
+                        raise ValueError('MUAC is required.')
+                    if not request.POST.get('appetite'):
+                        raise ValueError('Appetite Test is required.')
+                    if next_visit_number in (4, 8, 12, 16) and (not request.POST.get('height_cm') or not request.POST.get('z_score_wfh')):
+                        raise ValueError('Height and W/H Z-Score are required for anthropometry visits.')
+
                 visit = OpcVisit.objects.create(
                     registration=case,
                     visit_number=next_visit_number,
@@ -785,6 +797,17 @@ def visit_form(request, registration_id):
                 )
             else:
                 # MAM visit
+                outcome = request.POST.get('visit_outcome') or 'Continue'
+                if outcome not in ('Absent', 'Defaulted'):
+                    if not request.POST.get('weight_kg'):
+                        raise ValueError('Weight is required.')
+                    if not request.POST.get('muac_cm'):
+                        raise ValueError('MUAC is required.')
+                    if not request.POST.get('appetite_test'):
+                        raise ValueError('Appetite Test is required.')
+                    if next_visit_number in (4, 8, 12, 16) and (not request.POST.get('height_cm') or not request.POST.get('z_score_wfh')):
+                        raise ValueError('Height and W/H Z-Score are required for anthropometry visits.')
+
                 visit = OpcVisit.objects.create(
                     registration=case,
                     visit_number=next_visit_number,
@@ -940,6 +963,21 @@ def visit_edit(request, visit_id):
             visit.z_score_hfa = request.POST.get('z_score_hfa') or None
             visit.oedema = request.POST.get('oedema') or None
             visit.visit_outcome = request.POST.get('visit_outcome', 'Continue')
+
+            # Validate required fields unless outcome is Absent/Defaulted
+            outcome = visit.visit_outcome
+            if outcome not in ('Absent', 'Defaulted'):
+                if not request.POST.get('weight_kg'):
+                    raise ValueError('Weight is required.')
+                if not request.POST.get('muac_cm'):
+                    raise ValueError('MUAC is required.')
+                if visit_type == 'SAM' and not request.POST.get('appetite'):
+                    raise ValueError('Appetite Test is required.')
+                if visit_type == 'MAM' and not request.POST.get('appetite_test'):
+                    raise ValueError('Appetite Test is required.')
+                if visit.visit_number in (4, 8, 12, 16) and (not request.POST.get('height_cm') or not request.POST.get('z_score_wfh')):
+                    raise ValueError('Height and W/H Z-Score are required for anthropometry visits.')
+
             visit.outcome_notes = request.POST.get('outcome_notes') or None
             visit.general_condition = request.POST.get('general_condition') or None
             visit.has_complications = request.POST.get('has_complications') == 'Y'
