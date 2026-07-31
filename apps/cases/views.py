@@ -853,25 +853,27 @@ def visit_form(request, registration_id):
                 )
             
             # Update case status if outcome requires it
-            outcome = request.POST.get('visit_outcome')
-            discharge_outcomes = ['Cured', 'Defaulted', 'Death', 'Died', 'Non-Response', 'Non-recovered', 'Transfer-to-IPC', 'Referral']
+            raw_outcome = request.POST.get('visit_outcome')
+            outcome_map = {'Died': 'Death', 'Non-recovered': 'Non-Response', 'Transfer to IPC': 'Transfer-to-IPC'}
+            outcome = outcome_map.get(raw_outcome, raw_outcome)
+            discharge_outcomes = ['Cured', 'Defaulted', 'Death', 'Non-Response', 'Transfer-to-IPC', 'Referral']
             
             if outcome in discharge_outcomes:
                 if outcome == 'Cured':
                     case.status = 'Discharged'
                     case.outcome = 'Cured'
-                elif outcome in ['Defaulted']:
+                elif outcome == 'Defaulted':
                     case.status = 'Defaulted'
                     case.outcome = 'Defaulted'
-                elif outcome in ['Death', 'Died']:
+                elif outcome == 'Death':
                     case.status = 'Death'
                     case.outcome = 'Death'
-                elif outcome in ['Non-Response', 'Non-recovered']:
+                elif outcome == 'Non-Response':
                     case.status = 'Discharged'
                     case.outcome = 'Non-Response'
                 elif outcome == 'Transfer-to-IPC':
                     case.status = 'Transfer'
-                    case.outcome = 'Transfer to IPC'
+                    case.outcome = 'Transfer-to-IPC'
                 elif outcome == 'Referral':
                     case.status = 'Transfer'
                     case.outcome = 'Referral'
@@ -1169,8 +1171,10 @@ def process_discharge(request, registration_id):
         return HttpResponseForbidden('You do not have access to this case.')
     
     if request.method == 'POST':
-        outcome = request.POST.get('outcome')
+        raw_outcome = request.POST.get('outcome')
         outcome_notes = request.POST.get('outcome_notes', '')
+        outcome_map = {'Transfer': 'Transfer-to-IPC'}
+        outcome = outcome_map.get(raw_outcome, raw_outcome)
         
         if outcome == 'Cured':
             case.status = 'Discharged'
@@ -1181,9 +1185,12 @@ def process_discharge(request, registration_id):
         elif outcome == 'Death':
             case.status = 'Death'
             case.outcome = 'Death'
-        elif outcome == 'Transfer':
+        elif outcome == 'Transfer-to-IPC':
             case.status = 'Transfer'
-            case.outcome = 'Transfer'
+            case.outcome = 'Transfer-to-IPC'
+        elif outcome == 'Non-Response':
+            case.status = 'Discharged'
+            case.outcome = 'Non-Response'
         
         case.discharge_date = timezone.now().date()
         case.outcome_notes = outcome_notes
@@ -1216,7 +1223,7 @@ def case_transfer(request, pk):
 
         if transfer_type == 'ipc':
             case.status = 'Transfer'
-            case.outcome = 'Transfer to IPC'
+            case.outcome = 'Transfer-to-IPC'
             case.outcome_notes = f'Transferred to IPC: {reason}. {notes}'
             case.discharge_date = timezone.now().date()
             case.save()

@@ -1,5 +1,5 @@
-from rest_framework import viewsets, status
-from rest_framework.decorators import api_view, permission_classes, action, throttle_classes
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.throttling import ScopedRateThrottle
@@ -2847,6 +2847,8 @@ def item_batches_api(request):
 @permission_classes([IsAuthenticated])
 def weekly_report_api(request):
     """Weekly SAM/MAM report data"""
+    if not request.user.can_view_reports():
+        return Response({'success': False, 'message': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
     report_type = request.query_params.get('type', 'SAM')
     facility_id = request.query_params.get('facility_id')
     region_id = request.query_params.get('region')
@@ -2991,6 +2993,8 @@ def weekly_report_api(request):
 @permission_classes([IsAuthenticated])
 def monthly_report_api(request):
     """Monthly facility report"""
+    if not request.user.can_view_reports():
+        return Response({'success': False, 'message': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
     facility_id = request.query_params.get('facility_id')
     region_id = request.query_params.get('region')
     district_id = request.query_params.get('district')
@@ -3300,6 +3304,8 @@ def access_control_update_api(request):
 @permission_classes([IsAuthenticated])
 def reports_summary_api(request):
     """Comprehensive reports summary with location & period filters."""
+    if not request.user.can_view_reports():
+        return Response({'success': False, 'message': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
     # ── Parse filters ──
     region_id = request.query_params.get('region')
     district_id = request.query_params.get('district')
