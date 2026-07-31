@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.db import transaction
 from django.db.models import Sum, Count, Q, F
 from django.utils import timezone
@@ -1605,3 +1605,153 @@ def api_receive_stock(request):
             return JsonResponse({'success': False, 'error': str(e)})
     
     return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+
+@login_required
+def export_stock_requests(request):
+    """Export stock requests to Excel or CSV."""
+    fmt = request.GET.get('format', 'excel')
+    status = request.GET.get('status', '')
+    user = request.user
+
+    accessible = user.get_accessible_facilities()
+    qs = StockRequest.objects.select_related(
+        'requesting_facility', 'requesting_district', 'requesting_region',
+        'supplier_facility', 'supplier_district', 'supplier_region', 'requested_by'
+    ).prefetch_related('items__inventory_item').order_by('-created_at')
+
+    if accessible is not None:
+        qs = qs.filter(
+            Q(requesting_facility__in=accessible) |
+            Q(requesting_district__facility__in=accessible) |
+            Q(requesting_region__district__facility__in=accessible)
+        ).distinct()
+
+    if status:
+        qs = qs.filter(status=status)
+
+    if fmt == 'csv':
+        return _export_stock_requests_csv(request, qs)
+    return _export_stock_requests_excel(request, qs)
+
+
+def _export_stock_requests_excel(request, qs):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Stock Requests'
+
+    headers = [
+        'Request #', 'Requesting Location', 'Supplier Location', 'Priority',
+        'Status', 'Requested By', 'Created Date', 'Item', 'Code', 'Requested Qty',
+        'Approved Qty', 'Fulfilled Qty', 'Unit'
+    ]
+    header_fill = PatternFill(start_color='1e3a8a', end_color='1e3a8a', fill_type='solid')
+    header_font = Font(bold=True, color='FFFFFF')
+    for col_num, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_num, value=h)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center')
+
+    row = 2
+    for req in qs:
+        req_items = req.items.all()
+        base = [
+            req.request_number,
+            _req_loc(req.requesting_facility, req.requesting_district, req.requesting_region),
+            _req_loc(req.supplier_facility, req.supplier_district, req.supplier_region),
+            req.get_priority_display(),
+            req.get_status_display(),
+            req.requested_by.get_full_name() or req.requested_by.email,
+            req.created_at.strftime('%Y-%m-%d'),
+        ]
+        if not req_items:
+            ws.cell(row=row, column=1, value=base[0])
+            for c, v in enumerate(base[1:], 2):
+                ws.cell(row=row, column=c, value=v)
+            row += 1
+        else:
+            for item in req_items:
+                ws.cell(row=row, column=1, value=base[0])
+                for c, v in enumerate(base[1:], 2):
+                    ws.cell(row=row, column=c, value=v)
+                ws.cell(row=row, column=8, value=item.inventory_item.name)
+                ws.cell(row=row, column=9, value=item.inventory_item.code)
+                ws.cell(row=row, column=10, value=item.quantity_requested)
+                ws.cell(row=row, column=11, value=item.quantity_approved or '')
+                ws.cell(row=row, column=12, value=item.quantity_fulfilled or '')
+                ws.cell(row=row, column=13, value=item.inventory_item.unit_of_measure)
+                row += 1
+
+    for col in ws.columns:
+        max_length = 0
+        column = col[0].column_letter
+        for cell in col:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except (TypeError, AttributeError):
+                pass
+        ws.column_dimensions[column].width = min(max_length + 2, 50)
+
+    import io
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    response = HttpResponse(
+        output.read(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename="stock_requests_{request.GET.get("status", "all")}.xlsx"'
+    return response
+
+
+def _export_stock_requests_csv(request, qs):
+    import csv, io
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    headers = [
+        'Request #', 'Requesting Location', 'Supplier Location', 'Priority',
+        'Status', 'Requested By', 'Created Date', 'Item', 'Code', 'Requested Qty',
+        'Approved Qty', 'Fulfilled Qty', 'Unit'
+    ]
+    writer.writerow(headers)
+
+    for req in qs:
+        base = [
+            req.request_number,
+            _req_loc(req.requesting_facility, req.requesting_district, req.requesting_region),
+            _req_loc(req.supplier_facility, req.supplier_district, req.supplier_region),
+            req.get_priority_display(),
+            req.get_status_display(),
+            req.requested_by.get_full_name() or req.requested_by.email,
+            req.created_at.strftime('%Y-%m-%d'),
+        ]
+        for item in req.items.all():
+            writer.writerow(base + [
+                item.inventory_item.name,
+                item.inventory_item.code,
+                item.quantity_requested,
+                item.quantity_approved or '',
+                item.quantity_fulfilled or '',
+                item.inventory_item.unit_of_measure,
+            ])
+
+    response = HttpResponse(output.getvalue(), content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="stock_requests_{request.GET.get("status", "all")}.csv"'
+    return response
+
+
+def _req_loc(facility, district, region):
+    if facility:
+        return facility.name
+    if district:
+        return district.name
+    if region:
+        return region.name
+    return 'National'
