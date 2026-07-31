@@ -2524,6 +2524,51 @@ def stock_request_create_api(request):
         req_fac_id = data.get('requesting_facility_id')
         if req_fac_id and int(req_fac_id) not in [f.id for f in accessible]:
             return Response({'success': False, 'message': 'You do not have access to the requesting facility.'}, status=status.HTTP_403_FORBIDDEN)
+
+    req_fac_id = data.get('requesting_facility_id')
+    if req_fac_id:
+        try:
+            req_facility = Facility.objects.get(pk=int(req_fac_id))
+            req_district_id = req_facility.district_id
+            req_region_id = req_facility.district.region_id if req_facility.district else None
+        except Facility.DoesNotExist:
+            return Response({'success': False, 'message': 'Requesting facility not found'}, status=status.HTTP_400_BAD_REQUEST)
+
+        sup_fac_id = data.get('supplier_facility_id')
+        sup_dist_id = data.get('supplier_district_id')
+        sup_reg_id = data.get('supplier_region_id')
+
+        # A facility may only request from the district it belongs to, or from another facility in the same district
+        if sup_fac_id:
+            try:
+                sup_facility = Facility.objects.get(pk=int(sup_fac_id))
+            except Facility.DoesNotExist:
+                return Response({'success': False, 'message': 'Supplier facility not found'}, status=status.HTTP_400_BAD_REQUEST)
+            if sup_facility.district_id != req_district_id:
+                return Response({'success': False, 'message': 'You can only request from a facility within the same district.'}, status=status.HTTP_400_BAD_REQUEST)
+        elif sup_dist_id:
+            if int(sup_dist_id) != req_district_id:
+                return Response({'success': False, 'message': 'You can only request from your own district store.'}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            return Response({'success': False, 'message': 'A facility request must specify a supplier in the same district or the district store.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Supplier stock pre-check: the chosen supplier must have enough of each requested item
+        supplier_loc = {'location_type': 'facility', 'facility_id': int(sup_fac_id)} if sup_fac_id else {'location_type': 'district', 'district_id': int(sup_dist_id), 'region_id': req_region_id}
+        for item_data in data.get('items', []):
+            item_id = item_data.get('item_id')
+            qty = int(item_data.get('quantity', 0))
+            if not item_id or qty <= 0:
+                continue
+            stock = StockLevel.objects.filter(
+                inventory_item_id=item_id,
+                **supplier_loc
+            ).first()
+            available = stock.available_stock if stock else 0
+            if available < qty:
+                item_name = InventoryItem.objects.filter(pk=item_id).first()
+                item_name = item_name.name if item_name else 'Item'
+                return Response({'success': False, 'message': f'Insufficient stock for {item_name}. Available: {available}, requested: {qty}'}, status=status.HTTP_400_BAD_REQUEST)
+
     sr = StockRequest.objects.create(
         requesting_facility_id=data.get('requesting_facility_id'),
         requesting_region_id=data.get('requesting_region_id'),
