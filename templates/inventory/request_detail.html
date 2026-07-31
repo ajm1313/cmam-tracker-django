@@ -3,19 +3,36 @@
 {% block title %}Request {{ stock_request.request_number }} - CMAM Tracker{% endblock %}
 
 {% block content %}
-<div class="space-y-6">
+<style>
+@media print {
+    nav, .no-print { display: none !important; }
+    .print-only { display: block !important; }
+    body { -webkit-print-color-adjust: exact; }
+}
+@media screen { .print-only { display: none; } }
+</style>
+
+<div class="space-y-6 no-print">
     <!-- Page Header -->
-    <div class="flex justify-between items-center">
+    <div class="flex justify-between items-center no-print">
         <div>
             <h1 class="text-2xl font-bold text-gray-900">Request {{ stock_request.request_number }}</h1>
             <p class="text-gray-600">Stock request details and workflow</p>
         </div>
-        <a href="{% url 'inventory:stock_requests' %}" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center">
-            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
-            </svg>
-            Back to Requests
-        </a>
+        <div class="flex gap-2">
+            <button type="button" onclick="window.print()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h5a2 2 0 002-2v-4a2 2 0 00-2-2h-5M3 17h5m-5-4V5a2 2 0 012-2h10a2 2 0 012 2v6"/>
+                </svg>
+                Print Packing List
+            </button>
+            <a href="{% url 'inventory:stock_requests' %}" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                </svg>
+                Back to Requests
+            </a>
+        </div>
     </div>
 
     <!-- Status Banner -->
@@ -309,5 +326,76 @@
         </div>
     </div>
     {% endif %}
+</div>
+
+<!-- Print-Only Packing List -->
+<div class="print-only p-8 max-w-3xl mx-auto">
+    <div class="border-b-2 border-gray-800 pb-4 mb-6">
+        <h1 class="text-3xl font-bold text-gray-900">Packing List</h1>
+        <p class="text-sm text-gray-600 mt-1">CMAM Tracker — {{ stock_request.request_number }}</p>
+    </div>
+
+    <div class="grid grid-cols-2 gap-8 mb-6 text-sm">
+        <div>
+            <p class="font-semibold text-gray-900">From (Supplier)</p>
+            <p class="text-gray-700">
+                {% if stock_request.supplier_facility %}{{ stock_request.supplier_facility.name }}
+                {% elif stock_request.supplier_district %}{{ stock_request.supplier_district.name }}
+                {% elif stock_request.supplier_region %}{{ stock_request.supplier_region.name }}
+                {% else %}National Store{% endif %}
+            </p>
+        </div>
+        <div>
+            <p class="font-semibold text-gray-900">To (Requesting)</p>
+            <p class="text-gray-700">
+                {% if stock_request.requesting_facility %}{{ stock_request.requesting_facility.name }}
+                {% elif stock_request.requesting_district %}{{ stock_request.requesting_district.name }}
+                {% elif stock_request.requesting_region %}{{ stock_request.requesting_region.name }}
+                {% else %}National Store{% endif %}
+            </p>
+        </div>
+    </div>
+
+    <div class="mb-6 text-sm">
+        <p><strong>Date:</strong> {{ stock_request.created_at|date:"M d, Y" }}</p>
+        <p><strong>Priority:</strong> {{ stock_request.get_priority_display }}</p>
+        <p><strong>Status:</strong> {{ stock_request.get_status_display }}</p>
+    </div>
+
+    <table class="w-full border-collapse border border-gray-800 mb-8 text-sm">
+        <thead>
+            <tr class="bg-gray-100">
+                <th class="border border-gray-800 px-3 py-2 text-left">#</th>
+                <th class="border border-gray-800 px-3 py-2 text-left">Item</th>
+                <th class="border border-gray-800 px-3 py-2 text-left">Code</th>
+                <th class="border border-gray-800 px-3 py-2 text-right">Requested Qty</th>
+                <th class="border border-gray-800 px-3 py-2 text-right">Approved Qty</th>
+                <th class="border border-gray-800 px-3 py-2 text-left">Unit</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in stock_request.items.all %}
+            <tr>
+                <td class="border border-gray-800 px-3 py-2">{{ forloop.counter }}</td>
+                <td class="border border-gray-800 px-3 py-2">{{ item.inventory_item.name }}</td>
+                <td class="border border-gray-800 px-3 py-2">{{ item.inventory_item.code }}</td>
+                <td class="border border-gray-800 px-3 py-2 text-right">{{ item.quantity_requested }}</td>
+                <td class="border border-gray-800 px-3 py-2 text-right">{{ item.quantity_approved|default:"—" }}</td>
+                <td class="border border-gray-800 px-3 py-2">{{ item.inventory_item.unit_of_measure }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="grid grid-cols-2 gap-8 mt-12 text-sm">
+        <div>
+            <p class="font-semibold text-gray-900 border-b border-gray-800 pb-1 mb-2">Issued By</p>
+            <p class="text-gray-600">Name / Signature / Date</p>
+        </div>
+        <div>
+            <p class="font-semibold text-gray-900 border-b border-gray-800 pb-1 mb-2">Received By</p>
+            <p class="text-gray-600">Name / Signature / Date</p>
+        </div>
+    </div>
 </div>
 {% endblock %}
