@@ -8,6 +8,8 @@ from django.http import JsonResponse
 from django.conf import settings
 from django.utils.deprecation import MiddlewareMixin
 from apps.users.models import AuditLog
+from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework.exceptions import AuthenticationFailed
 
 
 class HealthCheckMiddleware:
@@ -53,6 +55,19 @@ class SuperAdminEditDeleteMiddleware:
         # Only protect paths that look like edit/delete/update/reverse/bulk actions
         if not any(p in path for p in self.PROTECTED_PATH_PATTERNS):
             return self.get_response(request)
+
+        # For API calls, the user is authenticated via JWT; try to resolve the
+        # token so the request.user reflects the API user instead of the session.
+        if path.startswith('/api/') and not request.user.is_authenticated:
+            try:
+                user, auth = JWTAuthentication().authenticate(request)
+                if user:
+                    request.user = user
+                    request.auth = auth
+            except AuthenticationFailed:
+                return JsonResponse({'success': False, 'error': 'Authentication required.'}, status=401)
+            except Exception:
+                return JsonResponse({'success': False, 'error': 'Authentication required.'}, status=401)
 
         if not request.user.is_authenticated:
             if path.startswith('/api/'):
