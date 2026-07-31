@@ -2341,9 +2341,7 @@ def stock_movements_api(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def stock_movement_create_api(request):
-    """Create a stock movement (super admin only)"""
-    if not request.user.is_superuser:
-        return Response({'success': False, 'message': 'Only Super Admin can create stock movements'}, status=status.HTTP_403_FORBIDDEN)
+    """Create a stock movement for an authorized user"""
     data = request.data
     required = ['item_id', 'movement_type', 'quantity']
     missing = [f for f in required if not data.get(f)]
@@ -2355,14 +2353,28 @@ def stock_movement_create_api(request):
     except InventoryItem.DoesNotExist:
         return Response({'success': False, 'message': 'Item not found'}, status=status.HTTP_404_NOT_FOUND)
 
-    # RBAC: verify user has access to source or destination facility
+    movement_type = data['movement_type']
+    # Adjustments stay super-admin only
+    if movement_type == 'ADJUSTMENT' and not request.user.is_superuser:
+        return Response({'success': False, 'message': 'Only Super Admin can create adjustment movements'}, status=status.HTTP_403_FORBIDDEN)
+
+    # RBAC: verify user has access to the side of the movement they control
     accessible = request.user.get_accessible_facilities()
     if accessible is not None:
         accessible_ids = [f.id for f in accessible]
         src_fac = data.get('source_facility_id')
         dst_fac = data.get('destination_facility_id')
-        if src_fac and int(src_fac) not in accessible_ids and dst_fac and int(dst_fac) not in accessible_ids:
-            return Response({'success': False, 'message': 'You do not have access to the source or destination facility.'}, status=status.HTTP_403_FORBIDDEN)
+        if movement_type == 'IN':
+            if dst_fac and int(dst_fac) not in accessible_ids:
+                return Response({'success': False, 'message': 'You do not have access to the destination facility.'}, status=status.HTTP_403_FORBIDDEN)
+            if not dst_fac and not request.user.is_superuser:
+                return Response({'success': False, 'message': 'Only Super Admin can receive into a non-facility location.'}, status=status.HTTP_403_FORBIDDEN)
+        else:
+            # OUT, TRANSFER, CONSUMPTION, RETURN, EXPIRED, etc.
+            if src_fac and int(src_fac) not in accessible_ids:
+                return Response({'success': False, 'message': 'You do not have access to the source facility.'}, status=status.HTTP_403_FORBIDDEN)
+            if not src_fac and not request.user.is_superuser:
+                return Response({'success': False, 'message': 'Only Super Admin can move stock from a non-facility location.'}, status=status.HTTP_403_FORBIDDEN)
 
     # Create linked ItemBatch for IN movements if batch info provided
     item_batch = None
