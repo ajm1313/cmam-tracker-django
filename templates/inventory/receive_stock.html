@@ -34,10 +34,11 @@
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Item <span class="text-red-500">*</span></label>
-                        <select name="item_id" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500">
+                        <input type="text" id="itemSearch" placeholder="Search items..." class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500 mb-2" oninput="filterItems(this.value)">
+                        <select name="item_id" id="itemSelect" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500">
                             <option value="">Select Item</option>
                             {% for item in items %}
-                            <option value="{{ item.id }}">{{ item.name }} ({{ item.code }}) - {{ item.unit_of_measure }}</option>
+                            <option value="{{ item.id }}" data-search="{{ item.name|lower }} {{ item.code|lower }} {{ item.unit_of_measure|lower }}">{{ item.name }} ({{ item.code }}) - {{ item.unit_of_measure }}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -204,5 +205,17 @@ document.getElementById('destDistrict').addEventListener('change', function() {
 document.getElementById('destFacility').addEventListener('change', function() {
     updateLocationType();
 });
+
+function filterItems(query) {
+    const q = query.toLowerCase();
+    const select = document.getElementById('itemSelect');
+    const options = select.querySelectorAll('option');
+    options.forEach((opt) => {
+        if (opt.value === '') { opt.style.display = ''; return; }
+        const text = (opt.textContent || '').toLowerCase();
+        const search = (opt.getAttribute('data-search') || '').toLowerCase();
+        opt.style.display = (text.includes(q) || search.includes(q)) ? '' : 'none';
+    });
+}
 </script>
 {% endblock %}
