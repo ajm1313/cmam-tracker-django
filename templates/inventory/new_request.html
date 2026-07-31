@@ -27,7 +27,7 @@
             <div class="ml-3">
                 <p class="text-sm text-blue-700">Stock requests follow a hierarchical routing:</p>
                 <ul class="text-sm text-blue-600 mt-1 list-disc list-inside">
-                    <li><strong>Facility</strong> requests stock from its parent <strong>District</strong></li>
+                    <li><strong>Facility</strong> requests stock from its parent <strong>District</strong> or any facility in that district</li>
                     <li><strong>District</strong> requests stock from its parent <strong>Region</strong></li>
                     <li><strong>Region</strong> requests stock from <strong>National</strong> level</li>
                 </ul>
@@ -154,8 +154,9 @@
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Supplier Facility</label>
-                        <input type="text" id="supplierFacilityDisplay" readonly class="w-full px-3 py-2 border border-gray-200 rounded-md bg-gray-100 text-gray-600" placeholder="Auto-determined">
-                        <input type="hidden" name="supplier_facility" id="supplierFacility" value="">
+                        <select name="supplier_facility" id="supplierFacility" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-white">
+                            <option value="">-- Parent District Store --</option>
+                        </select>
                     </div>
                 </div>
                 <p class="text-xs text-blue-600 mt-2" id="supplierHint">The supplier is automatically determined based on the request level.</p>
@@ -270,44 +271,74 @@ function updateSupplierDisplay() {
     const level = document.getElementById('requestLevel').value;
     const regionDisplay = document.getElementById('supplierRegionDisplay');
     const districtDisplay = document.getElementById('supplierDistrictDisplay');
-    const facilityDisplay = document.getElementById('supplierFacilityDisplay');
     const regionHidden = document.getElementById('supplierRegion');
     const districtHidden = document.getElementById('supplierDistrict');
-    const facilityHidden = document.getElementById('supplierFacility');
+    const facilitySelect = document.getElementById('supplierFacility');
     const hint = document.getElementById('supplierHint');
-    
+
     if (level === 'facility') {
-        // Supplier = parent district of selected facility
-        const facilitySelect = document.getElementById('requestingFacility');
-        const facilityText = facilitySelect.options[facilitySelect.selectedIndex].text;
-        facilityDisplay.value = '';
-        facilityHidden.value = '';
-        districtDisplay.value = 'Parent district of ' + facilityText;
-        districtHidden.value = '';
-        regionDisplay.value = '';
-        regionHidden.value = '';
-        hint.textContent = 'Stock will be requested from the district that manages this facility.';
+        const facilitySelectReq = document.getElementById('requestingFacility');
+        const districtSelect = document.getElementById('requestingDistrict');
+        const regionSelect = document.getElementById('requestingRegion');
+
+        const districtId = districtSelect ? districtSelect.value : '';
+        const regionId = regionSelect ? regionSelect.value : '';
+        const districtText = districtSelect && districtSelect.selectedIndex >= 0 ? districtSelect.options[districtSelect.selectedIndex].text : '';
+        const regionText = regionSelect && regionSelect.selectedIndex >= 0 ? regionSelect.options[regionSelect.selectedIndex].text : '';
+
+        districtDisplay.value = districtText || 'Parent district';
+        districtHidden.value = districtId;
+        regionDisplay.value = regionText || 'Parent region';
+        regionHidden.value = regionId;
+        hint.textContent = 'Choose the parent district store, or pick a specific facility in this district.';
+
+        loadSupplierFacilities(districtId, facilitySelectReq ? facilitySelectReq.value : '');
     } else if (level === 'district') {
-        // Supplier = parent region of selected district
         const districtSelect = document.getElementById('requestingDistrictD');
-        const districtText = districtSelect.options[districtSelect.selectedIndex].text;
-        facilityDisplay.value = '';
-        facilityHidden.value = '';
+        const districtText = districtSelect && districtSelect.selectedIndex >= 0 ? districtSelect.options[districtSelect.selectedIndex].text : '';
         districtDisplay.value = '';
         districtHidden.value = '';
         regionDisplay.value = 'Parent region of ' + districtText;
         regionHidden.value = '';
+        facilitySelect.innerHTML = '<option value="">-- District Store --</option>';
+        facilitySelect.disabled = true;
         hint.textContent = 'Stock will be requested from the region that manages this district.';
     } else if (level === 'region') {
-        // Supplier = National
-        facilityDisplay.value = '';
-        facilityHidden.value = '';
         districtDisplay.value = '';
         districtHidden.value = '';
         regionDisplay.value = 'National Level';
         regionHidden.value = '';
+        facilitySelect.innerHTML = '<option value="">-- National Store --</option>';
+        facilitySelect.disabled = true;
         hint.textContent = 'Stock will be requested from the national level inventory.';
     }
+}
+
+function loadSupplierFacilities(districtId, requestingFacilityId) {
+    const supplierSelect = document.getElementById('supplierFacility');
+    supplierSelect.innerHTML = '<option value="">-- Parent District Store --</option>';
+    supplierSelect.disabled = false;
+    if (!districtId) return;
+
+    fetch(`/api/v1/facilities/?district=${districtId}`, {credentials: 'same-origin'})
+        .then(response => {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+        })
+        .then(result => {
+            const facilities = result.data || [];
+            facilities.forEach(facility => {
+                if (String(facility.id) === String(requestingFacilityId)) return;
+                const option = document.createElement('option');
+                option.value = facility.id;
+                option.textContent = facility.name;
+                supplierSelect.appendChild(option);
+            });
+        })
+        .catch(err => {
+            console.error('Error loading supplier facilities:', err);
+            supplierSelect.innerHTML = '<option value="">Error loading facilities</option>';
+        });
 }
 
 // Cascading dropdowns for facility-level requesting location
@@ -339,6 +370,7 @@ document.getElementById('requestingRegion').addEventListener('change', function(
 
 // Update supplier display when facility or district selection changes
 document.getElementById('requestingFacility').addEventListener('change', updateSupplierDisplay);
+document.getElementById('requestingDistrict').addEventListener('change', updateSupplierDisplay);
 document.getElementById('requestingDistrictD').addEventListener('change', updateSupplierDisplay);
 
 // Initialize on page load

@@ -770,12 +770,29 @@ def new_request(request):
         
         # Auto-set supplier based on request level (hierarchical routing)
         if request_level == 'facility':
-            # Facility → District: supplier is the district the facility belongs to
             if requesting_facility_id:
                 try:
                     fac = Facility.objects.get(id=requesting_facility_id)
-                    supplier_district_id = str(fac.district_id) if fac.district_id else ''
-                    supplier_region_id = str(fac.district.region_id) if fac.district and fac.district.region_id else ''
+                    parent_district_id = fac.district_id
+                    parent_region_id = fac.district.region_id if fac.district and fac.district.region_id else None
+
+                    # If a specific supplier facility in the parent district was chosen, use it;
+                    # otherwise default to the parent district store.
+                    if supplier_facility_id:
+                        try:
+                            sup_fac = Facility.objects.get(id=supplier_facility_id)
+                            if sup_fac.district_id != parent_district_id:
+                                messages.error(request, 'Supplier facility must be in the same district as the requesting facility.')
+                                return redirect('inventory:new_request')
+                            supplier_facility_id = str(sup_fac.id)
+                            supplier_district_id = str(sup_fac.district_id)
+                            supplier_region_id = str(sup_fac.district.region_id) if sup_fac.district and sup_fac.district.region_id else ''
+                        except Facility.DoesNotExist:
+                            messages.error(request, 'Selected supplier facility not found.')
+                            return redirect('inventory:new_request')
+                    else:
+                        supplier_district_id = str(parent_district_id) if parent_district_id else ''
+                        supplier_region_id = str(parent_region_id) if parent_region_id else ''
                 except Facility.DoesNotExist:
                     pass
         elif request_level == 'district':
