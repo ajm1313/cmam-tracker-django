@@ -284,7 +284,7 @@
     </style>
     {% block extra_css %}{% endblock %}
 </head>
-<body class="bg-gray-50">
+<body class="bg-gray-50" data-is-superadmin="{{ request.user.is_superuser|yesno:'true,false' }}">
     <script>
         // Apply dark mode on page load
         if (localStorage.getItem('darkMode') === 'true') {
@@ -641,6 +641,39 @@
                     });
             });
         }
+
+        // Hide edit/delete/reverse/bulk controls for non-superusers
+        (function () {
+            const isSuper = document.body.dataset.isSuperadmin === 'true';
+            if (isSuper) return;
+
+            const protectedPatterns = ['/edit/', '/delete/', '/reverse-', '/bulk-', '/update-'];
+
+            // Links
+            document.querySelectorAll('a[href]').forEach((el) => {
+                const href = el.getAttribute('href').toLowerCase();
+                if (protectedPatterns.some((p) => href.includes(p))) {
+                    el.style.display = 'none';
+                }
+            });
+
+            // Forms
+            document.querySelectorAll('form[action]').forEach((el) => {
+                const action = (el.getAttribute('action') || '').toLowerCase();
+                if (protectedPatterns.some((p) => action.includes(p))) {
+                    el.style.display = 'none';
+                }
+            });
+
+            // Buttons by text (Edit, Delete, Close, Reactivate, Update)
+            const dangerTexts = ['edit', 'delete', 'close', 'reactivate', 'update'];
+            document.querySelectorAll('button, a, input[type="submit"]').forEach((el) => {
+                const text = (el.textContent || el.value || '').toLowerCase().trim();
+                if (dangerTexts.some((t) => text.includes(t))) {
+                    el.style.display = 'none';
+                }
+            });
+        })();
 
         // Auto-dismiss Django messages after 4 seconds
         (function () {

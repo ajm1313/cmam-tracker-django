@@ -556,10 +556,11 @@ def case_edit(request, pk):
 
 @login_required
 def case_delete(request, pk):
-    """Delete case"""
+    """Close/discharge a case (super admin only)"""
+    if not request.user.is_superuser:
+        messages.error(request, 'Only Super Admin can close a case')
+        return redirect('cases:case_list')
     case = get_object_or_404(OpcRegistration, pk=pk)
-    if not _check_case_access(request, case):
-        return HttpResponseForbidden('You do not have access to this case.')
     
     if request.method == 'POST':
         # Reverse stock deductions for registration and all its visits

@@ -219,9 +219,9 @@ def inventory_edit(request, pk):
 
 @login_required
 def inventory_delete(request, pk):
-    """Delete inventory item (admin only)"""
-    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
-        messages.error(request, 'You do not have permission to delete inventory items')
+    """Delete inventory item (super admin only)"""
+    if not request.user.is_superuser:
+        messages.error(request, 'Only Super Admin can delete inventory items')
         return redirect('inventory:inventory_list')
     item = get_object_or_404(InventoryItem, pk=pk)
     

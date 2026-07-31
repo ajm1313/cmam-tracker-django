@@ -15,6 +15,12 @@
             {% endif %}
             <a href="{% url 'cases:case_transfer' case.pk %}" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Transfer</a>
             <a href="{% url 'cases:case_tasks' case.pk %}" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">Tasks</a>
+            {% if request.user.is_superuser and case.status == 'Active' %}
+            <form method="post" action="{% url 'cases:case_delete' case.pk %}" class="inline" onsubmit="return confirm('Close this case? It will be marked as discharged.')">
+                {% csrf_token %}
+                <button type="submit" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">Close</button>
+            </form>
+            {% endif %}
             {% if request.user.is_superuser and case.status == 'Discharged' %}
             <form method="post" action="{% url 'cases:case_reverse_discharge' case.pk %}" class="inline" onsubmit="return confirm('Reverse discharge and reactivate this case?')">
                 {% csrf_token %}
