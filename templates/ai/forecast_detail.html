@@ -52,6 +52,19 @@
         {% endif %}
     </div>
 
+    <!-- Forecast Chart -->
+    {% if forecast.forecast_periods %}
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-4">Forecast Chart</h2>
+        <canvas id="forecastChart" height="240" class="w-full"></canvas>
+        <div class="flex justify-center gap-6 mt-3 text-sm">
+            <span class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm bg-blue-500"></span>Predicted demand</span>
+            <span class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm bg-indigo-300"></span>Upper bound</span>
+            <span class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm bg-indigo-100"></span>Lower bound</span>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Weekly Forecast Table -->
     {% if forecast.forecast_periods %}
     <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
@@ -99,4 +112,96 @@
     </div>
 
 </div>
+
+<script>
+(function () {
+    const canvas = document.getElementById('forecastChart');
+    if (!canvas) return;
+    const periods = [
+        {% for p in forecast.forecast_periods %}
+        { week: {{ p.week }}, predicted: {{ p.predicted_demand }}, lower: {{ p.lower_bound }}, upper: {{ p.upper_bound }} }{% if not forloop.last %},{% endif %}
+        {% endfor %}
+    ];
+    if (periods.length === 0) return;
+
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = canvas.height * dpr;
+    ctx.scale(dpr, dpr);
+
+    const width = rect.width;
+    const height = 240;
+    const padding = { top: 30, right: 20, bottom: 40, left: 50 };
+    const chartW = width - padding.left - padding.right;
+    const chartH = height - padding.top - padding.bottom;
+
+    const max = Math.max(...periods.map(p => p.upper));
+    const yScale = chartH / (max * 1.1);
+    const barW = Math.min(40, (chartW / periods.length) * 0.55);
+    const gap = chartW / periods.length;
+
+    ctx.clearRect(0, 0, width, height);
+
+    // Axes
+    ctx.strokeStyle = '#e5e7eb';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, padding.top);
+    ctx.lineTo(padding.left, height - padding.bottom);
+    ctx.lineTo(width - padding.right, height - padding.bottom);
+    ctx.stroke();
+
+    // Y-axis labels
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i <= 5; i++) {
+        const val = Math.round((max * 1.1) * i / 5);
+        const y = height - padding.bottom - (chartH * i / 5);
+        ctx.fillText(val, padding.left - 8, y);
+        if (i > 0) {
+            ctx.strokeStyle = '#f3f4f6';
+            ctx.beginPath();
+            ctx.moveTo(padding.left, y);
+            ctx.lineTo(width - padding.right, y);
+            ctx.stroke();
+        }
+    }
+
+    periods.forEach((p, i) => {
+        const x = padding.left + gap * (i + 0.5);
+        const barH = p.predicted * yScale;
+        const upperH = p.upper * yScale;
+        const lowerH = p.lower * yScale;
+
+        // Upper / lower range
+        ctx.fillStyle = 'rgba(165, 180, 252, 0.35)';
+        ctx.fillRect(x - barW / 2, height - padding.bottom - upperH, barW, upperH - lowerH);
+
+        // Upper and lower bound lines
+        ctx.strokeStyle = 'rgba(99, 102, 241, 0.5)';
+        ctx.beginPath();
+        ctx.moveTo(x - barW / 2, height - padding.bottom - upperH);
+        ctx.lineTo(x + barW / 2, height - padding.bottom - upperH);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x - barW / 2, height - padding.bottom - lowerH);
+        ctx.lineTo(x + barW / 2, height - padding.bottom - lowerH);
+        ctx.stroke();
+
+        // Predicted demand bar
+        ctx.fillStyle = '#3b82f6';
+        ctx.fillRect(x - barW / 2, height - padding.bottom - barH, barW, barH);
+
+        // X-axis labels
+        ctx.fillStyle = '#6b7280';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText('W' + p.week, x, height - padding.bottom + 8);
+    });
+})();
+</script>
 {% endblock %}
