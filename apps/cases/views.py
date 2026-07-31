@@ -165,7 +165,7 @@ def case_manage(request):
         'total_mam_cases': total_mam,
         'active_mam_cases': active_mam,
         'total_ipc_cases': IpcCase.objects.filter(facility__in=facilities).count(),
-        'active_ipc_cases': IpcCase.objects.filter(facility__in=facilities, status='active').count(),
+        'active_ipc_cases': IpcCase.objects.filter(facility__in=facilities, status='Admitted').count(),
         'discharged_cases': discharged,
         'defaulted_cases': defaulted,
         'death_cases': deaths,
@@ -229,8 +229,8 @@ def case_create(request):
                     admission_type='New Admission',
                     admission_date=request.POST.get('admission_date'),
                     registration_date=request.POST.get('admission_date'),
-                    weight_kg=request.POST.get('weight_kg'),
-                    height_cm=request.POST.get('height_cm'),
+                    weight_kg=request.POST.get('weight_kg') or None,
+                    height_cm=request.POST.get('height_cm') or None,
                     muac_cm=request.POST.get('muac_cm') or None,
                     z_score_wfh=request.POST.get('z_score_wfh') or request.POST.get('z_score_value') or None,
                     z_score_wfa=request.POST.get('z_score_wfa') or None,
@@ -354,6 +354,7 @@ def case_create(request):
     return render(request, 'cases/case_create.html', context)
 
 
+@login_required
 def api_next_registration_number(request):
     """API: return the next auto-generated registration number for a facility + type"""
     from django.http import JsonResponse
@@ -364,10 +365,13 @@ def api_next_registration_number(request):
         return JsonResponse({'error': 'facility_id required'}, status=400)
     try:
         facility = Facility.objects.get(pk=facility_id)
-        reg_number = OpcRegistration.generate_registration_number(facility, mal_type)
-        return JsonResponse({'registration_number': reg_number})
     except Facility.DoesNotExist:
         return JsonResponse({'error': 'Facility not found'}, status=404)
+    accessible = request.user.get_accessible_facilities()
+    if accessible is not None and not accessible.filter(id=facility.id).exists():
+        return JsonResponse({'error': 'Access denied'}, status=403)
+    reg_number = OpcRegistration.generate_registration_number(facility, mal_type)
+    return JsonResponse({'registration_number': reg_number})
 
 
 @login_required

@@ -1706,6 +1706,8 @@ def users_list_api(request):
 @permission_classes([IsAuthenticated])
 def user_create_api(request):
     """Create a new user"""
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        return Response({'success': False, 'message': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
     data = request.data
     required = ['name', 'email', 'password', 'role_id']
     missing = [f for f in required if not data.get(f)]
@@ -1912,6 +1914,8 @@ def user_delete_api(request, pk):
 @permission_classes([IsAuthenticated])
 def facility_create_api(request):
     """Create a new facility"""
+    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
+        return Response({'success': False, 'message': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
     data = request.data
     # Accept both webapp and mobile field names
     facility_type = data.get('type') or data.get('facility_type')
@@ -3397,7 +3401,7 @@ def ipc_cases_api(request):
         status_filter = request.query_params.get('status', 'all')
         if status_filter != 'all':
             qs = qs.filter(status=status_filter)
-        qs = qs.order_by('-registration_date')
+        qs = qs.order_by('-admission_date')
         data = []
         for case in qs:
             data.append({
@@ -3429,6 +3433,11 @@ def ipc_cases_api(request):
     if accessible is not None and int(data['facility_id']) not in [f.id for f in accessible]:
         return Response({'success': False, 'message': 'You do not have access to this facility.'}, status=status.HTTP_403_FORBIDDEN)
 
+    status = data.get('status', 'Admitted')
+    valid_statuses = [c[0] for c in IpcCase.STATUS_CHOICES]
+    if status not in valid_statuses:
+        return Response({'success': False, 'message': f'Invalid status. Valid: {", ".join(valid_statuses)}'}, status=status.HTTP_400_BAD_REQUEST)
+
     case = IpcCase.objects.create(
         facility_id=int(data['facility_id']),
         patient_name=data['patient_name'],
@@ -3438,7 +3447,7 @@ def ipc_cases_api(request):
         weight=data['weight'],
         height=data['height'],
         muac=data.get('muac'),
-        status=data.get('status', 'Admitted'),
+        status=status,
     )
     return Response({
         'success': True,

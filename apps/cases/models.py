@@ -90,8 +90,8 @@ class OpcRegistration(TimeStampedModel):
     admission_type = models.CharField(max_length=20, choices=ADMISSION_TYPE_CHOICES, default='New Admission')
     admission_date = models.DateField()
     registration_date = models.DateField()
-    weight_kg = models.DecimalField(max_digits=5, decimal_places=2)
-    height_cm = models.DecimalField(max_digits=5, decimal_places=1)
+    weight_kg = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    height_cm = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
     muac_cm = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
     z_score_wfh = models.CharField(max_length=50, null=True, blank=True, help_text='Z-score category or numeric value')
     z_score_wfa = models.CharField(max_length=50, null=True, blank=True, help_text='Z-score category or numeric value')
@@ -431,6 +431,14 @@ class OpcVisit(TimeStampedModel):
 class SamCase(TimeStampedModel):
     """SAM Case model matching Laravel SamCase"""
     
+    STATUS_CHOICES = [
+        ('Admitted', 'Admitted'),
+        ('Discharged', 'Discharged'),
+        ('Death', 'Death'),
+        ('Defaulted', 'Defaulted'),
+        ('Transfer', 'Transfer'),
+    ]
+    
     facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE, related_name='sam_cases')
     patient_name = models.CharField(max_length=255)
     patient_age = models.IntegerField()
@@ -439,7 +447,7 @@ class SamCase(TimeStampedModel):
     weight = models.DecimalField(max_digits=5, decimal_places=2)
     height = models.DecimalField(max_digits=5, decimal_places=1)
     muac = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
-    status = models.CharField(max_length=50)
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='Admitted')
     
     class Meta:
         db_table = 'sam_cases'
@@ -454,6 +462,14 @@ class SamCase(TimeStampedModel):
 class MamCase(TimeStampedModel):
     """MAM Case model matching Laravel MamCase"""
     
+    STATUS_CHOICES = [
+        ('Admitted', 'Admitted'),
+        ('Discharged', 'Discharged'),
+        ('Death', 'Death'),
+        ('Defaulted', 'Defaulted'),
+        ('Transfer', 'Transfer'),
+    ]
+    
     facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE, related_name='mam_cases')
     patient_name = models.CharField(max_length=255)
     patient_age = models.IntegerField()
@@ -462,7 +478,7 @@ class MamCase(TimeStampedModel):
     weight = models.DecimalField(max_digits=5, decimal_places=2)
     height = models.DecimalField(max_digits=5, decimal_places=1)
     muac = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
-    status = models.CharField(max_length=50)
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='Admitted')
     
     class Meta:
         db_table = 'mam_cases'
@@ -477,6 +493,14 @@ class MamCase(TimeStampedModel):
 class IpcCase(TimeStampedModel):
     """IPC Case model matching Laravel IpcCase"""
     
+    STATUS_CHOICES = [
+        ('Admitted', 'Admitted'),
+        ('Discharged', 'Discharged'),
+        ('Death', 'Death'),
+        ('Defaulted', 'Defaulted'),
+        ('Transfer', 'Transfer'),
+    ]
+    
     facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE, related_name='ipc_cases')
     patient_name = models.CharField(max_length=255)
     patient_age = models.IntegerField()
@@ -485,7 +509,7 @@ class IpcCase(TimeStampedModel):
     weight = models.DecimalField(max_digits=5, decimal_places=2)
     height = models.DecimalField(max_digits=5, decimal_places=1)
     muac = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
-    status = models.CharField(max_length=50)
+    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='Admitted')
     
     class Meta:
         db_table = 'ipc_cases'
