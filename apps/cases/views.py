@@ -723,7 +723,7 @@ def visit_form(request, registration_id):
                     visit_date=request.POST.get('visit_date'),
                     visit_type=request.POST.get('visit_type', 'Follow-up'),
                     # Anthropometry
-                    weight_kg=request.POST.get('weight_kg'),
+                    weight_kg=request.POST.get('weight_kg') or None,
                     weight_lost=weight_lost,
                     height_cm=request.POST.get('height_cm') or None,
                     muac_cm=request.POST.get('muac_cm') or None,
@@ -791,7 +791,7 @@ def visit_form(request, registration_id):
                     visit_date=request.POST.get('visit_date'),
                     visit_type=request.POST.get('visit_type', 'Follow-up'),
                     # Anthropometry
-                    weight_kg=request.POST.get('weight_kg'),
+                    weight_kg=request.POST.get('weight_kg') or None,
                     height_cm=request.POST.get('height_cm') or None,
                     muac_cm=request.POST.get('muac_cm') or None,
                     z_score_wfh=request.POST.get('z_score_wfh') or None,
@@ -932,7 +932,7 @@ def visit_edit(request, visit_id):
         try:
             visit.visit_date = request.POST.get('visit_date') or visit.visit_date
             visit.visit_type = request.POST.get('visit_type') or visit.visit_type
-            visit.weight_kg = request.POST.get('weight_kg') or visit.weight_kg
+            visit.weight_kg = request.POST.get('weight_kg') or None
             visit.height_cm = request.POST.get('height_cm') or None
             visit.muac_cm = request.POST.get('muac_cm') or None
             visit.z_score_wfh = request.POST.get('z_score_wfh') or None

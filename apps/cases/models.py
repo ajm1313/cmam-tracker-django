@@ -327,7 +327,7 @@ class OpcVisit(TimeStampedModel):
     visit_type = models.CharField(max_length=20, choices=VISIT_TYPES)
     
     # Anthropometry
-    weight_kg = models.DecimalField(max_digits=5, decimal_places=2)
+    weight_kg = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     weight_lost = models.BooleanField(default=False, null=True, blank=True)
     height_cm = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
     muac_cm = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
