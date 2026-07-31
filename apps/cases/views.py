@@ -578,6 +578,32 @@ def case_delete(request, pk):
     return render(request, 'cases/case_confirm_delete.html', context)
 
 
+@login_required
+def case_reverse_discharge(request, pk):
+    """Reverse a discharged case back to active. Superadmin only."""
+    if not request.user.is_superuser:
+        messages.error(request, 'Only super administrators can reverse a discharge.')
+        return redirect('cases:case_detail', pk=pk)
+
+    case = get_object_or_404(OpcRegistration, pk=pk)
+    if case.status != 'Discharged':
+        messages.warning(request, 'This case is not discharged.')
+        return redirect('cases:case_detail', pk=pk)
+
+    if request.method == 'POST':
+        case.status = 'Active'
+        case.discharge_date = None
+        case.outcome = None
+        case.outcome_notes = ''
+        case.updated_by = request.user
+        case.save()
+        messages.success(request, f'Case {case.registration_number} has been reactivated.')
+        return redirect('cases:case_detail', pk=pk)
+
+    context = {'case': case}
+    return render(request, 'cases/case_confirm_reverse.html', context)
+
+
 # ==================== VISIT MANAGEMENT ====================
 
 @login_required

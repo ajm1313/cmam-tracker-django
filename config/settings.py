@@ -106,6 +106,7 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'apps.core.middleware.AuditLogMiddleware',  # Audit logging
+    'apps.core.middleware.SuperAdminEditDeleteMiddleware',  # Restrict edits/deletes to superusers
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'apps.core.middleware.OverdueVisitSchedulerMiddleware',  # Daily overdue visit push notifications

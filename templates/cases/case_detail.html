@@ -10,9 +10,17 @@
             <p class="mt-1 text-sm text-gray-500">Registration: <span class="font-mono font-bold text-gray-800 bg-gray-100 px-2 py-0.5 rounded">{{ case.registration_number|default:"N/A" }}</span></p>
         </div>
         <div class="space-x-2">
+            {% if request.user.is_superuser %}
             <a href="{% url 'cases:case_edit' case.pk %}" class="bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded">Edit</a>
+            {% endif %}
             <a href="{% url 'cases:case_transfer' case.pk %}" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Transfer</a>
             <a href="{% url 'cases:case_tasks' case.pk %}" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">Tasks</a>
+            {% if request.user.is_superuser and case.status == 'Discharged' %}
+            <form method="post" action="{% url 'cases:case_reverse_discharge' case.pk %}" class="inline" onsubmit="return confirm('Reverse discharge and reactivate this case?')">
+                {% csrf_token %}
+                <button type="submit" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Reactivate</button>
+            </form>
+            {% endif %}
             <a href="{% url 'cases:case_list' %}" class="text-gray-600 hover:text-gray-900">← Back</a>
         </div>
     </div>

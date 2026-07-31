@@ -1449,6 +1449,34 @@ def process_discharge_api(request, pk):
     return Response({'success': True, 'message': f'Case discharged: {outcome}'})
 
 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def reverse_discharge_api(request, pk):
+    """Reverse a discharge and reactivate a case. Superadmin only."""
+    try:
+        case = OpcRegistration.objects.get(pk=pk)
+    except OpcRegistration.DoesNotExist:
+        return Response({'success': False, 'message': 'Case not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    denied = _check_case_access_api(request, case)
+    if denied:
+        return denied
+
+    if not request.user.is_superuser:
+        return Response({'success': False, 'message': 'Only super administrators can reverse a discharge.'}, status=status.HTTP_403_FORBIDDEN)
+
+    if case.status != 'Discharged':
+        return Response({'success': False, 'message': 'This case is not discharged.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    case.status = 'Active'
+    case.discharge_date = None
+    case.outcome = None
+    case.outcome_notes = ''
+    case.updated_by = request.user
+    case.save()
+    return Response({'success': True, 'message': f'Case {case.registration_number} reactivated.', 'data': OpcRegistrationDetailSerializer(case, context={'request': request}).data})
+
+
 # ── Visit Edit ───────────────────────────────────────────────────────────────
 
 @api_view(['PUT', 'PATCH'])

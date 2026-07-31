@@ -10,6 +10,7 @@ urlpatterns = [
     path('manage/cases/<int:pk>/', views.case_detail, name='case_detail'),
     path('manage/cases/<int:pk>/edit/', views.case_edit, name='case_edit'),
     path('manage/cases/<int:pk>/delete/', views.case_delete, name='case_delete'),
+    path('manage/cases/<int:pk>/reverse-discharge/', views.case_reverse_discharge, name='case_reverse_discharge'),
     
     # Visit Management
     path('manage/visits/', views.due_visits, name='due_visits'),

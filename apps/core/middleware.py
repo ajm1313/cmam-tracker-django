@@ -21,6 +21,55 @@ class HealthCheckMiddleware:
         return self.get_response(request)
 
 
+class SuperAdminEditDeleteMiddleware:
+    """
+    Restrict edit, delete, update, bulk and reverse-discharge operations
+    to superusers only. This covers both the webapp and API endpoints.
+    """
+
+    MODIFIABLE_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE']
+
+    PROTECTED_PATH_PATTERNS = ('edit', 'delete', 'update', 'reverse', 'bulk')
+
+    EXEMPT_PATH_PATTERNS = (
+        'login', 'logout', 'register', 'token', 'password', 'profile/update',
+        'push-token', 'change-password', 'password-reset', 'v1/profile/',
+    )
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if request.method not in self.MODIFIABLE_METHODS:
+            return self.get_response(request)
+
+        path = request.path.lower()
+
+        # Always exempt auth/profile endpoints
+        for ex in self.EXEMPT_PATH_PATTERNS:
+            if ex in path:
+                return self.get_response(request)
+
+        # Only protect paths that look like edit/delete/update/reverse/bulk actions
+        if not any(p in path for p in self.PROTECTED_PATH_PATTERNS):
+            return self.get_response(request)
+
+        if not request.user.is_authenticated:
+            if path.startswith('/api/'):
+                return JsonResponse({'success': False, 'error': 'Authentication required.'}, status=401)
+            return None
+
+        if not request.user.is_superuser:
+            if path.startswith('/api/'):
+                return JsonResponse({'success': False, 'error': 'Only super administrators can edit or delete records.'}, status=403)
+            from django.contrib.auth.views import redirect_to_login
+            from django.contrib import messages
+            messages.error(request, 'Only super administrators can edit or delete records.')
+            return redirect_to_login(request.path)
+
+        return self.get_response(request)
+
+
 class RateLimitMiddleware(MiddlewareMixin):
     """
     Rate limiting middleware for API endpoints.
