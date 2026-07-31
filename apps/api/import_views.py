@@ -14,6 +14,12 @@ from apps.inventory.models import InventoryItem, StockLevel
 from apps.facilities.models import Facility
 
 
+def _check_import_export(request):
+    if not request.user.can_import_export():
+        return Response({'success': False, 'message': 'You do not have permission to import or export data.'}, status=403)
+    return None
+
+
 def validate_required_fields(data, required_fields):
     """Validate that all required fields are present"""
     missing = [f for f in required_fields if not data.get(f)]
@@ -40,6 +46,9 @@ def parse_date(date_str):
 @permission_classes([IsAuthenticated])
 def import_cases_preview(request):
     """Preview case import data before actual import"""
+    denied = _check_import_export(request)
+    if denied:
+        return denied
     file_obj = request.FILES.get('file')
     facility_id = request.data.get('facility_id')
     malnutrition_type = request.data.get('malnutrition_type')
@@ -191,6 +200,9 @@ def _process_case_preview(rows, default_facility_id=None, default_malnutrition_t
 @permission_classes([IsAuthenticated])
 def import_cases_execute(request):
     """Execute case import from preview"""
+    denied = _check_import_export(request)
+    if denied:
+        return denied
     file_obj = request.FILES.get('file')
     facility_id = request.data.get('facility_id')
     malnutrition_type = request.data.get('malnutrition_type')
@@ -418,6 +430,9 @@ def _execute_case_import(rows, user, default_facility_id=None, default_malnutrit
 @permission_classes([IsAuthenticated])
 def import_inventory_preview(request):
     """Preview inventory import data"""
+    denied = _check_import_export(request)
+    if denied:
+        return denied
     file_obj = request.FILES.get('file')
     facility_id = request.data.get('facility_id')
     
@@ -520,6 +535,9 @@ def _process_inventory_preview(rows, facility_id):
 @permission_classes([IsAuthenticated])
 def import_inventory_execute(request):
     """Execute inventory import after preview"""
+    denied = _check_import_export(request)
+    if denied:
+        return denied
     file_obj = request.FILES.get('file')
     facility_id = request.data.get('facility_id')
     
@@ -678,6 +696,9 @@ def _execute_inventory_import(rows, facility_id, user):
 @permission_classes([IsAuthenticated])
 def import_template_download(request, model_type):
     """Download import template for cases (SAM/MAM/IPC) or inventory"""
+    denied = _check_import_export(request)
+    if denied:
+        return denied
     wb = Workbook()
     ws = wb.active
     

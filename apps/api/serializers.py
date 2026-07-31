@@ -13,15 +13,19 @@ class UserSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField()
     location = serializers.SerializerMethodField()
     is_facility_level_only = serializers.SerializerMethodField()
+    can_import_export = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = ['id', 'email', 'name', 'phone', 'is_active', 'is_staff',
-                  'is_superuser', 'is_facility_level_only', 'profile_picture',
-                  'role', 'location', 'created_at']
+                  'is_superuser', 'is_facility_level_only', 'can_import_export',
+                  'profile_picture', 'role', 'location', 'created_at']
 
     def get_is_facility_level_only(self, obj):
         return obj.is_facility_level_only()
+
+    def get_can_import_export(self, obj):
+        return obj.can_import_export()
 
     def get_role(self, obj):
         from apps.users.models import UserRole

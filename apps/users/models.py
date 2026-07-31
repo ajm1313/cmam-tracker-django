@@ -192,6 +192,17 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
         if self.is_facility_level_only() or self.is_sub_district_level_only():
             return False
         return True
+
+    def can_import_export(self):
+        """Import/Export is restricted to district level and above"""
+        if self.is_superuser or self.is_staff:
+            return True
+        active_roles = self.get_active_roles()
+        if not active_roles.exists():
+            return False
+        if self.is_facility_level_only() or self.is_sub_district_level_only():
+            return False
+        return True
     
     def get_accessible_users(self):
         """Get users accessible based on role hierarchy"""

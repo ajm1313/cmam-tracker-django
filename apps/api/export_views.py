@@ -13,6 +13,12 @@ from apps.inventory.models import StockLevel, StockMovement
 from apps.facilities.models import Facility
 
 
+def _check_import_export(request):
+    if not request.user.can_import_export():
+        return Response({'success': False, 'message': 'You do not have permission to import or export data.'}, status=403)
+    return None
+
+
 def _get_accessible_cases(request):
     """Get cases accessible to the current user"""
     accessible = request.user.get_accessible_facilities()
@@ -38,6 +44,9 @@ def _style_excel_header(ws, headers):
 @permission_classes([IsAuthenticated])
 def export_cases_excel(request):
     """Export cases to Excel"""
+    denied = _check_import_export(request)
+    if denied:
+        return denied
     format_type = request.query_params.get('format', 'excel')  # excel or csv
     case_type = request.query_params.get('type', 'all')  # SAM, MAM, or all
     status = request.query_params.get('status', 'all')
@@ -182,6 +191,9 @@ def _export_cases_csv(qs):
 @permission_classes([IsAuthenticated])
 def export_inventory_excel(request):
     """Export inventory data to Excel/CSV"""
+    denied = _check_import_export(request)
+    if denied:
+        return denied
     format_type = request.query_params.get('format', 'excel')
     facility_id = request.query_params.get('facility')
     
@@ -286,6 +298,9 @@ def _export_inventory_csv(qs):
 @permission_classes([IsAuthenticated])
 def export_options(request):
     """Get available export options/filters"""
+    denied = _check_import_export(request)
+    if denied:
+        return denied
     accessible = request.user.get_accessible_facilities()
     
     facilities = []

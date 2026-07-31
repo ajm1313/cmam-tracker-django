@@ -26,6 +26,7 @@
             </div>
         </div>
         <div class="flex items-center gap-3">
+            {% if request.user.can_import_export %}
             <div class="relative group">
                 <button type="button" class="flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white text-sm font-semibold px-4 py-2 rounded-xl border border-white/20 transition-colors" onclick="toggleImportMenu()">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
@@ -59,6 +60,7 @@
                     </a>
                 </div>
             </div>
+            {% endif %}
             <span class="bg-white/10 text-teal-200 text-xs font-semibold px-3 py-1.5 rounded-full border border-white/15">
                 {{ items|length }} item{{ items|length|pluralize }}
             </span>
