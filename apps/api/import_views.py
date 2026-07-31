@@ -323,9 +323,9 @@ def _execute_case_import(rows, user, default_facility_id=None, default_malnutrit
                     caregiver_phone=str(row_data.get('caregiver_phone') or row_data.get('guardian_phone') or '').strip()[:20],
                     caregiver_relationship=row_data.get('caregiver_relationship', '') or None,
                     address=row_data.get('community', '') or row_data.get('address', '') or None,
-                    weight_kg=float(row_data.get('weight_kg', 0)) if row_data.get('weight_kg') else 0,
-                    muac_cm=float(row_data.get('muac_cm', 0)) if row_data.get('muac_cm') else None,
-                    height_cm=float(row_data.get('height_cm', 0)) if row_data.get('height_cm') else 0,
+                    weight_kg=float(row_data.get('weight_kg')) if row_data.get('weight_kg') else None,
+                    muac_cm=float(row_data.get('muac_cm')) if row_data.get('muac_cm') else None,
+                    height_cm=float(row_data.get('height_cm')) if row_data.get('height_cm') else None,
                     oedema=row_data.get('oedema', '') or None,
                     # Extended fields
                     mam_type=row_data.get('mam_type', '') or None,

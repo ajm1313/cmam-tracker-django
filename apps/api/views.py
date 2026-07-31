@@ -792,9 +792,21 @@ def record_visit_api(request, registration_id):
     if denied:
         return denied
 
-    data = request.data
+    # Convert empty strings to None so blank numeric fields become NULL
+    data = {k: v for k, v in request.data.items() if v != ''}
     next_number = case.visits.count() + 1
-    
+
+    outcome = data.get('visit_outcome', 'Continue')
+    if outcome not in ('Absent', 'Defaulted'):
+        if not data.get('weight_kg'):
+            return Response({'success': False, 'message': 'Weight is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not data.get('muac_cm'):
+            return Response({'success': False, 'message': 'MUAC is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not data.get('appetite'):
+            return Response({'success': False, 'message': 'Appetite Test is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if next_number in (4, 8, 12, 16) and (not data.get('height_cm') or not data.get('z_score_wfh')):
+            return Response({'success': False, 'message': 'Height and W/H Z-Score are required for anthropometry visits.'}, status=status.HTTP_400_BAD_REQUEST)
+
     visit = OpcVisit.objects.create(
         registration=case,
         visit_number=next_number,
@@ -1538,6 +1550,19 @@ def visit_edit_api(request, registration_id, visit_id):
             logging.getLogger(__name__).warning(f"Conflict detection parse error on visit edit: {e}")
 
     data = request.data
+
+    # Validate required fields unless the visit outcome is Absent or Defaulted
+    outcome = data.get('visit_outcome', visit.visit_outcome)
+    if outcome not in ('Absent', 'Defaulted'):
+        if not data.get('weight_kg', visit.weight_kg):
+            return Response({'success': False, 'message': 'Weight is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not data.get('muac_cm', visit.muac_cm):
+            return Response({'success': False, 'message': 'MUAC is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not data.get('appetite', visit.appetite):
+            return Response({'success': False, 'message': 'Appetite Test is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if visit.visit_number in (4, 8, 12, 16) and (not data.get('height_cm', visit.height_cm) or not data.get('z_score_wfh', visit.z_score_wfh)):
+            return Response({'success': False, 'message': 'Height and W/H Z-Score are required for anthropometry visits.'}, status=status.HTTP_400_BAD_REQUEST)
+
     # Capture old commodity values for stock adjustment
     old_rutf = visit.rutf_sachets_given or 0
     old_csb = float(visit.csb_plus_given or 0)
@@ -1559,10 +1584,13 @@ def visit_edit_api(request, registration_id, visit_id):
         'food_product_type', 'food_product_quantity', 'staff_name', 'medical_notes',
         'general_condition', 'complications_notes', 'counseling_topics',
         'caregiver_understanding', 'next_visit_date', 'treatment_response',
-        'home_visit_notes', 'community_volunteer',
+        'home_visit_date', 'home_visit_notes', 'community_volunteer', 'remarks',
     ]
     bool_fields = ['weight_lost', 'dehydrated', 'anaemia_palmar_pallor', 'skin_infection',
-                   'has_complications', 'action_needed', 'home_visit_needed']
+                   'has_complications', 'action_needed', 'home_visit_needed',
+                   'intractable_vomiting', 'convulsions', 'lethargic_or_not_alert',
+                   'unconscious', 'chest_indrawing', 'severe_dehydration',
+                   'very_pale_or_severe_palmar_pallor']
 
     for f in fields:
         if f in data:

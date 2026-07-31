@@ -39,6 +39,7 @@
             </div>
             <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md">Filter</button>
         </form>
+        {% if request.user.can_import_export %}
         <div class="flex items-center gap-2 mt-4">
             <span class="text-sm text-gray-500">Download:</span>
             <a href="{% url 'inventory:export_stock_requests' %}?format=excel&status={{ selected_status }}" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-md text-sm flex items-center">
@@ -50,6 +51,7 @@
                 CSV
             </a>
         </div>
+        {% endif %}
     </div>
 
     <!-- Requests Table -->

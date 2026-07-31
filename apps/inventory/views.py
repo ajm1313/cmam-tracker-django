@@ -1670,6 +1670,8 @@ def bulk_request_action(request):
 @login_required
 def export_stock_requests(request):
     """Export stock requests to Excel or CSV."""
+    if not request.user.can_import_export():
+        return HttpResponse('You do not have permission to export data.', status=403, content_type='text/plain')
     fmt = request.GET.get('format', 'excel')
     status = request.GET.get('status', '')
     user = request.user
