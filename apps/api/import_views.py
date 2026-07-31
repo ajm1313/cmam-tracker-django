@@ -307,13 +307,29 @@ def _execute_case_import(rows, user, default_facility_id=None, default_malnutrit
                 continue
             reg_date = parse_date(row_data.get('registration_date')) or datetime.now().date()
             
+            # Resolve age_months: use provided value or compute from date_of_birth
+            age_months_val = row_data.get('age_months')
+            if age_months_val:
+                try:
+                    age_months = int(float(str(age_months_val).strip()))
+                except (ValueError, TypeError):
+                    age_months = None
+            else:
+                age_months = None
+            if age_months is None and dob:
+                age_months = (reg_date.year - dob.year) * 12 + (reg_date.month - dob.month)
+                if reg_date.day < dob.day:
+                    age_months -= 1
+                if age_months < 0:
+                    age_months = 0
+            
             # Use savepoint so a single row failure doesn't abort the whole import
             with transaction.atomic():
                 case = OpcRegistration.objects.create(
                     child_name=str(row_data.get('child_name') or '').strip(),
                     child_gender=str(row_data.get('child_gender') or 'Male').strip(),
                     date_of_birth=dob,
-                    age_months=int(float(row_data.get('age_months') or 0)) if row_data.get('age_months') else 0,
+                    age_months=age_months,
                     facility=facility,
                     registration_date=reg_date,
                     admission_date=parse_date(row_data.get('admission_date')) or reg_date,
