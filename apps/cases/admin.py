@@ -1,14 +1,5 @@
 from django.contrib import admin
-from .models import Patient, OpcRegistration, OpcVisit, SamCase, MamCase, IpcCase, CaseTask, WorkflowTemplate
-
-
-@admin.register(Patient)
-class PatientAdmin(admin.ModelAdmin):
-    list_display = ('patient_id', 'first_name', 'last_name', 'gender', 'date_of_birth', 'facility', 'is_active')
-    list_filter = ('is_active', 'gender', 'facility')
-    search_fields = ('patient_id', 'first_name', 'last_name', 'caregiver_name')
-    ordering = ('-created_at',)
-    raw_id_fields = ('facility',)
+from .models import OpcRegistration, OpcVisit, IpcCase, CaseTask, WorkflowTemplate
 
 
 @admin.register(OpcRegistration)
@@ -29,24 +20,6 @@ class OpcVisitAdmin(admin.ModelAdmin):
     ordering = ('-visit_date',)
     raw_id_fields = ('registration', 'conducted_by', 'created_by', 'updated_by')
     date_hierarchy = 'visit_date'
-
-
-@admin.register(SamCase)
-class SamCaseAdmin(admin.ModelAdmin):
-    list_display = ('patient_name', 'facility', 'admission_date', 'weight', 'muac', 'status')
-    list_filter = ('status', 'facility', 'admission_date')
-    search_fields = ('patient_name',)
-    ordering = ('-admission_date',)
-    raw_id_fields = ('facility',)
-
-
-@admin.register(MamCase)
-class MamCaseAdmin(admin.ModelAdmin):
-    list_display = ('patient_name', 'facility', 'admission_date', 'weight', 'muac', 'status')
-    list_filter = ('status', 'facility', 'admission_date')
-    search_fields = ('patient_name',)
-    ordering = ('-admission_date',)
-    raw_id_fields = ('facility',)
 
 
 @admin.register(IpcCase)

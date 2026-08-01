@@ -4,36 +4,6 @@ from django.conf import settings
 from datetime import datetime, timedelta
 
 
-class Patient(TimeStampedModel):
-    """Patient model matching Laravel Patient"""
-    
-    GENDER_CHOICES = [
-        ('M', 'Male'),
-        ('F', 'Female'),
-    ]
-    
-    patient_id = models.CharField(max_length=50, unique=True)
-    first_name = models.CharField(max_length=255)
-    last_name = models.CharField(max_length=255)
-    date_of_birth = models.DateField()
-    gender = models.CharField(max_length=1, choices=GENDER_CHOICES)
-    caregiver_name = models.CharField(max_length=255)
-    caregiver_phone = models.CharField(max_length=20, null=True, blank=True)
-    address = models.TextField()
-    village = models.CharField(max_length=255, null=True, blank=True)
-    facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE, related_name='patients')
-    is_active = models.BooleanField(default=True)
-    
-    class Meta:
-        db_table = 'patients'
-        verbose_name = 'Patient'
-        verbose_name_plural = 'Patients'
-        ordering = ['-created_at']
-    
-    def __str__(self):
-        return f"{self.first_name} {self.last_name} ({self.patient_id})"
-
-
 class OpcRegistration(TimeStampedModel):
     """OPC Registration model matching Laravel OpcRegistration"""
     
@@ -426,68 +396,6 @@ class OpcVisit(TimeStampedModel):
         """Check if visit shows improvement"""
         weight_change = self.get_weight_change()
         return weight_change and weight_change > 0
-
-
-class SamCase(TimeStampedModel):
-    """SAM Case model matching Laravel SamCase"""
-    
-    STATUS_CHOICES = [
-        ('Admitted', 'Admitted'),
-        ('Discharged', 'Discharged'),
-        ('Death', 'Death'),
-        ('Defaulted', 'Defaulted'),
-        ('Transfer', 'Transfer'),
-    ]
-    
-    facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE, related_name='sam_cases')
-    patient_name = models.CharField(max_length=255)
-    patient_age = models.IntegerField()
-    gender = models.CharField(max_length=10)
-    admission_date = models.DateField()
-    weight = models.DecimalField(max_digits=5, decimal_places=2)
-    height = models.DecimalField(max_digits=5, decimal_places=1)
-    muac = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
-    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='Admitted')
-    
-    class Meta:
-        db_table = 'sam_cases'
-        verbose_name = 'SAM Case'
-        verbose_name_plural = 'SAM Cases'
-        ordering = ['-admission_date']
-    
-    def __str__(self):
-        return f"{self.patient_name} - SAM"
-
-
-class MamCase(TimeStampedModel):
-    """MAM Case model matching Laravel MamCase"""
-    
-    STATUS_CHOICES = [
-        ('Admitted', 'Admitted'),
-        ('Discharged', 'Discharged'),
-        ('Death', 'Death'),
-        ('Defaulted', 'Defaulted'),
-        ('Transfer', 'Transfer'),
-    ]
-    
-    facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE, related_name='mam_cases')
-    patient_name = models.CharField(max_length=255)
-    patient_age = models.IntegerField()
-    gender = models.CharField(max_length=10)
-    admission_date = models.DateField()
-    weight = models.DecimalField(max_digits=5, decimal_places=2)
-    height = models.DecimalField(max_digits=5, decimal_places=1)
-    muac = models.DecimalField(max_digits=4, decimal_places=1, null=True, blank=True)
-    status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='Admitted')
-    
-    class Meta:
-        db_table = 'mam_cases'
-        verbose_name = 'MAM Case'
-        verbose_name_plural = 'MAM Cases'
-        ordering = ['-admission_date']
-    
-    def __str__(self):
-        return f"{self.patient_name} - MAM"
 
 
 class IpcCase(TimeStampedModel):

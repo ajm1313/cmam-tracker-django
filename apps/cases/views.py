@@ -7,7 +7,7 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.core.paginator import Paginator
 from datetime import timedelta, date
-from .models import OpcRegistration, OpcVisit, SamCase, MamCase, IpcCase, CaseTask
+from .models import OpcRegistration, OpcVisit, IpcCase, CaseTask
 from apps.inventory.stock_utils import deduct_stock_for_registration, deduct_stock_for_visit, reverse_stock_for_registration, reverse_stock_for_visit
 from django.http import HttpResponseForbidden
 
