@@ -706,6 +706,11 @@ def visit_form(request, registration_id):
     if request.method == 'POST':
         # Handle visit submission
         try:
+            # Duplicate check: prevent multiple visits on the same date
+            visit_date = request.POST.get('visit_date')
+            if visit_date and case.visits.filter(visit_date=visit_date).exists():
+                raise ValueError('A visit for this case has already been recorded on this date.')
+
             if visit_type == 'SAM':
                 # Parse boolean fields from Y/N values for SAM
                 weight_lost = request.POST.get('weight_lost') == 'Y'

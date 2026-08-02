@@ -917,6 +917,12 @@ def record_visit_api(request, registration_id):
     last_visit = case.visits.order_by('-visit_number').first()
     next_number = (last_visit.visit_number + 1) if last_visit else 1
 
+    # Duplicate check: prevent multiple visits on the same date for the same case
+    visit_date = data.get('visit_date') or timezone.now().date().isoformat()
+    existing = case.visits.filter(visit_date=visit_date).exists()
+    if existing:
+        return Response({'success': False, 'message': 'A visit for this case has already been recorded on this date.'}, status=status.HTTP_400_BAD_REQUEST)
+
     outcome = data.get('visit_outcome', 'Continue')
     if outcome not in ('Absent', 'Defaulted'):
         if not data.get('weight_kg'):
