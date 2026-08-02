@@ -501,6 +501,9 @@ function toggleRutfGuide() {
 
 // Auto-calculate on weight change
 const weightField = document.getElementById('sam_visit_weight');
+const weightLostSelect = document.querySelector('select[name="weight_lost"]');
+// Previous weight: registration weight for visit 1, last visit weight for visit 2+
+const previousWeight = {% if last_visit and last_visit.weight_kg %}{{ last_visit.weight_kg }}{% else %}{{ reference_weight }}{% endif %};
 if (weightField) {
     weightField.addEventListener('input', function() {
         const w = parseFloat(this.value);
@@ -511,6 +514,10 @@ if (weightField) {
             document.getElementById('rutfSachetsGiven').value = sachets;
         } else {
             suggestion.textContent = '';
+        }
+        // Auto-set weight_lost based on comparison with previous weight
+        if (weightLostSelect && !isNaN(w) && previousWeight) {
+            weightLostSelect.value = w < previousWeight ? 'Y' : 'N';
         }
         checkVisitActions(); // ponytail: check on weight change
     });
