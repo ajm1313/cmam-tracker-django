@@ -1444,7 +1444,9 @@ def case_edit_api(request, pk):
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def case_delete_api(request, pk):
-    """Soft-delete a case (set status to Discharged)"""
+    """Soft-delete a case (set status to Discharged) — super admin only"""
+    if not request.user.is_superuser:
+        return Response({'success': False, 'message': 'Only Super Admin can delete cases.'}, status=status.HTTP_403_FORBIDDEN)
     try:
         case = OpcRegistration.objects.get(pk=pk)
     except OpcRegistration.DoesNotExist:
@@ -1470,6 +1472,34 @@ def case_delete_api(request, pk):
     case.updated_by = request.user
     case.save()
     return Response({'success': True, 'message': 'Case closed successfully'})
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def case_hard_delete_api(request, pk):
+    """Permanently delete a case and all its visits — super admin only"""
+    if not request.user.is_superuser:
+        return Response({'success': False, 'message': 'Only Super Admin can permanently delete cases.'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        case = OpcRegistration.objects.get(pk=pk)
+    except OpcRegistration.DoesNotExist:
+        return Response({'success': False, 'message': 'Case not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    denied = _check_case_access_api(request, case)
+    if denied:
+        return denied
+
+    try:
+        reverse_stock_for_registration(case, user=request.user)
+        for visit in case.visits.all():
+            reverse_stock_for_visit(visit, user=request.user)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Stock reversal failed for case {case.id}: {e}")
+
+    child_name = case.child_name
+    case.delete()
+    return Response({'success': True, 'message': f'Case "{child_name}" permanently deleted'})
 
 
 @api_view(['GET'])
@@ -1827,7 +1857,9 @@ def visit_edit_api(request, registration_id, visit_id):
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def visit_delete_api(request, registration_id, visit_id):
-    """Delete a visit and reverse its stock deductions."""
+    """Delete a visit and reverse its stock deductions (super admin only)."""
+    if not request.user.is_superuser:
+        return Response({'success': False, 'message': 'Only Super Admin can delete visits.'}, status=status.HTTP_403_FORBIDDEN)
     try:
         visit = OpcVisit.objects.get(pk=visit_id, registration_id=registration_id)
     except OpcVisit.DoesNotExist:

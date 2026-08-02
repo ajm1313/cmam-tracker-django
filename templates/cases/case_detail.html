@@ -21,6 +21,12 @@
                 <button type="submit" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">Close</button>
             </form>
             {% endif %}
+            {% if request.user.is_superuser %}
+            <form method="post" action="{% url 'cases:case_hard_delete' case.pk %}" class="inline" onsubmit="return confirm('PERMANENTLY DELETE this case and ALL its visits? This cannot be undone.')">
+                {% csrf_token %}
+                <button type="submit" class="bg-red-700 hover:bg-red-900 text-white font-bold py-2 px-4 rounded">Delete</button>
+            </form>
+            {% endif %}
             {% if request.user.is_superuser and case.status == 'Discharged' %}
             <form method="post" action="{% url 'cases:case_reverse_discharge' case.pk %}" class="inline" onsubmit="return confirm('Reverse discharge and reactivate this case?')">
                 {% csrf_token %}
@@ -371,6 +377,9 @@
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Weight</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">MUAC</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Notes</th>
+                        {% if request.user.is_superuser %}
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                        {% endif %}
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
@@ -380,10 +389,18 @@
                         <td class="px-6 py-4 whitespace-nowrap">{{ visit.weight_kg|default:"N/A" }} kg</td>
                         <td class="px-6 py-4 whitespace-nowrap">{{ visit.muac_cm|default:"N/A" }} cm</td>
                         <td class="px-6 py-4">{{ visit.medical_notes|default:"No notes"|truncatewords:10 }}</td>
+                        {% if request.user.is_superuser %}
+                        <td class="px-6 py-4 whitespace-nowrap" onclick="event.stopPropagation()">
+                            <form method="post" action="{% url 'cases:visit_delete' visit.pk %}" class="inline" onsubmit="return confirm('Delete this visit? This cannot be undone.')">
+                                {% csrf_token %}
+                                <button type="submit" class="text-red-600 hover:text-red-800 text-sm font-medium">Delete</button>
+                            </form>
+                        </td>
+                        {% endif %}
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="4" class="px-6 py-4 text-center text-gray-500">No visits recorded yet</td>
+                        <td colspan="{% if request.user.is_superuser %}5{% else %}4{% endif %}" class="px-6 py-4 text-center text-gray-500">No visits recorded yet</td>
                     </tr>
                     {% endfor %}
                 </tbody>

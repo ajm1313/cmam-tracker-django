@@ -61,6 +61,7 @@ urlpatterns = [
     path('v1/cases/<int:pk>/', views.case_detail_api, name='case_detail'),
     path('v1/cases/<int:pk>/edit/', views.case_edit_api, name='case_edit'),
     path('v1/cases/<int:pk>/delete/', views.case_delete_api, name='case_delete'),
+    path('v1/cases/<int:pk>/hard-delete/', views.case_hard_delete_api, name='case_hard_delete'),
     path('v1/cases/<int:pk>/discharge/', views.process_discharge_api, name='process_discharge'),
     path('v1/cases/<int:pk>/reverse-discharge/', views.reverse_discharge_api, name='reverse_discharge'),
 

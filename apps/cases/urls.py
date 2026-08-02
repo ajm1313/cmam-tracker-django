@@ -10,6 +10,7 @@ urlpatterns = [
     path('manage/cases/<int:pk>/', views.case_detail, name='case_detail'),
     path('manage/cases/<int:pk>/edit/', views.case_edit, name='case_edit'),
     path('manage/cases/<int:pk>/delete/', views.case_delete, name='case_delete'),
+    path('manage/cases/<int:pk>/hard-delete/', views.case_hard_delete, name='case_hard_delete'),
     path('manage/cases/<int:pk>/reverse-discharge/', views.case_reverse_discharge, name='case_reverse_discharge'),
     
     # Visit Management
@@ -17,6 +18,7 @@ urlpatterns = [
     path('manage/visits/<int:registration_id>/record/', views.visit_form, name='visit_form'),
     path('manage/visits/<int:registration_id>/history/', views.view_visits, name='view_visits'),
     path('manage/visits/<int:visit_id>/edit/', views.visit_edit, name='visit_edit'),
+    path('manage/visits/<int:visit_id>/delete/', views.visit_delete, name='visit_delete'),
     
     # Discharge Management
     path('manage/discharge/', views.discharge_management, name='discharge_management'),

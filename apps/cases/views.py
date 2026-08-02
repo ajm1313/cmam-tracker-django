@@ -586,6 +586,52 @@ def case_delete(request, pk):
 
 
 @login_required
+def case_hard_delete(request, pk):
+    """Permanently delete a case and all its visits (super admin only)"""
+    if not request.user.is_superuser:
+        messages.error(request, 'Only Super Admin can permanently delete a case')
+        return redirect('cases:case_list')
+    case = get_object_or_404(OpcRegistration, pk=pk)
+
+    if request.method == 'POST':
+        try:
+            reverse_stock_for_registration(case, user=request.user)
+            for visit in case.visits.all():
+                reverse_stock_for_visit(visit, user=request.user)
+        except Exception as e:
+            messages.warning(request, f'Stock reversal failed: {str(e)}')
+        child_name = case.child_name
+        case.delete()
+        messages.success(request, f'Case "{child_name}" permanently deleted')
+        return redirect('cases:case_list')
+
+    context = {'case': case}
+    return render(request, 'cases/case_confirm_delete.html', context)
+
+
+@login_required
+def visit_delete(request, visit_id):
+    """Delete a visit and reverse its stock deductions (super admin only)"""
+    if not request.user.is_superuser:
+        messages.error(request, 'Only Super Admin can delete a visit')
+        return redirect('cases:case_list')
+    visit = get_object_or_404(OpcVisit, pk=visit_id)
+    case = visit.registration
+
+    if request.method == 'POST':
+        try:
+            reverse_stock_for_visit(visit, user=request.user)
+        except Exception as e:
+            messages.warning(request, f'Stock reversal failed: {str(e)}')
+        visit.delete()
+        messages.success(request, 'Visit deleted successfully')
+        return redirect('cases:case_detail', pk=case.pk)
+
+    context = {'visit': visit, 'case': case}
+    return render(request, 'cases/visit_confirm_delete.html', context)
+
+
+@login_required
 def case_reverse_discharge(request, pk):
     """Reverse a discharged case back to active. Superadmin only."""
     if not request.user.is_superuser:
