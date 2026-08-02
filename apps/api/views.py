@@ -961,7 +961,7 @@ def record_visit_api(request, registration_id):
             general_condition=data.get('general_condition', ''),
             has_complications=data.get('has_complications', False),
             complications_notes=data.get('complications_notes', ''),
-            medical_notes=data.get('medical_notes', ''),
+            medical_notes=data.get('medical_notes', '') or data.get('remarks', ''),
             rutf_sachets_given=data.get('rutf_sachets_given'),
             csb_plus_given=data.get('csb_plus_given'),
             oil_given=data.get('oil_given'),
@@ -1731,7 +1731,7 @@ def visit_edit_api(request, registration_id, visit_id):
         'food_product_type', 'food_product_quantity', 'staff_name', 'medical_notes',
         'general_condition', 'complications_notes', 'counseling_topics',
         'caregiver_understanding', 'next_visit_date', 'treatment_response',
-        'home_visit_date', 'home_visit_notes', 'community_volunteer', 'remarks',
+        'home_visit_date', 'home_visit_notes', 'community_volunteer',
     ]
     bool_fields = ['weight_lost', 'dehydrated', 'anaemia_palmar_pallor', 'skin_infection',
                    'has_complications', 'action_needed', 'home_visit_needed',
@@ -1742,6 +1742,11 @@ def visit_edit_api(request, registration_id, visit_id):
     for f in fields:
         if f in data:
             setattr(visit, f, data[f] if data[f] != '' else None)
+    # Map remarks → medical_notes (no remarks field on model)
+    if 'remarks' in data:
+        remarks_val = data['remarks'] if data['remarks'] != '' else None
+        if remarks_val and not data.get('medical_notes'):
+            visit.medical_notes = remarks_val
     for f in bool_fields:
         if f in data:
             setattr(visit, f, bool(data[f]))
