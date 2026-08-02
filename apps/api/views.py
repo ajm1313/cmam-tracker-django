@@ -914,7 +914,8 @@ def record_visit_api(request, registration_id):
 
     # Convert empty strings to None so blank numeric fields become NULL
     data = {k: v for k, v in request.data.items() if v != ''}
-    next_number = case.visits.count() + 1
+    last_visit = case.visits.order_by('-visit_number').first()
+    next_number = (last_visit.visit_number + 1) if last_visit else 1
 
     outcome = data.get('visit_outcome', 'Continue')
     if outcome not in ('Absent', 'Defaulted'):
@@ -927,67 +928,73 @@ def record_visit_api(request, registration_id):
         if next_number in (4, 8, 12, 16) and (not data.get('height_cm') or not data.get('z_score_wfh')):
             return Response({'success': False, 'message': 'Height and W/H Z-Score are required for anthropometry visits.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    visit = OpcVisit.objects.create(
-        registration=case,
-        visit_number=next_number,
-        visit_date=data.get('visit_date', timezone.now().date()),
-        visit_type=data.get('visit_type', 'Routine'),
-        weight_kg=data.get('weight_kg'),
-        weight_lost=data.get('weight_lost', False),
-        height_cm=data.get('height_cm'),
-        muac_cm=data.get('muac_cm'),
-        z_score_wfh=data.get('z_score_wfh'),
-        oedema=data.get('oedema', ''),
-        diarrhoea_days=data.get('diarrhoea_days'),
-        vomiting_days=data.get('vomiting_days'),
-        fever_days=data.get('fever_days'),
-        cough_days=data.get('cough_days'),
-        temperature=data.get('temperature'),
-        respiratory_rate=data.get('respiratory_rate'),
-        dehydrated=data.get('dehydrated', False),
-        anaemia_palmar_pallor=data.get('anaemia_palmar_pallor', False),
-        skin_infection=data.get('skin_infection', False),
-        appetite=data.get('appetite') or None,
-        rutf_test=data.get('rutf_test') or None,
-        breastfeeding_status=data.get('breastfeeding_status') or None,
-        general_condition=data.get('general_condition', ''),
-        has_complications=data.get('has_complications', False),
-        complications_notes=data.get('complications_notes', ''),
-        medical_notes=data.get('medical_notes', ''),
-        rutf_sachets_given=data.get('rutf_sachets_given'),
-        csb_plus_given=data.get('csb_plus_given'),
-        oil_given=data.get('oil_given'),
-        other_supplies=data.get('other_supplies', ''),
-        other_medication=data.get('other_medication', ''),
-        food_product_type=data.get('food_product_type', ''),
-        food_product_quantity=data.get('food_product_quantity', ''),
-        staff_name=data.get('staff_name', ''),
-        z_score_wfa=data.get('z_score_wfa'),
-        z_score_hfa=data.get('z_score_hfa'),
-        counseling_topics=data.get('counseling_topics', ''),
-        caregiver_understanding=data.get('caregiver_understanding', ''),
-        next_visit_date=data.get('next_visit_date'),
-        treatment_response=data.get('treatment_response', ''),
-        action_needed=data.get('action_needed', False),
-        home_visit_needed=data.get('home_visit_needed', False),
-        home_visit_date=data.get('home_visit_date'),
-        home_visit_notes=data.get('home_visit_notes', ''),
-        community_volunteer=data.get('community_volunteer', ''),
-        visit_outcome=data.get('visit_outcome', 'Continue'),
-        outcome_notes=data.get('outcome_notes', ''),
-        conducted_by=request.user,
-        created_by=request.user,
-    )
+    try:
+        visit = OpcVisit.objects.create(
+            registration=case,
+            visit_number=next_number,
+            visit_date=data.get('visit_date', timezone.now().date()),
+            visit_type=data.get('visit_type', 'Routine'),
+            weight_kg=data.get('weight_kg'),
+            weight_lost=data.get('weight_lost', False),
+            height_cm=data.get('height_cm'),
+            muac_cm=data.get('muac_cm'),
+            z_score_wfh=data.get('z_score_wfh'),
+            oedema=data.get('oedema', ''),
+            diarrhoea_days=data.get('diarrhoea_days'),
+            vomiting_days=data.get('vomiting_days'),
+            fever_days=data.get('fever_days'),
+            cough_days=data.get('cough_days'),
+            temperature=data.get('temperature'),
+            respiratory_rate=data.get('respiratory_rate'),
+            dehydrated=data.get('dehydrated', False),
+            anaemia_palmar_pallor=data.get('anaemia_palmar_pallor', False),
+            skin_infection=data.get('skin_infection', False),
+            appetite=data.get('appetite') or None,
+            rutf_test=data.get('rutf_test') or None,
+            breastfeeding_status=data.get('breastfeeding_status') or None,
+            general_condition=data.get('general_condition', ''),
+            has_complications=data.get('has_complications', False),
+            complications_notes=data.get('complications_notes', ''),
+            medical_notes=data.get('medical_notes', ''),
+            rutf_sachets_given=data.get('rutf_sachets_given'),
+            csb_plus_given=data.get('csb_plus_given'),
+            oil_given=data.get('oil_given'),
+            other_supplies=data.get('other_supplies', ''),
+            other_medication=data.get('other_medication', ''),
+            food_product_type=data.get('food_product_type', ''),
+            food_product_quantity=data.get('food_product_quantity', ''),
+            staff_name=data.get('staff_name', ''),
+            z_score_wfa=data.get('z_score_wfa'),
+            z_score_hfa=data.get('z_score_hfa'),
+            counseling_topics=data.get('counseling_topics', ''),
+            caregiver_understanding=data.get('caregiver_understanding', ''),
+            next_visit_date=data.get('next_visit_date'),
+            treatment_response=data.get('treatment_response', ''),
+            action_needed=data.get('action_needed', False),
+            home_visit_needed=data.get('home_visit_needed', False),
+            home_visit_date=data.get('home_visit_date'),
+            home_visit_notes=data.get('home_visit_notes', ''),
+            community_volunteer=data.get('community_volunteer', ''),
+            visit_outcome=data.get('visit_outcome', 'Continue'),
+            outcome_notes=data.get('outcome_notes', ''),
+            conducted_by=request.user,
+            created_by=request.user,
+        )
+    except Exception as e:
+        return Response({'success': False, 'message': f'Failed to record visit: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
     
     # Auto-deduct stock for commodities given during visit
+    stock_warning = None
     try:
         deduct_stock_for_visit(visit, user=request.user)
     except Exception as e:
-        visit.delete()
-        return Response({'success': False, 'message': f'Stock deduction failed: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
-    
+        stock_warning = f'Stock deduction failed: {str(e)}'
+
     serializer = OpcVisitSerializer(visit)
-    return Response({'success': True, 'message': 'Visit recorded successfully', 'data': serializer.data},
+    message = 'Visit recorded successfully'
+    if stock_warning:
+        message += f' (Warning: {stock_warning})'
+    return Response({'success': True, 'message': message, 'data': serializer.data},
                     status=status.HTTP_201_CREATED)
 
 
