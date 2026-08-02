@@ -637,23 +637,6 @@ def health_check(request):
         return Response({'status': 'unhealthy'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def dedupe_visits_api(request):
-    """Temporary endpoint to deduplicate visits (same registration + visit_date). Admin only."""
-    if not request.user.is_superuser:
-        return Response({'error': 'Admin only'}, status=status.HTTP_403_FORBIDDEN)
-    from django.core.management import call_command
-    from io import StringIO
-    import sys
-    old_stdout = sys.stdout
-    sys.stdout = output = StringIO()
-    dry_run = request.data.get('dry_run', False)
-    call_command('dedupe_visits', dry_run=dry_run)
-    sys.stdout = old_stdout
-    return Response({'output': output.getvalue()})
-
-
 # ── Cases API ─────────────────────────────────────────────────────────────────
 
 @api_view(['GET'])

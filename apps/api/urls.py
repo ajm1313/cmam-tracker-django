@@ -129,7 +129,4 @@ urlpatterns = [
 
     # Audit Log
     path('v1/audit-log/', views.audit_log_api, name='audit_log'),
-
-    # Temporary: Dedupe visits
-    path('v1/dedupe-visits/', views.dedupe_visits_api, name='dedupe_visits'),
 ]
