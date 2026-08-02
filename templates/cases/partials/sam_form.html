@@ -887,6 +887,10 @@ function toggleStoolFrequency() {
     const stoolDiv = document.getElementById('stool_frequency_div');
     if (stoolDiv) {
         stoolDiv.style.display = (diarrhoea === 'Yes') ? 'block' : 'none';
+        if (diarrhoea !== 'Yes') {
+            const stoolSelect = stoolDiv.querySelector('select[name="stool_frequency"]');
+            if (stoolSelect) stoolSelect.value = '';
+        }
     }
 }
 
@@ -896,6 +900,10 @@ function toggleOedemaDuration() {
     const oedemaDiv = document.getElementById('oedema_duration_div');
     if (oedemaDiv) {
         oedemaDiv.style.display = (oedema && oedema !== 'None') ? 'block' : 'none';
+        if (!oedema || oedema === 'None') {
+            const oedemaInput = oedemaDiv.querySelector('input[name="oedema_duration_days"]');
+            if (oedemaInput) oedemaInput.value = '';
+        }
     }
 }
 
