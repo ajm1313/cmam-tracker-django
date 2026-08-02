@@ -224,6 +224,7 @@ def case_create(request):
                     caregiver_name=request.POST.get('caregiver_name', '').strip(),
                     caregiver_phone=request.POST.get('caregiver_phone', '').strip() or None,
                     caregiver_relationship=request.POST.get('caregiver_relationship') or None,
+                    total_household_members=request.POST.get('total_household_members') or None,
                     address=request.POST.get('community', '').strip() or None,
                     admission_criteria=request.POST.get('enrolment_criteria') or request.POST.get('entry_criteria') or None,
                     admission_type='New Admission',
@@ -435,6 +436,7 @@ def case_edit(request, pk):
             case.caregiver_name = request.POST.get('caregiver_name', '').strip() or case.caregiver_name
             case.caregiver_phone = request.POST.get('caregiver_phone', '').strip() or None
             case.caregiver_relationship = request.POST.get('caregiver_relationship') or None
+            case.total_household_members = request.POST.get('total_household_members') or None
             case.address = request.POST.get('community', '').strip() or None
             case.mam_type = request.POST.get('mam_type') or None
             case.admission_date = request.POST.get('admission_date') or case.admission_date

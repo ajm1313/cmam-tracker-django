@@ -47,6 +47,10 @@ class SuperAdminEditDeleteMiddleware:
 
         path = request.path.lower()
 
+        # API endpoints have their own RBAC checks in views; skip middleware
+        if path.startswith('/api/'):
+            return self.get_response(request)
+
         # Always exempt auth/profile endpoints
         for ex in self.EXEMPT_PATH_PATTERNS:
             if ex in path:

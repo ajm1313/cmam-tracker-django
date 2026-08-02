@@ -68,6 +68,7 @@ urlpatterns = [
     path('v1/cases/<int:registration_id>/visits/', views.case_visits, name='case_visits'),
     path('v1/cases/<int:registration_id>/visits/record/', views.record_visit_api, name='record_visit'),
     path('v1/cases/<int:registration_id>/visits/<int:visit_id>/edit/', views.visit_edit_api, name='visit_edit'),
+    path('v1/cases/<int:registration_id>/visits/<int:visit_id>/delete/', views.visit_delete_api, name='visit_delete'),
 
     # Users
     path('v1/users/', views.users_list_api, name='users_list'),
@@ -114,7 +115,7 @@ urlpatterns = [
     path('v1/import/inventory/execute/', import_views.import_inventory_execute, name='import_inventory_execute'),
 
     # Health check
-    path('health/', views.system_info, name='health'),
+    path('health/', views.health_check, name='health'),
 
     # IPC Cases
     path('v1/ipc/cases/', views.ipc_cases_api, name='ipc_cases'),

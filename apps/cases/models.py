@@ -53,6 +53,7 @@ class OpcRegistration(TimeStampedModel):
     caregiver_name = models.CharField(max_length=255)
     caregiver_phone = models.CharField(max_length=20, null=True, blank=True)
     caregiver_relationship = models.CharField(max_length=100, null=True, blank=True)
+    total_household_members = models.PositiveIntegerField(null=True, blank=True)
     address = models.TextField(null=True, blank=True)
     malnutrition_type = models.CharField(max_length=10, choices=MALNUTRITION_TYPES)
     mam_type = models.CharField(max_length=20, choices=MAM_TYPES, null=True, blank=True)
@@ -255,9 +256,8 @@ class OpcVisit(TimeStampedModel):
     ]
     
     APPETITE_CHOICES = [
-        ('Good', 'Good'),
-        ('Fair', 'Fair'),
-        ('Poor', 'Poor'),
+        ('Pass', 'Pass'),
+        ('Fail', 'Fail'),
     ]
     
     RESPONSE_CHOICES = [

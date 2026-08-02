@@ -23,11 +23,12 @@ from apps.inventory.models import (
 from apps.inventory.stock_utils import deduct_stock_for_registration, deduct_stock_for_visit, reverse_stock_for_registration, reverse_stock_for_visit
 from apps.cases.models import OpcRegistration, OpcVisit, IpcCase, CaseTask
 from apps.locations.models import Region, District, SubDistrict
-from django.db.models import Q, Count, Max, Sum, F
+from django.db.models import Q, Count, Max, Sum, F, Case, When, IntegerField
 from .serializers import (
     UserSerializer, FacilitySerializer, InventoryItemSerializer,
     StockLevelSerializer, StockMovementSerializer, ConsumptionSerializer,
-    OpcRegistrationListSerializer, OpcRegistrationDetailSerializer, OpcVisitSerializer
+    OpcRegistrationListSerializer, OpcRegistrationDetailSerializer, OpcVisitSerializer,
+    IpcCaseSerializer,
 )
 
 
@@ -139,6 +140,112 @@ def _detailed_case_stats(cases_qs, date_from, date_to, prev_period_end=None):
         'new_males_6_59': new_males_6_59,
         'new_females_6_59': new_females_6_59,
     }
+
+
+def _per_facility_stats(accessible, report_type, date_from, date_to, prev_period_end=None):
+    """Compute per-facility report stats in bulk using group-by annotation.
+
+    Returns a list of dicts keyed by facility, each containing the same
+    fields as the old per-facility loop but computed in 2 queries
+    (cases + visits) instead of 20+ queries per facility.
+    """
+    # ── Cases grouped by facility ──
+    cases_qs = OpcRegistration.objects.filter(
+        facility__in=accessible, malnutrition_type=report_type
+    )
+
+    new_cond = Q(registration_date__gte=date_from, registration_date__lte=date_to)
+    discharge_cond = Q(discharge_date__gte=date_from, discharge_date__lte=date_to)
+
+    fac_case_stats = cases_qs.values('facility', 'facility__name', 'facility__code').annotate(
+        new_admissions=Count('pk', filter=new_cond),
+        active=Count('pk', filter=Q(status='Active')),
+        cured=Count('pk', filter=Q(status='Discharged', outcome='Cured') & discharge_cond),
+        defaulted=Count('pk', filter=Q(status='Defaulted') & discharge_cond),
+        deaths=Count('pk', filter=Q(status='Death') & discharge_cond),
+        total=Count('pk'),
+        # Detailed: new cases breakdown
+        b1=Count('pk', filter=new_cond & Q(age_months__lt=6)),
+        b2=Count('pk', filter=new_cond & Q(age_months__gte=6, age_months__lte=59) & ~Q(oedema__in=['+', '++', '+++'])),
+        b3=Count('pk', filter=new_cond & Q(age_months__gte=6, age_months__lte=59, oedema__in=['+', '++', '+++'])),
+        c_other=Count('pk', filter=new_cond & Q(age_months__gte=60)),
+        d_old=Count('pk', filter=new_cond & Q(admission_type__in=['Transfer In', 'Readmission'])),
+        # Start of period
+        start_of_period=Count('pk', filter=(
+            Q(registration_date__lte=prev_period_end) if prev_period_end else Q(status='Active')
+        ) & (Q(status='Active') | Q(discharge_date__gte=date_from)) if prev_period_end else Q()),
+        # Discharges detailed
+        f1a=Count('pk', filter=discharge_cond & Q(outcome='Cured', age_months__lt=6)),
+        f1b=Count('pk', filter=discharge_cond & Q(outcome='Cured', age_months__gte=6, age_months__lte=59)),
+        f2a=Count('pk', filter=discharge_cond & Q(status='Death', age_months__lt=6)),
+        f2b=Count('pk', filter=discharge_cond & Q(status='Death', age_months__gte=6, age_months__lte=59)),
+        f3a=Count('pk', filter=discharge_cond & Q(status='Defaulted', age_months__lt=6)),
+        f3b=Count('pk', filter=discharge_cond & Q(status='Defaulted', age_months__gte=6, age_months__lte=59)),
+        f4a=Count('pk', filter=discharge_cond & Q(outcome='Non-Response', age_months__lt=6)),
+        f4b=Count('pk', filter=discharge_cond & Q(outcome='Non-Response', age_months__gte=6, age_months__lte=59)),
+        g_referrals=Count('pk', filter=discharge_cond & Q(status='Transfer')),
+        h_other_exits=Count('pk', filter=discharge_cond & Q(age_months__gte=60)),
+        # Gender
+        new_males_under6=Count('pk', filter=new_cond & Q(child_gender='Male', age_months__lt=6)),
+        new_females_under6=Count('pk', filter=new_cond & Q(child_gender='Female', age_months__lt=6)),
+        new_males_6_59=Count('pk', filter=new_cond & Q(child_gender='Male', age_months__gte=6, age_months__lte=59)),
+        new_females_6_59=Count('pk', filter=new_cond & Q(child_gender='Female', age_months__gte=6, age_months__lte=59)),
+    )
+
+    # ── Visits grouped by facility (via registration) ──
+    fac_visit_stats = OpcVisit.objects.filter(
+        registration__facility__in=accessible,
+        registration__malnutrition_type=report_type,
+        visit_date__gte=date_from, visit_date__lte=date_to,
+    ).values('registration__facility').annotate(
+        total_visits=Count('pk'),
+    )
+    visit_map = {v['registration__facility']: v['total_visits'] for v in fac_visit_stats}
+
+    facility_data = []
+    for row in fac_case_stats:
+        fac_id = row['facility']
+        e = row['b1'] + row['b2'] + row['b3'] + row['c_other'] + row['d_old']
+        f_total = row['f1a'] + row['f1b'] + row['f2a'] + row['f2b'] + row['f3a'] + row['f3b'] + row['f4a'] + row['f4b']
+        i_total = f_total + row['g_referrals'] + row['h_other_exits']
+        j_end = row['start_of_period'] + e - i_total
+
+        facility_data.append({
+            'facility_name': row['facility__name'],
+            'facility_code': row['facility__code'],
+            'new_admissions': row['new_admissions'],
+            'total_visits': visit_map.get(fac_id, 0),
+            'active': row['active'],
+            'cured': row['cured'],
+            'defaulted': row['defaulted'],
+            'deaths': row['deaths'],
+            'start_of_period': row['start_of_period'],
+            'new_cases_under6_at_risk': row['b1'],
+            'new_cases_6_59_muac': row['b2'],
+            'new_cases_6_59_oedema': row['b3'],
+            'other_new_cases': row['c_other'],
+            'old_cases': row['d_old'],
+            'total_enrolment': e,
+            'cured_under6': row['f1a'],
+            'cured_6_59': row['f1b'],
+            'died_under6': row['f2a'],
+            'died_6_59': row['f2b'],
+            'defaulted_under6': row['f3a'],
+            'defaulted_6_59': row['f3b'],
+            'non_recovered_under6': row['f4a'],
+            'non_recovered_6_59': row['f4b'],
+            'total_discharges': f_total,
+            'referrals': row['g_referrals'],
+            'other_exits': row['h_other_exits'],
+            'total_exits': i_total,
+            'end_of_period': j_end,
+            'new_males_under6': row['new_males_under6'],
+            'new_females_under6': row['new_females_under6'],
+            'new_males_6_59': row['new_males_6_59'],
+            'new_females_6_59': row['new_females_6_59'],
+        })
+
+    return facility_data
 
 
 @api_view(['POST'])
@@ -518,6 +625,18 @@ def system_info(request):
     })
 
 
+@api_view(['GET'])
+@permission_classes([])
+def health_check(request):
+    """Lightweight health check — does not expose system details."""
+    from django.db import connection
+    try:
+        connection.ensure_connection()
+        return Response({'status': 'healthy'})
+    except Exception:
+        return Response({'status': 'unhealthy'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
 # ── Cases API ─────────────────────────────────────────────────────────────────
 
 @api_view(['GET'])
@@ -646,6 +765,7 @@ def case_create_api(request):
         caregiver_name=data.get('caregiver_name', ''),
         caregiver_phone=data.get('caregiver_phone', ''),
         caregiver_relationship=data.get('caregiver_relationship', ''),
+        total_household_members=data.get('total_household_members'),
         address=data.get('address', ''),
         malnutrition_type=data['malnutrition_type'],
         mam_type=data.get('mam_type', ''),
@@ -995,6 +1115,7 @@ def password_reset_request(request):
     except Exception as e:
         import logging
         logging.getLogger(__name__).error(f"Password reset email failed for {email}: {e}")
+        return Response({'success': False, 'message': 'Could not send reset email. Please try again or contact support.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     return Response({'success': True, 'message': 'If that email exists, a reset link has been sent.'})
 
@@ -1059,6 +1180,7 @@ def dashboard_stats(request):
     # Period filter
     month = request.query_params.get('month')
     year = request.query_params.get('year')
+    period_qs = qs  # period-specific queryset (for new admissions, discharges)
     if year:
         try:
             y = int(year)
@@ -1070,18 +1192,15 @@ def dashboard_stats(request):
                 period_start = date(y, 1, 1)
                 period_end = date(y + 1, 1, 1)
             month_start = period_start
-            qs = qs.filter(
-                Q(registration_date__gte=period_start, registration_date__lt=period_end) |
-                Q(status='Active')
-            )
+            period_qs = qs.filter(registration_date__gte=period_start, registration_date__lt=period_end)
         except (ValueError, TypeError):
             pass
     else:
         now = timezone.now()
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     
-    total_sam = qs.filter(malnutrition_type='SAM').count()
-    total_mam = qs.filter(malnutrition_type='MAM').count()
+    total_sam = period_qs.filter(malnutrition_type='SAM').count()
+    total_mam = period_qs.filter(malnutrition_type='MAM').count()
     active_sam = qs.filter(malnutrition_type='SAM', status='Active').count()
     active_mam = qs.filter(malnutrition_type='MAM', status='Active').count()
     discharged_month = qs.filter(status='Discharged', discharge_date__gte=month_start).count()
@@ -1241,7 +1360,8 @@ def case_edit_api(request, pk):
         'child_name': 'child_name', 'child_gender': 'child_gender',
         'date_of_birth': 'date_of_birth', 'age_months': 'age_months',
         'caregiver_name': 'caregiver_name', 'caregiver_phone': 'caregiver_phone',
-        'caregiver_relationship': 'caregiver_relationship', 'address': 'address',
+        'caregiver_relationship': 'caregiver_relationship',
+        'total_household_members': 'total_household_members', 'address': 'address',
         'mam_type': 'mam_type', 'admission_criteria': 'admission_criteria',
         'admission_type': 'admission_type', 'admission_date': 'admission_date',
         'registration_date': 'registration_date',
@@ -1332,7 +1452,7 @@ def case_delete_api(request, pk):
         logging.getLogger(__name__).error(f"Stock reversal failed for case {case.id}: {e}")
 
     case.status = 'Discharged'
-    case.outcome = 'Closed'
+    case.outcome = 'Non-Response'
     case.discharge_date = timezone.now().date()
     case.updated_by = request.user
     case.save()
@@ -1351,6 +1471,7 @@ def due_visits_api(request):
     facility_ids = list(accessible.values_list('id', flat=True))
     visit_interval = 7 if visit_type == 'SAM' else 14
     today = timezone.now().date()
+    cutoff = today - timedelta(days=visit_interval)
 
     cases = OpcRegistration.objects.filter(
         facility_id__in=facility_ids, malnutrition_type=visit_type, status='Active'
@@ -1363,7 +1484,10 @@ def due_visits_api(request):
     today_count = 0
 
     for c in cases:
-        next_due = (c.last_visit_date or c.registration_date) + timedelta(days=visit_interval)
+        last_date = c.last_visit_date or c.registration_date
+        if not last_date:
+            continue
+        next_due = last_date + timedelta(days=visit_interval)
         if next_due <= today:
             days_overdue = (today - next_due).days
             due_list.append({
@@ -1417,21 +1541,31 @@ def discharge_stats_api(request):
     cure_rate = round(discharged * 100 / closed, 1) if closed > 0 else 0
 
     today = timezone.now().date()
+    cutoff_14 = today - timedelta(days=14)
     active = all_cases.filter(status='Active').select_related('facility').annotate(
         visit_count=Count('visits'), last_visit_date=Max('visits__visit_date')
     )
 
-    ready = []
+    ready_qs = active.filter(visit_count__gte=2)
+    ready = [{
+        'id': c.id, 'child_name': c.child_name, 'registration_number': c.registration_number,
+        'facility_name': c.facility.name, 'malnutrition_type': c.malnutrition_type,
+        'visit_count': c.visit_count,
+        'last_visit_date': c.last_visit_date.isoformat() if c.last_visit_date else None,
+    } for c in ready_qs]
+
+    # Defaulters: last visit or registration date is older than 14 days
+    defaulters_qs = active.filter(
+        last_visit_date__lte=cutoff_14
+    )
+    # Also include cases with no visits and registration older than 14 days
+    defaulters_no_visit = active.filter(
+        visit_count=0, registration_date__lte=cutoff_14
+    )
     defaulters = []
-    for c in active:
-        if c.visit_count >= 2:
-            ready.append({
-                'id': c.id, 'child_name': c.child_name, 'registration_number': c.registration_number,
-                'facility_name': c.facility.name, 'malnutrition_type': c.malnutrition_type,
-                'visit_count': c.visit_count,
-                'last_visit_date': c.last_visit_date.isoformat() if c.last_visit_date else None,
-            })
-        days_since = (today - (c.last_visit_date or c.registration_date)).days
+    for c in list(defaulters_qs) + list(defaulters_no_visit):
+        last_date = c.last_visit_date or c.registration_date
+        days_since = (today - last_date).days if last_date else 0
         if days_since > 14:
             defaulters.append({
                 'id': c.id, 'child_name': c.child_name, 'registration_number': c.registration_number,
@@ -1670,6 +1804,31 @@ def visit_edit_api(request, registration_id, visit_id):
 
     serializer = OpcVisitSerializer(visit)
     return Response({'success': True, 'message': 'Visit updated', 'data': serializer.data})
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def visit_delete_api(request, registration_id, visit_id):
+    """Delete a visit and reverse its stock deductions."""
+    try:
+        visit = OpcVisit.objects.get(pk=visit_id, registration_id=registration_id)
+    except OpcVisit.DoesNotExist:
+        return Response({'success': False, 'message': 'Visit not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    case = visit.registration
+    denied = _check_case_access_api(request, case)
+    if denied:
+        return denied
+
+    # Reverse stock deductions for this visit
+    try:
+        reverse_stock_for_visit(visit, user=request.user)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Stock reversal failed for visit {visit.id}: {e}")
+
+    visit.delete()
+    return Response({'success': True, 'message': 'Visit deleted successfully'})
 
 
 # ── User Management ──────────────────────────────────────────────────────────
@@ -2338,8 +2497,11 @@ def update_stock_api(request):
     if not all([item_id, facility_id, quantity]):
         return Response({'success': False, 'message': 'item_id, facility_id, quantity required'}, status=status.HTTP_400_BAD_REQUEST)
 
-    if movement_type not in [m[0] for m in StockMovement.MOVEMENT_TYPES] or movement_type == 'TRANSFER':
+    if movement_type not in [m[0] for m in StockMovement.MOVEMENT_TYPES]:
         return Response({'success': False, 'message': 'Invalid movement type'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if movement_type == 'TRANSFER' and not request.data.get('destination_facility_id'):
+        return Response({'success': False, 'message': 'destination_facility_id is required for TRANSFER movements'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         quantity = int(quantity)
@@ -2364,10 +2526,18 @@ def update_stock_api(request):
         return denied
 
     try:
+        dest_facility = facility
+        if movement_type == 'TRANSFER':
+            dest_id = request.data.get('destination_facility_id')
+            dest_facility = Facility.objects.get(pk=dest_id)
+            denied = _check_facility_access_api(request, dest_facility)
+            if denied:
+                return denied
+
         StockMovement.objects.create(
             inventory_item=item, movement_type=movement_type, quantity=quantity,
             source_type='facility', source_facility=facility,
-            destination_type='facility', destination_facility=facility,
+            destination_type='facility', destination_facility=dest_facility,
             notes=request.data.get('notes', ''), created_by=request.user,
             movement_date=timezone.now(),
         )
@@ -2857,6 +3027,24 @@ def weekly_report_api(request):
     date_from = request.query_params.get('date_from')
     date_to = request.query_params.get('date_to')
 
+    today = timezone.now().date()
+    if not date_from:
+        date_from = (today - timedelta(days=today.weekday())).isoformat()
+    if not date_to:
+        date_to = today.isoformat()
+
+    # Validate date params
+    from datetime import datetime as _dt
+    try:
+        _df = _dt.fromisoformat(date_from).date() if isinstance(date_from, str) else date_from
+        _dt_to = _dt.fromisoformat(date_to).date() if isinstance(date_to, str) else date_to
+    except (ValueError, TypeError):
+        return Response({'success': False, 'message': 'Invalid date format. Use YYYY-MM-DD.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+    if _df > _dt_to:
+        return Response({'success': False, 'message': 'date_from cannot be after date_to.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+
     accessible = request.user.get_accessible_facilities()
     if facility_id:
         accessible = accessible.filter(id=facility_id)
@@ -2866,12 +3054,6 @@ def weekly_report_api(request):
         accessible = accessible.filter(district_id=district_id)
     elif region_id:
         accessible = accessible.filter(district__region_id=region_id)
-
-    today = timezone.now().date()
-    if not date_from:
-        date_from = (today - timedelta(days=today.weekday())).isoformat()
-    if not date_to:
-        date_to = today.isoformat()
 
     visits = OpcVisit.objects.filter(
         registration__facility__in=accessible,
@@ -2893,30 +3075,13 @@ def weekly_report_api(request):
     transfers = cases.filter(status='Transfer', discharge_date__gte=date_from, discharge_date__lte=date_to).count()
 
     # Detailed breakdown (B1-B3, C, D, F1a-F4b, gender)
-    from datetime import datetime as _dt
-    _df = _dt.fromisoformat(date_from).date() if isinstance(date_from, str) else date_from
-    _dt_to = _dt.fromisoformat(date_to).date() if isinstance(date_to, str) else date_to
     _prev_end = _df - timedelta(days=1)
     detailed = _detailed_case_stats(cases, _df, _dt_to, _prev_end)
 
-    # Per-facility breakdown
-    facility_data = []
-    for fac in accessible:
-        fac_cases = cases.filter(facility=fac)
-        fac_visits = visits.filter(registration__facility=fac)
-        fac_detailed = _detailed_case_stats(fac_cases, _df, _dt_to, _prev_end)
-        facility_data.append({
-            'facility_name': fac.name, 'facility_code': fac.code,
-            'new_admissions': fac_cases.filter(admission_date__gte=date_from, admission_date__lte=date_to).count(),
-            'total_visits': fac_visits.count(),
-            'active': fac_cases.filter(status='Active').count(),
-            'cured': fac_cases.filter(status='Discharged', outcome='Cured', discharge_date__gte=date_from, discharge_date__lte=date_to).count(),
-            'defaulted': fac_cases.filter(status='Defaulted', discharge_date__gte=date_from, discharge_date__lte=date_to).count(),
-            'deaths': fac_cases.filter(status='Death', discharge_date__gte=date_from, discharge_date__lte=date_to).count(),
-            **fac_detailed,
-        })
+    # Per-facility breakdown (2 queries instead of 20+ per facility)
+    facility_data = _per_facility_stats(accessible, report_type, _df, _dt_to, _prev_end)
 
-    # ── Commodity (RUTF) data for the week ──
+    # ── Commodity (RUTF) data for the week (DB aggregate) ──
     facility_ids = list(accessible.values_list('id', flat=True))
     commodity = {
         'rutf_start': 0,
@@ -2927,53 +3092,54 @@ def weekly_report_api(request):
         'others_issued_mam': 0,
     }
     try:
-        rutf_items = InventoryItem.objects.filter(category='RUTF')
-        for item in rutf_items:
-            stock_levels = StockLevel.objects.filter(
-                inventory_item=item,
-                facility_id__in=facility_ids
-            )
-            commodity['rutf_balance'] += sum(sl.current_stock for sl in stock_levels)
+        rutf_item_ids = list(InventoryItem.objects.filter(category='RUTF').values_list('id', flat=True))
 
-            received = sum(m.quantity for m in StockMovement.objects.filter(
-                inventory_item=item,
-                destination_facility_id__in=facility_ids,
-                movement_type__in=['IN', 'TRANSFER'],
-                movement_date__gte=date_from,
-                movement_date__lte=date_to
-            ))
-            commodity['rutf_received'] += received
+        rutf_balance = StockLevel.objects.filter(
+            inventory_item_id__in=rutf_item_ids, facility_id__in=facility_ids
+        ).aggregate(s=Sum('current_stock'))['s'] or 0
 
-            issued = sum(m.quantity for m in StockMovement.objects.filter(
-                inventory_item=item,
-                source_facility_id__in=facility_ids,
-                movement_type__in=['CONSUMPTION', 'OUT', 'TRANSFER'],
-                movement_date__gte=date_from,
-                movement_date__lte=date_to
-            ))
-            commodity['rutf_start'] += (commodity['rutf_balance'] + issued - received)
+        rutf_received = StockMovement.objects.filter(
+            inventory_item_id__in=rutf_item_ids,
+            destination_facility_id__in=facility_ids,
+            movement_type__in=['IN', 'TRANSFER'],
+            movement_date__gte=date_from, movement_date__lte=date_to,
+        ).aggregate(s=Sum('quantity'))['s'] or 0
+
+        rutf_issued = StockMovement.objects.filter(
+            inventory_item_id__in=rutf_item_ids,
+            source_facility_id__in=facility_ids,
+            movement_type__in=['CONSUMPTION', 'OUT', 'TRANSFER'],
+            movement_date__gte=date_from, movement_date__lte=date_to,
+        ).aggregate(s=Sum('quantity'))['s'] or 0
+
+        commodity['rutf_balance'] = rutf_balance
+        commodity['rutf_received'] = rutf_received
+        commodity['rutf_start'] = rutf_balance + rutf_issued - rutf_received
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Stock start balance calculation failed (SAM): {e}")
 
+    # RUTF/others issued from visits (DB aggregate)
     sam_visits_w = OpcVisit.objects.filter(
         registration__facility_id__in=facility_ids,
         registration__malnutrition_type='SAM',
-        visit_date__gte=date_from,
-        visit_date__lte=date_to
+        visit_date__gte=date_from, visit_date__lte=date_to,
     )
-    commodity['rutf_issued_sam'] = sum(v.rutf_sachets_given or 0 for v in sam_visits_w)
+    commodity['rutf_issued_sam'] = sam_visits_w.aggregate(
+        s=Sum('rutf_sachets_given')
+    )['s'] or 0
 
     mam_visits_w = OpcVisit.objects.filter(
         registration__facility_id__in=facility_ids,
         registration__malnutrition_type='MAM',
-        visit_date__gte=date_from,
-        visit_date__lte=date_to
+        visit_date__gte=date_from, visit_date__lte=date_to,
     )
-    commodity['rutf_issued_mam'] = sum(v.rutf_sachets_given or 0 for v in mam_visits_w)
-    commodity['others_issued_mam'] = sum(
-        (float(v.csb_plus_given or 0) + float(v.oil_given or 0))
-        for v in mam_visits_w
+    commodity['rutf_issued_mam'] = mam_visits_w.aggregate(
+        s=Sum('rutf_sachets_given')
+    )['s'] or 0
+    commodity['others_issued_mam'] = (
+        (mam_visits_w.aggregate(s=Sum('csb_plus_given'))['s'] or 0) +
+        (mam_visits_w.aggregate(s=Sum('oil_given'))['s'] or 0)
     )
 
     return Response({'success': True, 'data': {
@@ -3031,27 +3197,76 @@ def monthly_report_api(request):
         accessible = accessible.filter(district__region_id=region_id)
 
     facility_reports = []
-    for fac in accessible:
-        fac_cases = OpcRegistration.objects.filter(facility=fac)
-        sam_cases = fac_cases.filter(malnutrition_type='SAM')
-        mam_cases = fac_cases.filter(malnutrition_type='MAM')
+    # Per-facility breakdown (2 queries per type instead of 20+ per facility)
+    sam_facility_data = _per_facility_stats(accessible, 'SAM', date_from, date_to, prev_period_end)
+    mam_facility_data = _per_facility_stats(accessible, 'MAM', date_from, date_to, prev_period_end)
 
-        def period_stats(qs):
-            detailed = _detailed_case_stats(qs, date_from, date_to, prev_period_end)
+    # Merge SAM + MAM per facility
+    sam_by_fac = {f['facility_name']: f for f in sam_facility_data}
+    mam_by_fac = {f['facility_name']: f for f in mam_facility_data}
+    all_fac_names = set(list(sam_by_fac.keys()) + list(mam_by_fac.keys()))
+
+    # Build a lookup of facility name -> code from either set
+    fac_code_map = {}
+    for f in sam_facility_data + mam_facility_data:
+        fac_code_map[f['facility_name']] = f['facility_code']
+
+    def _period_stats_from_fac(f):
+        if not f:
             return {
-                'new_admissions': qs.filter(admission_date__gte=date_from, admission_date__lte=date_to).count(),
-                'active': qs.filter(status='Active').count(),
-                'cured': qs.filter(status='Discharged', outcome='Cured', discharge_date__gte=date_from, discharge_date__lte=date_to).count(),
-                'defaulted': qs.filter(status='Defaulted', discharge_date__gte=date_from, discharge_date__lte=date_to).count(),
-                'deaths': qs.filter(status='Death', discharge_date__gte=date_from, discharge_date__lte=date_to).count(),
-                'transfers': qs.filter(status='Transfer', discharge_date__gte=date_from, discharge_date__lte=date_to).count(),
-                'total': qs.count(),
-                **detailed,
+                'new_admissions': 0, 'active': 0, 'cured': 0, 'defaulted': 0,
+                'deaths': 0, 'transfers': 0, 'total': 0,
+                'start_of_period': 0, 'new_cases_under6_at_risk': 0,
+                'new_cases_6_59_muac': 0, 'new_cases_6_59_oedema': 0,
+                'other_new_cases': 0, 'old_cases': 0, 'total_enrolment': 0,
+                'cured_under6': 0, 'cured_6_59': 0, 'died_under6': 0, 'died_6_59': 0,
+                'defaulted_under6': 0, 'defaulted_6_59': 0,
+                'non_recovered_under6': 0, 'non_recovered_6_59': 0,
+                'total_discharges': 0, 'referrals': 0, 'other_exits': 0,
+                'total_exits': 0, 'end_of_period': 0,
+                'new_males_under6': 0, 'new_females_under6': 0,
+                'new_males_6_59': 0, 'new_females_6_59': 0,
             }
+        return {
+            'new_admissions': f['new_admissions'],
+            'active': f['active'],
+            'cured': f['cured'],
+            'defaulted': f['defaulted'],
+            'deaths': f['deaths'],
+            'transfers': f.get('referrals', 0),
+            'total': f.get('total_enrolment', 0),
+            'start_of_period': f['start_of_period'],
+            'new_cases_under6_at_risk': f['new_cases_under6_at_risk'],
+            'new_cases_6_59_muac': f['new_cases_6_59_muac'],
+            'new_cases_6_59_oedema': f['new_cases_6_59_oedema'],
+            'other_new_cases': f['other_new_cases'],
+            'old_cases': f['old_cases'],
+            'total_enrolment': f['total_enrolment'],
+            'cured_under6': f['cured_under6'],
+            'cured_6_59': f['cured_6_59'],
+            'died_under6': f['died_under6'],
+            'died_6_59': f['died_6_59'],
+            'defaulted_under6': f['defaulted_under6'],
+            'defaulted_6_59': f['defaulted_6_59'],
+            'non_recovered_under6': f['non_recovered_under6'],
+            'non_recovered_6_59': f['non_recovered_6_59'],
+            'total_discharges': f['total_discharges'],
+            'referrals': f['referrals'],
+            'other_exits': f['other_exits'],
+            'total_exits': f['total_exits'],
+            'end_of_period': f['end_of_period'],
+            'new_males_under6': f['new_males_under6'],
+            'new_females_under6': f['new_females_under6'],
+            'new_males_6_59': f['new_males_6_59'],
+            'new_females_6_59': f['new_females_6_59'],
+        }
 
+    for fac_name in all_fac_names:
         facility_reports.append({
-            'facility_name': fac.name, 'facility_code': fac.code,
-            'sam': period_stats(sam_cases), 'mam': period_stats(mam_cases),
+            'facility_name': fac_name,
+            'facility_code': fac_code_map.get(fac_name, ''),
+            'sam': _period_stats_from_fac(sam_by_fac.get(fac_name)),
+            'mam': _period_stats_from_fac(mam_by_fac.get(fac_name)),
         })
 
     # ── Coverage / Target Estimation ──
@@ -3093,46 +3308,43 @@ def monthly_report_api(request):
     }
 
     try:
-        rutf_items = InventoryItem.objects.filter(category='RUTF')
-        for item in rutf_items:
-            stock_levels = StockLevel.objects.filter(
-                inventory_item=item,
-                facility_id__in=facility_ids
-            )
-            commodity['rutf_balance'] += sum(sl.current_stock for sl in stock_levels)
+        rutf_item_ids = list(InventoryItem.objects.filter(category='RUTF').values_list('id', flat=True))
 
-            movements = StockMovement.objects.filter(
-                inventory_item=item,
-                destination_facility_id__in=facility_ids,
-                movement_date__gte=date_from,
-                movement_date__lte=date_to
-            )
-            received = sum(m.quantity for m in movements.filter(movement_type='IN'))
-            received += sum(m.quantity for m in StockMovement.objects.filter(
-                inventory_item=item,
-                destination_facility_id__in=facility_ids,
-                movement_type='TRANSFER',
-                movement_date__gte=date_from,
-                movement_date__lte=date_to
-            ))
-            commodity['rutf_received'] += received
+        rutf_balance = StockLevel.objects.filter(
+            inventory_item_id__in=rutf_item_ids, facility_id__in=facility_ids
+        ).aggregate(s=Sum('current_stock'))['s'] or 0
 
-            issued = sum(m.quantity for m in StockMovement.objects.filter(
-                inventory_item=item,
-                source_facility_id__in=facility_ids,
-                movement_type__in=['CONSUMPTION', 'OUT'],
-                movement_date__gte=date_from,
-                movement_date__lte=date_to
-            ))
-            issued += sum(m.quantity for m in StockMovement.objects.filter(
-                inventory_item=item,
-                source_facility_id__in=facility_ids,
-                movement_type='TRANSFER',
-                movement_date__gte=date_from,
-                movement_date__lte=date_to
-            ))
+        rutf_received_in = StockMovement.objects.filter(
+            inventory_item_id__in=rutf_item_ids,
+            destination_facility_id__in=facility_ids,
+            movement_type='IN',
+            movement_date__gte=date_from, movement_date__lte=date_to,
+        ).aggregate(s=Sum('quantity'))['s'] or 0
+        rutf_received_transfer = StockMovement.objects.filter(
+            inventory_item_id__in=rutf_item_ids,
+            destination_facility_id__in=facility_ids,
+            movement_type='TRANSFER',
+            movement_date__gte=date_from, movement_date__lte=date_to,
+        ).aggregate(s=Sum('quantity'))['s'] or 0
+        rutf_received = rutf_received_in + rutf_received_transfer
 
-            commodity['rutf_start'] += (commodity['rutf_balance'] + issued - received)
+        rutf_issued_co = StockMovement.objects.filter(
+            inventory_item_id__in=rutf_item_ids,
+            source_facility_id__in=facility_ids,
+            movement_type__in=['CONSUMPTION', 'OUT'],
+            movement_date__gte=date_from, movement_date__lte=date_to,
+        ).aggregate(s=Sum('quantity'))['s'] or 0
+        rutf_issued_transfer = StockMovement.objects.filter(
+            inventory_item_id__in=rutf_item_ids,
+            source_facility_id__in=facility_ids,
+            movement_type='TRANSFER',
+            movement_date__gte=date_from, movement_date__lte=date_to,
+        ).aggregate(s=Sum('quantity'))['s'] or 0
+        rutf_issued = rutf_issued_co + rutf_issued_transfer
+
+        commodity['rutf_balance'] = rutf_balance
+        commodity['rutf_received'] = rutf_received
+        commodity['rutf_start'] = rutf_balance + rutf_issued - rutf_received
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Stock start balance calculation failed (SAM detail): {e}")
@@ -3143,7 +3355,7 @@ def monthly_report_api(request):
         visit_date__gte=date_from,
         visit_date__lte=date_to
     )
-    commodity['rutf_issued_sam'] = sum(v.rutf_sachets_given or 0 for v in sam_visits)
+    commodity['rutf_issued_sam'] = sam_visits.aggregate(s=Sum('rutf_sachets_given'))['s'] or 0
 
     mam_visits = OpcVisit.objects.filter(
         registration__facility_id__in=facility_ids,
@@ -3151,45 +3363,45 @@ def monthly_report_api(request):
         visit_date__gte=date_from,
         visit_date__lte=date_to
     )
-    commodity['rutf_issued_mam'] = sum(v.rutf_sachets_given or 0 for v in mam_visits)
+    commodity['rutf_issued_mam'] = mam_visits.aggregate(s=Sum('rutf_sachets_given'))['s'] or 0
 
-    # Other commodities (CSB+, oil, RUSF) from visits
-    commodity['others_issued_sam'] = sum(
-        (float(v.csb_plus_given or 0) + float(v.oil_given or 0))
-        for v in sam_visits
+    # Other commodities (CSB+, oil, RUSF) from visits (DB aggregate)
+    commodity['others_issued_sam'] = (
+        (sam_visits.aggregate(s=Sum('csb_plus_given'))['s'] or 0) +
+        (sam_visits.aggregate(s=Sum('oil_given'))['s'] or 0)
     )
-    commodity['others_issued_mam'] = sum(
-        (float(v.csb_plus_given or 0) + float(v.oil_given or 0))
-        for v in mam_visits
+    commodity['others_issued_mam'] = (
+        (mam_visits.aggregate(s=Sum('csb_plus_given'))['s'] or 0) +
+        (mam_visits.aggregate(s=Sum('oil_given'))['s'] or 0)
     )
 
-    # Other commodities stock movements
+    # Other commodities stock movements (DB aggregate)
     try:
-        other_items = InventoryItem.objects.filter(category__in=['CSB', 'Oil', 'RUSF', 'CSB++'])
-        for item in other_items:
-            stock_levels = StockLevel.objects.filter(
-                inventory_item=item,
-                facility_id__in=facility_ids
-            )
-            commodity['others_balance'] += sum(sl.current_stock for sl in stock_levels)
+        other_item_ids = list(InventoryItem.objects.filter(
+            category__in=['CSB', 'Oil', 'RUSF', 'CSB++']
+        ).values_list('id', flat=True))
 
-            received = sum(m.quantity for m in StockMovement.objects.filter(
-                inventory_item=item,
-                destination_facility_id__in=facility_ids,
-                movement_type__in=['IN', 'TRANSFER'],
-                movement_date__gte=date_from,
-                movement_date__lte=date_to
-            ))
-            commodity['others_received'] += received
+        others_balance = StockLevel.objects.filter(
+            inventory_item_id__in=other_item_ids, facility_id__in=facility_ids
+        ).aggregate(s=Sum('current_stock'))['s'] or 0
 
-            issued = sum(m.quantity for m in StockMovement.objects.filter(
-                inventory_item=item,
-                source_facility_id__in=facility_ids,
-                movement_type__in=['CONSUMPTION', 'OUT', 'TRANSFER'],
-                movement_date__gte=date_from,
-                movement_date__lte=date_to
-            ))
-            commodity['others_start'] += (commodity['others_balance'] + issued - received)
+        others_received = StockMovement.objects.filter(
+            inventory_item_id__in=other_item_ids,
+            destination_facility_id__in=facility_ids,
+            movement_type__in=['IN', 'TRANSFER'],
+            movement_date__gte=date_from, movement_date__lte=date_to,
+        ).aggregate(s=Sum('quantity'))['s'] or 0
+
+        others_issued = StockMovement.objects.filter(
+            inventory_item_id__in=other_item_ids,
+            source_facility_id__in=facility_ids,
+            movement_type__in=['CONSUMPTION', 'OUT', 'TRANSFER'],
+            movement_date__gte=date_from, movement_date__lte=date_to,
+        ).aggregate(s=Sum('quantity'))['s'] or 0
+
+        commodity['others_balance'] = others_balance
+        commodity['others_received'] = others_received
+        commodity['others_start'] = others_balance + others_issued - others_received
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Stock start balance calculation failed (others): {e}")
@@ -3408,23 +3620,8 @@ def ipc_cases_api(request):
         if status_filter != 'all':
             qs = qs.filter(status=status_filter)
         qs = qs.order_by('-admission_date')
-        data = []
-        for case in qs:
-            data.append({
-                'id': case.id,
-                'patient_name': case.patient_name,
-                'patient_age': case.patient_age,
-                'gender': case.gender,
-                'admission_date': case.admission_date.isoformat() if case.admission_date else None,
-                'weight': float(case.weight) if case.weight else None,
-                'height': float(case.height) if case.height else None,
-                'muac': float(case.muac) if case.muac else None,
-                'status': case.status,
-                'facility': case.facility.name if case.facility else None,
-                'facility_id': case.facility_id,
-                'created_at': case.created_at.isoformat() if case.created_at else None,
-            })
-        return Response({'success': True, 'data': data})
+        serializer = IpcCaseSerializer(qs, many=True)
+        return Response({'success': True, 'data': serializer.data})
 
     # POST - create
     data = request.data
@@ -3439,9 +3636,9 @@ def ipc_cases_api(request):
     if accessible is not None and int(data['facility_id']) not in [f.id for f in accessible]:
         return Response({'success': False, 'message': 'You do not have access to this facility.'}, status=status.HTTP_403_FORBIDDEN)
 
-    status = data.get('status', 'Admitted')
+    case_status = data.get('status', 'Admitted')
     valid_statuses = [c[0] for c in IpcCase.STATUS_CHOICES]
-    if status not in valid_statuses:
+    if case_status not in valid_statuses:
         return Response({'success': False, 'message': f'Invalid status. Valid: {", ".join(valid_statuses)}'}, status=status.HTTP_400_BAD_REQUEST)
 
     case = IpcCase.objects.create(
@@ -3453,7 +3650,7 @@ def ipc_cases_api(request):
         weight=data['weight'],
         height=data['height'],
         muac=data.get('muac'),
-        status=status,
+        status=case_status,
     )
     return Response({
         'success': True,
@@ -3481,23 +3678,8 @@ def ipc_case_detail_api(request, pk):
         return Response({'success': False, 'message': 'You do not have access to this case.'}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'GET':
-        return Response({
-            'success': True,
-            'data': {
-                'id': case.id,
-                'patient_name': case.patient_name,
-                'patient_age': case.patient_age,
-                'gender': case.gender,
-                'admission_date': case.admission_date.isoformat() if case.admission_date else None,
-                'weight': float(case.weight) if case.weight else None,
-                'height': float(case.height) if case.height else None,
-                'muac': float(case.muac) if case.muac else None,
-                'status': case.status,
-                'facility': case.facility.name if case.facility else None,
-                'facility_id': case.facility_id,
-                'created_at': case.created_at.isoformat() if case.created_at else None,
-            }
-        })
+        serializer = IpcCaseSerializer(case)
+        return Response({'success': True, 'data': serializer.data})
 
     # PATCH - update
     data = request.data
@@ -3599,6 +3781,7 @@ def case_tasks_api(request, pk):
             'title': task.title,
             'description': task.description,
             'status': task.status,
+            'priority': task.priority,
             'due_date': task.due_date.isoformat() if task.due_date else None,
             'completed_at': task.completed_at.isoformat() if task.completed_at else None,
             'created_at': task.created_at.isoformat() if task.created_at else None,

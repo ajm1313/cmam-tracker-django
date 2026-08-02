@@ -11,11 +11,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-this-in-production-12345')
+if SECRET_KEY == 'django-insecure-change-this-in-production-12345' and not DEBUG:
+    raise RuntimeError('SECRET_KEY must be set in production via environment variable.')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config('DEBUG', default=True, cast=bool)
+DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,192.168.0.100,192.168.0.101,10.0.2.2,*').split(',')
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,192.168.0.100,192.168.0.101,10.0.2.2').split(',')
 
 # Railway assigns a dynamic public domain via this env var (when present)
 _RAILWAY_DOMAIN = config('RAILWAY_PUBLIC_DOMAIN', default='')
@@ -264,7 +266,8 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 # Allow all origins for mobile app API access (mobile uses JWT, not cookies)
-CORS_ALLOW_ALL_ORIGINS = True
+# In production, restrict via CORS_ALLOWED_ORIGINS env var if possible.
+CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL_ORIGINS', default=not DEBUG, cast=bool)
 CORS_ALLOW_CREDENTIALS = False
 
 # Session settings

@@ -3,6 +3,7 @@ import csv
 import io
 from datetime import datetime
 from django.http import HttpResponse
+from django.db.models import Prefetch, Max
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -20,9 +21,17 @@ def _check_import_export(request):
 
 
 def _get_accessible_cases(request):
-    """Get cases accessible to the current user"""
+    """Get cases accessible to the current user, with latest visit prefetched."""
     accessible = request.user.get_accessible_facilities()
-    qs = OpcRegistration.objects.all().select_related('facility', 'registered_by')
+    qs = OpcRegistration.objects.all().select_related(
+        'facility', 'facility__district', 'facility__district__region', 'registered_by'
+    ).prefetch_related(
+        Prefetch(
+            'visits',
+            queryset=OpcVisit.objects.order_by('-visit_date'),
+            to_attr='prefetched_visits'
+        )
+    )
     if accessible is not None:
         qs = qs.filter(facility__in=accessible)
     return qs
@@ -72,6 +81,7 @@ def _export_cases_excel(qs):
     headers = [
         'Registration No', 'Child Name', 'Registration Date', 'Date of Birth', 'Age (months)',
         'Gender', 'Caregiver Name', 'Caregiver Phone', 'Caregiver Relationship',
+        'Total in Household',
         'Malnutrition Type', 'Status', 'Facility', 'Region', 'District',
         'Admission Date', 'Admission Type', 'MAM Type',
         'Admission Weight (kg)',
@@ -82,7 +92,7 @@ def _export_cases_excel(qs):
     _style_excel_header(ws, headers)
     
     for idx, case in enumerate(qs, 2):
-        visit = OpcVisit.objects.filter(registration=case).order_by('-visit_date').first()
+        visit = case.prefetched_visits[0] if case.prefetched_visits else None
         
         ws.cell(row=idx, column=1, value=case.registration_number or case.id)
         ws.cell(row=idx, column=2, value=case.child_name)
@@ -93,22 +103,23 @@ def _export_cases_excel(qs):
         ws.cell(row=idx, column=7, value=case.caregiver_name)
         ws.cell(row=idx, column=8, value=case.caregiver_phone or '')
         ws.cell(row=idx, column=9, value=case.caregiver_relationship or '')
-        ws.cell(row=idx, column=10, value=case.malnutrition_type)
-        ws.cell(row=idx, column=11, value=case.status)
-        ws.cell(row=idx, column=12, value=case.facility.name if case.facility else '')
-        ws.cell(row=idx, column=13, value=case.facility.district.region.name if case.facility and case.facility.district and case.facility.district.region else '')
-        ws.cell(row=idx, column=14, value=case.facility.district.name if case.facility and case.facility.district else '')
-        ws.cell(row=idx, column=15, value=case.admission_date.strftime('%Y-%m-%d') if case.admission_date else '')
-        ws.cell(row=idx, column=16, value=case.admission_type or '')
-        ws.cell(row=idx, column=17, value=case.mam_type or '')
-        ws.cell(row=idx, column=18, value=float(case.weight_kg) if case.weight_kg else '')
-        ws.cell(row=idx, column=19, value=float(visit.weight_kg) if visit else float(case.weight_kg) if case.weight_kg else '')
-        ws.cell(row=idx, column=20, value=float(visit.height_cm) if visit else float(case.height_cm) if case.height_cm else '')
-        ws.cell(row=idx, column=21, value=float(visit.muac_cm) if visit and visit.muac_cm else float(case.muac_cm) if case.muac_cm else '')
-        ws.cell(row=idx, column=22, value=case.oedema or 'No')
-        ws.cell(row=idx, column=23, value=case.discharge_date.strftime('%Y-%m-%d') if case.discharge_date else '')
-        ws.cell(row=idx, column=24, value=case.outcome or '')
-        ws.cell(row=idx, column=25, value=case.outcome_notes or '')
+        ws.cell(row=idx, column=10, value=case.total_household_members if case.total_household_members is not None else '')
+        ws.cell(row=idx, column=11, value=case.malnutrition_type)
+        ws.cell(row=idx, column=12, value=case.status)
+        ws.cell(row=idx, column=13, value=case.facility.name if case.facility else '')
+        ws.cell(row=idx, column=14, value=case.facility.district.region.name if case.facility and case.facility.district and case.facility.district.region else '')
+        ws.cell(row=idx, column=15, value=case.facility.district.name if case.facility and case.facility.district else '')
+        ws.cell(row=idx, column=16, value=case.admission_date.strftime('%Y-%m-%d') if case.admission_date else '')
+        ws.cell(row=idx, column=17, value=case.admission_type or '')
+        ws.cell(row=idx, column=18, value=case.mam_type or '')
+        ws.cell(row=idx, column=19, value=float(case.weight_kg) if case.weight_kg else '')
+        ws.cell(row=idx, column=20, value=float(visit.weight_kg) if visit else float(case.weight_kg) if case.weight_kg else '')
+        ws.cell(row=idx, column=21, value=float(visit.height_cm) if visit else float(case.height_cm) if case.height_cm else '')
+        ws.cell(row=idx, column=22, value=float(visit.muac_cm) if visit and visit.muac_cm else float(case.muac_cm) if case.muac_cm else '')
+        ws.cell(row=idx, column=23, value=case.oedema or 'No')
+        ws.cell(row=idx, column=24, value=case.discharge_date.strftime('%Y-%m-%d') if case.discharge_date else '')
+        ws.cell(row=idx, column=25, value=case.outcome or '')
+        ws.cell(row=idx, column=26, value=case.outcome_notes or '')
     
     # Adjust column widths
     for col in ws.columns:
@@ -144,6 +155,7 @@ def _export_cases_csv(qs):
     headers = [
         'Registration No', 'Child Name', 'Registration Date', 'Date of Birth', 'Age (months)',
         'Gender', 'Caregiver Name', 'Caregiver Phone', 'Caregiver Relationship',
+        'Total in Household',
         'Malnutrition Type', 'Status', 'Facility', 'Region', 'District',
         'Admission Date', 'Admission Type', 'MAM Type',
         'Admission Weight (kg)', 'Current Weight (kg)',
@@ -152,7 +164,7 @@ def _export_cases_csv(qs):
     writer.writerow(headers)
     
     for case in qs:
-        visit = OpcVisit.objects.filter(registration=case).order_by('-visit_date').first()
+        visit = case.prefetched_visits[0] if case.prefetched_visits else None
         writer.writerow([
             case.registration_number or case.id,
             case.child_name,
@@ -163,6 +175,7 @@ def _export_cases_csv(qs):
             case.caregiver_name,
             case.caregiver_phone or '',
             case.caregiver_relationship or '',
+            case.total_household_members if case.total_household_members is not None else '',
             case.malnutrition_type,
             case.status,
             case.facility.name if case.facility else '',

@@ -323,6 +323,13 @@ def _execute_case_import(rows, user, default_facility_id=None, default_malnutrit
                 if age_months < 0:
                     age_months = 0
             
+            # Parse optional household size defensively
+            hh_raw = row_data.get('total_household_members')
+            try:
+                total_household_members = int(float(str(hh_raw).strip())) if hh_raw not in (None, '') else None
+            except (ValueError, TypeError):
+                total_household_members = None
+
             # Use savepoint so a single row failure doesn't abort the whole import
             with transaction.atomic():
                 case = OpcRegistration.objects.create(
@@ -338,6 +345,7 @@ def _execute_case_import(rows, user, default_facility_id=None, default_malnutrit
                     caregiver_name=str(row_data.get('caregiver_name') or row_data.get('guardian_name') or 'Unknown').strip(),
                     caregiver_phone=str(row_data.get('caregiver_phone') or row_data.get('guardian_phone') or '').strip()[:20],
                     caregiver_relationship=row_data.get('caregiver_relationship', '') or None,
+                    total_household_members=total_household_members,
                     address=row_data.get('community', '') or row_data.get('address', '') or None,
                     weight_kg=float(row_data.get('weight_kg')) if row_data.get('weight_kg') else None,
                     muac_cm=float(row_data.get('muac_cm')) if row_data.get('muac_cm') else None,
@@ -722,6 +730,7 @@ def import_template_download(request, model_type):
         headers = [
             'child_name', 'child_gender', 'date_of_birth', 'age_months',
             'caregiver_name', 'caregiver_phone', 'caregiver_relationship',
+            'total_household_members',
             'community', 'house_location', 'travel_time',
             'father_alive', 'mother_alive',
             'referral_source', 'admission_type', 'enrolment_criteria',
@@ -755,6 +764,7 @@ def import_template_download(request, model_type):
         ws.append([
             'John Doe', 'Male', '2022-01-15', '24',
             'Jane Doe', '+1234567890', 'Mother',
+            '6',
             'Community A', 'House 12', '30 mins',
             'Yes', 'Yes',
             'Direct from community', 'New Admission', 'MUAC <11.5cm',
@@ -788,6 +798,7 @@ def import_template_download(request, model_type):
         headers = [
             'child_name', 'child_gender', 'date_of_birth', 'age_months',
             'caregiver_name', 'caregiver_phone', 'caregiver_relationship',
+            'total_household_members',
             'community', 'house_location',
             'mam_type', 'admission_type', 'entry_criteria',
             'weight_kg', 'height_cm', 'muac_cm',
@@ -811,6 +822,7 @@ def import_template_download(request, model_type):
         ws.append([
             'Jane Smith', 'Female', '2022-06-10', '18',
             'Mary Smith', '+1234567890', 'Mother',
+            '6',
             'Community B', 'House 34',
             'High-risk MAM', 'New Admission', 'direct_new',
             '9.0', '70.0', '11.8',
@@ -834,6 +846,7 @@ def import_template_download(request, model_type):
         headers = [
             'child_name', 'child_gender', 'date_of_birth', 'age_months',
             'caregiver_name', 'caregiver_phone', 'caregiver_relationship',
+            'total_household_members',
             'house_location', 'travel_time',
             'referral_source',
             'admission_date', 'admission_type',
@@ -852,6 +865,7 @@ def import_template_download(request, model_type):
         ws.append([
             'Baby Ali', 'Male', '2023-03-01', '15',
             'Aisha Ali', '+1234567890', 'Mother',
+            '6',
             'House 45, Village C', '45 mins',
             'Referred from health facility',
             '2024-01-20', 'New Admission',

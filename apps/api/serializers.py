@@ -2,7 +2,7 @@ from rest_framework import serializers
 from apps.users.models import User
 from apps.facilities.models import Facility
 from apps.inventory.models import InventoryItem, StockLevel, StockMovement
-from apps.cases.models import OpcRegistration, OpcVisit
+from apps.cases.models import OpcRegistration, OpcVisit, IpcCase
 from apps.locations.models import Region, District
 import logging
 
@@ -283,7 +283,7 @@ class OpcRegistrationDetailSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'registration_number', 'child_name', 'child_gender',
             'date_of_birth', 'age_months', 'caregiver_name', 'caregiver_phone',
-            'caregiver_relationship', 'address',
+            'caregiver_relationship', 'total_household_members', 'address',
             'malnutrition_type', 'mam_type', 'admission_criteria',
             'admission_type', 'admission_date', 'registration_date',
             'weight_kg', 'height_cm', 'muac_cm',
@@ -352,3 +352,13 @@ class OpcRegistrationDetailSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.child_photo.url)
             return obj.child_photo.url
         return None
+
+
+class IpcCaseSerializer(serializers.ModelSerializer):
+    facility_name = serializers.CharField(source='facility.name', read_only=True)
+
+    class Meta:
+        model = IpcCase
+        fields = ['id', 'facility', 'facility_name', 'patient_name', 'patient_age',
+                  'gender', 'admission_date', 'weight', 'height', 'muac', 'status',
+                  'created_at']
