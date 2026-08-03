@@ -776,7 +776,7 @@ def case_create_api(request):
         weight_kg=data['weight_kg'],
         height_cm=data['height_cm'],
         muac_cm=data.get('muac_cm'),
-        z_score_wfh=data.get('z_score_wfh'),
+        z_score_wfh=data.get('z_score_wfh') or data.get('z_score_value'),
         z_score_wfa=data.get('z_score_wfa'),
         z_score_hfa=data.get('z_score_hfa'),
         oedema=data.get('oedema', ''),

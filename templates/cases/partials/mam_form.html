@@ -168,12 +168,14 @@
                 <input type="number" step="0.1" name="height_cm" id="mam_reg_height" required value="{% if case %}{{ case.height_cm }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">WFL/H Z-Score</label>
-                <select name="z_score_value" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
-                    <option value="">Select Z-Score</option>
-                    <option value="< -3 SD">&lt; -3 SD</option>
-                    <option value=">= -3 SD and < -2 SD">&ge; -3 SD and &lt; -2 SD</option>
-                    <option value=">= -2 SD and <= +1 SD">&ge; -2 SD and &le; +1 SD</option>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Weight-for-Height Z-score</label>
+                <select name="z_score_wfh" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                    <option value="">Select Z-score</option>
+                    <option value="< -3 SD">&lt; -3 SD (Severe wasting)</option>
+                    <option value="-3 to < -2 SD">-3 to &lt; -2 SD (Moderate wasting)</option>
+                    <option value="-2 to +1 SD">-2 to +1 SD (Normal)</option>
+                    <option value="> +1 to +2 SD">&gt; +1 to +2 SD (Possible risk of overweight)</option>
+                    <option value="> +2 SD">&gt; +2 SD (Overweight/Obese)</option>
                 </select>
             </div>
             <div>
