@@ -393,6 +393,7 @@ def case_detail(request, pk):
             'date': case.registration_date.strftime('%Y-%m-%d') if case.registration_date else '',
             'is_admission': True,
             'visit_num': 0,
+            'z_score': case.z_score_wfh or '',
         })
     for v in visits:
         if v.weight_kg and v.height_cm:
@@ -403,6 +404,7 @@ def case_detail(request, pk):
                 'date': v.visit_date.strftime('%Y-%m-%d') if v.visit_date else '',
                 'is_admission': False,
                 'visit_num': v.visit_number,
+                'z_score': v.z_score_wfh or '',
             })
     
     chart_gender = case.child_gender if case.child_gender in ('Male', 'Female') else 'Male'
@@ -783,7 +785,7 @@ def visit_form(request, registration_id):
                         raise ValueError('MUAC is required.')
                     if not request.POST.get('appetite'):
                         raise ValueError('Appetite Test is required.')
-                    if next_visit_number in (4, 8, 12, 16) and (not request.POST.get('height_cm') or not request.POST.get('z_score_wfh')):
+                    if next_visit_number in (3, 6, 9, 12, 15) and (not request.POST.get('height_cm') or not request.POST.get('z_score_wfh')):
                         raise ValueError('Height and W/H Z-Score are required for anthropometry visits.')
 
                 visit = OpcVisit.objects.create(
@@ -862,7 +864,7 @@ def visit_form(request, registration_id):
                         raise ValueError('MUAC is required.')
                     if not request.POST.get('appetite_test'):
                         raise ValueError('Appetite Test is required.')
-                    if next_visit_number in (4, 8, 12, 16) and (not request.POST.get('height_cm') or not request.POST.get('z_score_wfh')):
+                    if next_visit_number in (3, 6, 9, 12, 15) and (not request.POST.get('height_cm') or not request.POST.get('z_score_wfh')):
                         raise ValueError('Height and W/H Z-Score are required for anthropometry visits.')
 
                 visit = OpcVisit.objects.create(
@@ -958,8 +960,8 @@ def visit_form(request, registration_id):
         height_cm__isnull=False, weight_kg__isnull=False
     ).order_by('visit_number')
     
-    # Height/z-score/growth-chart only at visits 4, 8, 12, 16
-    anthropometry_visits = {4, 8, 12, 16}
+    # Height/z-score/growth-chart every 3 visits (3, 6, 9, 12, 15)
+    anthropometry_visits = {3, 6, 9, 12, 15}
     is_anthropometry_visit = next_visit_number in anthropometry_visits
     
     context = {
@@ -1034,7 +1036,7 @@ def visit_edit(request, visit_id):
                     raise ValueError('Appetite Test is required.')
                 if visit_type == 'MAM' and not request.POST.get('appetite_test'):
                     raise ValueError('Appetite Test is required.')
-                if visit.visit_number in (4, 8, 12, 16) and (not request.POST.get('height_cm') or not request.POST.get('z_score_wfh')):
+                if visit.visit_number in (3, 6, 9, 12, 15) and (not request.POST.get('height_cm') or not request.POST.get('z_score_wfh')):
                     raise ValueError('Height and W/H Z-Score are required for anthropometry visits.')
 
             visit.outcome_notes = request.POST.get('outcome_notes') or None
@@ -1101,8 +1103,8 @@ def visit_edit(request, visit_id):
         visit_number__lt=visit.visit_number
     ).order_by('visit_number')
 
-    # Height/z-score/growth-chart only at visits 4, 8, 12, 16
-    anthropometry_visits = {4, 8, 12, 16}
+    # Height/z-score/growth-chart every 3 visits (3, 6, 9, 12, 15)
+    anthropometry_visits = {3, 6, 9, 12, 15}
     is_anthropometry_visit = visit.visit_number in anthropometry_visits
 
     context = {
