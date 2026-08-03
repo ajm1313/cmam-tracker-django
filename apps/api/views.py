@@ -931,7 +931,7 @@ def record_visit_api(request, registration_id):
             return Response({'success': False, 'message': 'MUAC is required.'}, status=status.HTTP_400_BAD_REQUEST)
         if not data.get('appetite'):
             return Response({'success': False, 'message': 'Appetite Test is required.'}, status=status.HTTP_400_BAD_REQUEST)
-        if next_number in (3, 6, 9, 12, 15) and (not data.get('height_cm') or not data.get('z_score_wfh')):
+        if next_number in (4, 8, 12, 16) and (not data.get('height_cm') or not data.get('z_score_wfh')):
             return Response({'success': False, 'message': 'Height and W/H Z-Score are required for anthropometry visits.'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
@@ -1737,7 +1737,7 @@ def visit_edit_api(request, registration_id, visit_id):
             return Response({'success': False, 'message': 'MUAC is required.'}, status=status.HTTP_400_BAD_REQUEST)
         if not data.get('appetite', visit.appetite):
             return Response({'success': False, 'message': 'Appetite Test is required.'}, status=status.HTTP_400_BAD_REQUEST)
-        if visit.visit_number in (3, 6, 9, 12, 15) and (not data.get('height_cm', visit.height_cm) or not data.get('z_score_wfh', visit.z_score_wfh)):
+        if visit.visit_number in (4, 8, 12, 16) and (not data.get('height_cm', visit.height_cm) or not data.get('z_score_wfh', visit.z_score_wfh)):
             return Response({'success': False, 'message': 'Height and W/H Z-Score are required for anthropometry visits.'}, status=status.HTTP_400_BAD_REQUEST)
 
     # Capture old commodity values for stock adjustment
