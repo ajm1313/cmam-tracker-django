@@ -126,10 +126,12 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
                     ).values_list('id', flat=True)
                 )
             elif not user_role.facility_id:
-                # Sub-district access - all active facilities in the sub-district
+                # Sub-district access - facilities in the sub-district,
+                # plus facilities in the same district with no sub_district assigned
                 facility_ids.update(
                     Facility.objects.filter(
-                        sub_district_id=user_role.sub_district_id,
+                        models.Q(sub_district_id=user_role.sub_district_id) |
+                        models.Q(district_id=user_role.district_id, sub_district_id__isnull=True),
                         is_active=True
                     ).values_list('id', flat=True)
                 )

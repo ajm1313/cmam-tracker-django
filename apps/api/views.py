@@ -577,8 +577,8 @@ def facilities_list(request):
     elif region_id:
         facilities = facilities.filter(district__region_id=region_id)
     page = int(request.query_params.get('page', 1))
-    page_size = int(request.query_params.get('page_size', 50))
-    page_size = min(page_size, 200)
+    page_size = int(request.query_params.get('page_size', 200))
+    page_size = min(page_size, 500)
     total = facilities.count()
     start = (page - 1) * page_size
     end = start + page_size
