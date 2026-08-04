@@ -280,6 +280,18 @@ def case_create(request):
                     disability=request.POST.get('disability') or None,
                     disability_details=request.POST.get('disability_details') or None,
                     physical_exam_notes=request.POST.get('physical_exam_notes') or None,
+                    # IPC Referral Clinical Signs
+                    intractable_vomiting=request.POST.get('intractable_vomiting') == 'Yes',
+                    convulsions=request.POST.get('convulsions') == 'Yes',
+                    lethargic_or_not_alert=request.POST.get('lethargic_or_not_alert') == 'Yes',
+                    unconscious=request.POST.get('unconscious') == 'Yes',
+                    severe_dehydration=request.POST.get('severe_dehydration') == 'Yes',
+                    very_pale_or_severe_palmar_pallor=request.POST.get('very_pale_or_severe_palmar_pallor') == 'Yes',
+                    # Infant Under 6 Months Assessment
+                    age_weeks=request.POST.get('age_weeks') or None,
+                    effective_suckling=request.POST.get('effective_suckling') or None,
+                    relactation_needed=request.POST.get('relactation_needed') == 'Yes',
+                    visible_severe_wasting=request.POST.get('visible_severe_wasting') == 'Yes',
                     # Medicines at Enrollment
                     amoxicillin_date=request.POST.get('amoxicillin_date') or None,
                     amoxicillin_dosage=request.POST.get('amoxicillin_dosage') or None,
@@ -312,12 +324,12 @@ def case_create(request):
                     # Additional Notes
                     additional_notes=request.POST.get('additional_notes') or None,
                     # MAM Aggravating Factors
-                    previous_sam_episode=request.POST.get('previous_sam_episode') == 'True',
-                    failed_counselling_only=request.POST.get('failed_counselling_only') == 'True',
+                    previous_sam_episode=request.POST.get('previous_sam_episode') == 'Yes',
+                    failed_counselling_only=request.POST.get('failed_counselling_only') == 'Yes',
                     hiv_tb_status=request.POST.get('hiv_tb_status') or None,
                     household_vulnerability=request.POST.get('household_vulnerability') or None,
-                    poor_maternal_health=request.POST.get('poor_maternal_health') == 'True',
-                    mother_deceased=request.POST.get('mother_deceased') == 'True',
+                    poor_maternal_health=request.POST.get('poor_maternal_health') == 'Yes',
+                    mother_deceased=request.POST.get('mother_deceased') == 'Yes',
                     immunization_action=request.POST.get('immunization_action') or None,
                     mebendazole_date=request.POST.get('mebendazole_date') or None,
                     other_medicines=request.POST.get('other_medicines') or None,
@@ -496,6 +508,18 @@ def case_edit(request, pk):
             case.disability = request.POST.get('disability') or None
             case.disability_details = request.POST.get('disability_details') or None
             case.physical_exam_notes = request.POST.get('physical_exam_notes') or None
+            # IPC Referral Clinical Signs
+            case.intractable_vomiting = request.POST.get('intractable_vomiting') == 'Yes'
+            case.convulsions = request.POST.get('convulsions') == 'Yes'
+            case.lethargic_or_not_alert = request.POST.get('lethargic_or_not_alert') == 'Yes'
+            case.unconscious = request.POST.get('unconscious') == 'Yes'
+            case.severe_dehydration = request.POST.get('severe_dehydration') == 'Yes'
+            case.very_pale_or_severe_palmar_pallor = request.POST.get('very_pale_or_severe_palmar_pallor') == 'Yes'
+            # Infant Under 6 Months Assessment
+            case.age_weeks = request.POST.get('age_weeks') or None
+            case.effective_suckling = request.POST.get('effective_suckling') or None
+            case.relactation_needed = request.POST.get('relactation_needed') == 'Yes'
+            case.visible_severe_wasting = request.POST.get('visible_severe_wasting') == 'Yes'
             # Medicines at Enrollment
             case.amoxicillin_date = request.POST.get('amoxicillin_date') or None
             case.amoxicillin_dosage = request.POST.get('amoxicillin_dosage') or None
@@ -528,12 +552,12 @@ def case_edit(request, pk):
             # Additional Notes
             case.additional_notes = request.POST.get('additional_notes') or None
             # MAM Aggravating Factors
-            case.previous_sam_episode = request.POST.get('previous_sam_episode') == 'True'
-            case.failed_counselling_only = request.POST.get('failed_counselling_only') == 'True'
+            case.previous_sam_episode = request.POST.get('previous_sam_episode') == 'Yes'
+            case.failed_counselling_only = request.POST.get('failed_counselling_only') == 'Yes'
             case.hiv_tb_status = request.POST.get('hiv_tb_status') or None
             case.household_vulnerability = request.POST.get('household_vulnerability') or None
-            case.poor_maternal_health = request.POST.get('poor_maternal_health') == 'True'
-            case.mother_deceased = request.POST.get('mother_deceased') == 'True'
+            case.poor_maternal_health = request.POST.get('poor_maternal_health') == 'Yes'
+            case.mother_deceased = request.POST.get('mother_deceased') == 'Yes'
             case.immunization_action = request.POST.get('immunization_action') or None
             case.mebendazole_date = request.POST.get('mebendazole_date') or None
             case.other_medicines = request.POST.get('other_medicines') or None

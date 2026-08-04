@@ -48,6 +48,17 @@ def _check_facility_access_api(request, facility):
     return None
 
 
+def _to_bool(val):
+    """Convert various truthy representations to a Python bool."""
+    if val is None:
+        return False
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, (int, float)):
+        return bool(val)
+    return str(val).strip().lower() in ('yes', 'true', '1', 'on')
+
+
 def _detailed_case_stats(cases_qs, date_from, date_to, prev_period_end=None):
     """Compute detailed case statistics matching the web monthly/weekly report.
 
@@ -820,7 +831,14 @@ def case_create_api(request):
         disability=data.get('disability'),
         disability_details=data.get('disability_details'),
         physical_exam_notes=data.get('physical_exam_notes'),
-        
+        # IPC Referral Clinical Signs
+        intractable_vomiting=_to_bool(data.get('intractable_vomiting')),
+        convulsions=_to_bool(data.get('convulsions')),
+        lethargic_or_not_alert=_to_bool(data.get('lethargic_or_not_alert')),
+        unconscious=_to_bool(data.get('unconscious')),
+        severe_dehydration=_to_bool(data.get('severe_dehydration')),
+        very_pale_or_severe_palmar_pallor=_to_bool(data.get('very_pale_or_severe_palmar_pallor')),
+
         # Medicines at Enrollment
         amoxicillin_date=data.get('amoxicillin_date'),
         amoxicillin_dosage=data.get('amoxicillin_dosage'),
@@ -836,6 +854,8 @@ def case_create_api(request):
         malaria_test_result=data.get('malaria_test_result'),
         antimalarial_date=data.get('antimalarial_date'),
         antimalarial_dosage=data.get('antimalarial_dosage'),
+        mebendazole_date=data.get('mebendazole_date'),
+        other_medicines=data.get('other_medicines'),
         
         # RUTF and Other Supplies
         rutf_sachets_given=data.get('rutf_sachets_given'),
@@ -855,6 +875,18 @@ def case_create_api(request):
         
         # Additional Notes
         additional_notes=data.get('additional_notes'),
+        
+        # MAM-specific fields
+        previous_sam_episode=_to_bool(data.get('previous_sam_episode')),
+        failed_counselling_only=_to_bool(data.get('failed_counselling_only')),
+        hiv_tb_status=data.get('hiv_tb_status'),
+        household_vulnerability=data.get('household_vulnerability'),
+        poor_maternal_health=_to_bool(data.get('poor_maternal_health')),
+        mother_deceased=_to_bool(data.get('mother_deceased')),
+        immunization_action=data.get('immunization_action'),
+        counselling=data.get('counselling'),
+        food_product_type=data.get('food_product_type'),
+        food_product_quantity=data.get('food_product_quantity'),
         
         status='Active',
         created_by=request.user,
@@ -1401,6 +1433,18 @@ def case_edit_api(request, pk):
         'hands_feet': 'hands_feet', 'skin_changes': 'skin_changes',
         'disability': 'disability', 'disability_details': 'disability_details',
         'physical_exam_notes': 'physical_exam_notes',
+        # IPC Referral Clinical Signs
+        'intractable_vomiting': 'intractable_vomiting',
+        'convulsions': 'convulsions',
+        'lethargic_or_not_alert': 'lethargic_or_not_alert',
+        'unconscious': 'unconscious',
+        'severe_dehydration': 'severe_dehydration',
+        'very_pale_or_severe_palmar_pallor': 'very_pale_or_severe_palmar_pallor',
+        # Infant Under 6 Months Assessment
+        'age_weeks': 'age_weeks',
+        'effective_suckling': 'effective_suckling',
+        'relactation_needed': 'relactation_needed',
+        'visible_severe_wasting': 'visible_severe_wasting',
         # Medicines at Enrollment
         'amoxicillin_date': 'amoxicillin_date', 'amoxicillin_dosage': 'amoxicillin_dosage',
         'vitamin_a_date': 'vitamin_a_date', 'vitamin_a_dosage': 'vitamin_a_dosage',
@@ -1409,6 +1453,7 @@ def case_edit_api(request, pk):
         'measles_vaccine_date': 'measles_vaccine_date', 'measles_vaccine_dosage': 'measles_vaccine_dosage',
         'malaria_test_date': 'malaria_test_date', 'malaria_test_result': 'malaria_test_result',
         'antimalarial_date': 'antimalarial_date', 'antimalarial_dosage': 'antimalarial_dosage',
+        'mebendazole_date': 'mebendazole_date', 'other_medicines': 'other_medicines',
         # RUTF and Other Supplies
         'rutf_sachets_given': 'rutf_sachets_given', 'rutf_ration_per_day': 'rutf_ration_per_day',
         'next_visit_date': 'next_visit_date',
@@ -1420,10 +1465,33 @@ def case_edit_api(request, pk):
         'additional_notes': 'additional_notes',
         'registration_latitude': 'registration_latitude',
         'registration_longitude': 'registration_longitude',
+        # MAM-specific fields
+        'previous_sam_episode': 'previous_sam_episode',
+        'failed_counselling_only': 'failed_counselling_only',
+        'hiv_tb_status': 'hiv_tb_status',
+        'household_vulnerability': 'household_vulnerability',
+        'poor_maternal_health': 'poor_maternal_health',
+        'mother_deceased': 'mother_deceased',
+        'immunization_action': 'immunization_action',
+        'counselling': 'counselling',
+        'food_product_type': 'food_product_type',
+        'food_product_quantity': 'food_product_quantity',
     }
     for key, attr in field_map.items():
         if key in data:
             setattr(case, attr, data[key] if data[key] != '' else None)
+
+    # Convert IPC clinical sign fields to proper booleans
+    _bool_fields = [
+        'intractable_vomiting', 'convulsions', 'lethargic_or_not_alert',
+        'unconscious', 'severe_dehydration', 'very_pale_or_severe_palmar_pallor',
+        'relactation_needed', 'visible_severe_wasting',
+        'previous_sam_episode', 'failed_counselling_only',
+        'poor_maternal_health', 'mother_deceased',
+    ]
+    for bf in _bool_fields:
+        if bf in data:
+            setattr(case, bf, _to_bool(data[bf]))
 
     if 'facility_id' in data:
         try:

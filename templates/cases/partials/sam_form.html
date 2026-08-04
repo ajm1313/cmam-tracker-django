@@ -324,13 +324,13 @@
                     <option value="No">No - Not breastfeeding</option>
                 </select>
             </div>
-            <div>
+            <div id="breastfeeding-prospect-section" style="display: none;">
                 <label class="block text-sm font-medium text-gray-700 mb-1">If Yes, Prospect of Breastfeeding</label>
                 <select name="breastfeeding_prospect" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
                     <option value="">Select</option>
-                    <option value="Good">Good</option>
-                    <option value="Poor">Poor</option>
-                    <option value="None">None</option>
+                    <option value="Good" {% if case and case.breastfeeding_prospect == 'Good' %}selected{% endif %}>Good</option>
+                    <option value="Poor" {% if case and case.breastfeeding_prospect == 'Poor' %}selected{% endif %}>Poor</option>
+                    <option value="None" {% if case and case.breastfeeding_prospect == 'None' %}selected{% endif %}>None</option>
                 </select>
             </div>
             
@@ -372,8 +372,8 @@
                         <label class="block text-sm font-medium text-gray-700 mb-1">Relactation Needed</label>
                         <select name="relactation_needed" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
                             <option value="">Select</option>
-                            <option value="False" {% if case and not case.relactation_needed %}selected{% endif %}>No</option>
-                            <option value="True" {% if case and case.relactation_needed %}selected{% endif %}>Yes - Mother needs relactation support</option>
+                            <option value="No" {% if case and case.relactation_needed is False %}selected{% endif %}>No</option>
+                            <option value="Yes" {% if case and case.relactation_needed %}selected{% endif %}>Yes - Mother needs relactation support</option>
                         </select>
                         <p class="mt-1 text-xs text-red-600" id="relactation-warning" style="display: none;">⚠️ Relactation needed requires IPC referral</p>
                     </div>
@@ -382,8 +382,8 @@
                         <label class="block text-sm font-medium text-gray-700 mb-1">Visible Severe Wasting</label>
                         <select name="visible_severe_wasting" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
                             <option value="">Select</option>
-                            <option value="False" {% if case and not case.visible_severe_wasting %}selected{% endif %}>No</option>
-                            <option value="True" {% if case and case.visible_severe_wasting %}selected{% endif %}>Yes - Visible severe wasting present</option>
+                            <option value="No" {% if case and case.visible_severe_wasting is False %}selected{% endif %}>No</option>
+                            <option value="Yes" {% if case and case.visible_severe_wasting %}selected{% endif %}>Yes - Visible severe wasting present</option>
                         </select>
                         <p class="mt-1 text-xs text-red-600" id="wasting-warning" style="display: none;">⚠️ Visible severe wasting requires IPC referral</p>
                     </div>
@@ -515,13 +515,69 @@
                     <option value="Yes">Yes</option>
                 </select>
             </div>
-            <div>
+            <div id="disability-details-section" style="display: none;">
                 <label class="block text-sm font-medium text-gray-700 mb-1">If Yes, Specify Disability</label>
-                <input type="text" name="disability_details" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500" placeholder="Type of disability">
+                <input type="text" name="disability_details" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500" placeholder="Type of disability" value="{% if case and case.disability_details %}{{ case.disability_details }}{% endif %}">
             </div>
             <div class="lg:col-span-2">
                 <label class="block text-sm font-medium text-gray-700 mb-1">Additional Physical Exam Notes</label>
                 <textarea name="physical_exam_notes" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500" placeholder="Any other physical examination findings..."></textarea>
+            </div>
+        </div>
+
+        <!-- IPC Referral Clinical Signs -->
+        <div class="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <h4 class="text-sm font-semibold text-red-800 mb-3">IPC Referral Clinical Signs</h4>
+            <p class="text-xs text-red-600 mb-3">If any of these signs are present, the child must be referred to Inpatient Care (IPC).</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Intractable Vomiting</label>
+                    <select name="intractable_vomiting" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                        <option value="">Select</option>
+                        <option value="Yes" {% if case and case.intractable_vomiting %}selected{% endif %}>Yes</option>
+                        <option value="No" {% if case and case.intractable_vomiting is False %}selected{% endif %}>No</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Convulsions</label>
+                    <select name="convulsions" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                        <option value="">Select</option>
+                        <option value="Yes" {% if case and case.convulsions %}selected{% endif %}>Yes</option>
+                        <option value="No" {% if case and case.convulsions is False %}selected{% endif %}>No</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Lethargic or Not Alert</label>
+                    <select name="lethargic_or_not_alert" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                        <option value="">Select</option>
+                        <option value="Yes" {% if case and case.lethargic_or_not_alert %}selected{% endif %}>Yes</option>
+                        <option value="No" {% if case and case.lethargic_or_not_alert is False %}selected{% endif %}>No</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Unconscious</label>
+                    <select name="unconscious" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                        <option value="">Select</option>
+                        <option value="Yes" {% if case and case.unconscious %}selected{% endif %}>Yes</option>
+                        <option value="No" {% if case and case.unconscious is False %}selected{% endif %}>No</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Severe Dehydration</label>
+                    <select name="severe_dehydration" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                        <option value="">Select</option>
+                        <option value="Yes" {% if case and case.severe_dehydration %}selected{% endif %}>Yes</option>
+                        <option value="No" {% if case and case.severe_dehydration is False %}selected{% endif %}>No</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Very Pale / Severe Palmar Pallor</label>
+                    <select name="very_pale_or_severe_palmar_pallor" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500">
+                        <option value="">Select</option>
+                        <option value="Yes" {% if case and case.very_pale_or_severe_palmar_pallor %}selected{% endif %}>Yes</option>
+                        <option value="No" {% if case and case.very_pale_or_severe_palmar_pallor is False %}selected{% endif %}>No</option>
+                    </select>
+                </div>
             </div>
         </div>
     </div>
@@ -831,6 +887,34 @@ function toggleInfantFields() {
     }
     
     checkIpcReferralCriteria();
+}
+
+// ponytail: Show/hide breastfeeding prospect based on breastfeeding status
+function toggleBreastfeedingProspect() {
+    const bfStatus = document.querySelector('select[name="breastfeeding_status"]')?.value;
+    const prospectSection = document.getElementById('breastfeeding-prospect-section');
+    if (prospectSection) {
+        prospectSection.style.display = (bfStatus === 'Yes') ? 'block' : 'none';
+    }
+}
+const bfStatusField = document.querySelector('select[name="breastfeeding_status"]');
+if (bfStatusField) {
+    bfStatusField.addEventListener('change', toggleBreastfeedingProspect);
+    toggleBreastfeedingProspect();
+}
+
+// ponytail: Show/hide disability details based on disability status
+function toggleDisabilityDetails() {
+    const disStatus = document.querySelector('select[name="disability"]')?.value;
+    const detailsSection = document.getElementById('disability-details-section');
+    if (detailsSection) {
+        detailsSection.style.display = (disStatus === 'Yes') ? 'block' : 'none';
+    }
+}
+const disabilityField = document.querySelector('select[name="disability"]');
+if (disabilityField) {
+    disabilityField.addEventListener('change', toggleDisabilityDetails);
+    toggleDisabilityDetails();
 }
 
 // Add event listener to age field

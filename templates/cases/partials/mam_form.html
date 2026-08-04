@@ -71,8 +71,11 @@
                     <option value="">Select</option>
                     <option value="Mother" {% if case and case.caregiver_relationship == 'Mother' %}selected{% endif %}>Mother</option>
                     <option value="Father" {% if case and case.caregiver_relationship == 'Father' %}selected{% endif %}>Father</option>
-                    <option value="Grandparent" {% if case and case.caregiver_relationship == 'Grandparent' %}selected{% endif %}>Grandparent</option>
-                    <option value="Guardian" {% if case and case.caregiver_relationship == 'Guardian' %}selected{% endif %}>Guardian</option>
+                    <option value="Grandmother" {% if case and case.caregiver_relationship == 'Grandmother' %}selected{% endif %}>Grandmother</option>
+                    <option value="Grandfather" {% if case and case.caregiver_relationship == 'Grandfather' %}selected{% endif %}>Grandfather</option>
+                    <option value="Aunt" {% if case and case.caregiver_relationship == 'Aunt' %}selected{% endif %}>Aunt</option>
+                    <option value="Uncle" {% if case and case.caregiver_relationship == 'Uncle' %}selected{% endif %}>Uncle</option>
+                    <option value="Sibling" {% if case and case.caregiver_relationship == 'Sibling' %}selected{% endif %}>Sibling</option>
                     <option value="Other" {% if case and case.caregiver_relationship == 'Other' %}selected{% endif %}>Other</option>
                 </select>
             </div>
@@ -138,15 +141,15 @@
         <h3 class="text-lg font-semibold text-gray-900 mb-4">Entry Criteria</h3>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div class="flex items-center">
-                <input type="radio" name="entry_criteria" value="direct_new" id="entry_direct" class="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300">
+                <input type="radio" name="entry_criteria" value="Direct New Enrolment" id="entry_direct" class="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300" {% if case and case.admission_criteria == 'Direct New Enrolment' %}checked{% endif %}>
                 <label for="entry_direct" class="ml-2 text-sm text-gray-700">Direct New Enrolment at Facility/Community</label>
             </div>
             <div class="flex items-center">
-                <input type="radio" name="entry_criteria" value="referred" id="entry_referred" class="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300">
+                <input type="radio" name="entry_criteria" value="Referred from other MAM-OPC" id="entry_referred" class="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300" {% if case and case.admission_criteria == 'Referred from other MAM-OPC' %}checked{% endif %}>
                 <label for="entry_referred" class="ml-2 text-sm text-gray-700">Referred from other MAM-OPC</label>
             </div>
             <div class="flex items-center">
-                <input type="radio" name="entry_criteria" value="re_enrolment" id="entry_reenrol" class="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300">
+                <input type="radio" name="entry_criteria" value="Re-enrolment after defaulting" id="entry_reenrol" class="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300" {% if case and case.admission_criteria == 'Re-enrolment after defaulting' %}checked{% endif %}>
                 <label for="entry_reenrol" class="ml-2 text-sm text-gray-700">Re-enrolment after defaulting</label>
             </div>
         </div>
@@ -231,8 +234,8 @@
                 <label class="block text-sm font-medium text-gray-700 mb-1">Previous SAM Episode</label>
                 <select name="previous_sam_episode" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
                     <option value="">Select</option>
-                    <option value="False" {% if case and not case.previous_sam_episode %}selected{% endif %}>No</option>
-                    <option value="True" {% if case and case.previous_sam_episode %}selected{% endif %}>Yes</option>
+                    <option value="No" {% if case and case.previous_sam_episode is False %}selected{% endif %}>No</option>
+                    <option value="Yes" {% if case and case.previous_sam_episode %}selected{% endif %}>Yes</option>
                 </select>
             </div>
             
@@ -240,8 +243,8 @@
                 <label class="block text-sm font-medium text-gray-700 mb-1">Failed to Recover with Counselling Only</label>
                 <select name="failed_counselling_only" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
                     <option value="">Select</option>
-                    <option value="False" {% if case and not case.failed_counselling_only %}selected{% endif %}>No</option>
-                    <option value="True" {% if case and case.failed_counselling_only %}selected{% endif %}>Yes</option>
+                    <option value="No" {% if case and case.failed_counselling_only is False %}selected{% endif %}>No</option>
+                    <option value="Yes" {% if case and case.failed_counselling_only %}selected{% endif %}>Yes</option>
                 </select>
             </div>
             
@@ -260,8 +263,8 @@
                 <label class="block text-sm font-medium text-gray-700 mb-1">Poor Maternal Health</label>
                 <select name="poor_maternal_health" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
                     <option value="">Select</option>
-                    <option value="False" {% if case and not case.poor_maternal_health %}selected{% endif %}>No</option>
-                    <option value="True" {% if case and case.poor_maternal_health %}selected{% endif %}>Yes</option>
+                    <option value="No" {% if case and case.poor_maternal_health is False %}selected{% endif %}>No</option>
+                    <option value="Yes" {% if case and case.poor_maternal_health %}selected{% endif %}>Yes</option>
                 </select>
             </div>
             
@@ -269,8 +272,8 @@
                 <label class="block text-sm font-medium text-gray-700 mb-1">Mother Deceased</label>
                 <select name="mother_deceased" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
                     <option value="">Select</option>
-                    <option value="False" {% if case and not case.mother_deceased %}selected{% endif %}>No</option>
-                    <option value="True" {% if case and case.mother_deceased %}selected{% endif %}>Yes</option>
+                    <option value="No" {% if case and case.mother_deceased is False %}selected{% endif %}>No</option>
+                    <option value="Yes" {% if case and case.mother_deceased %}selected{% endif %}>Yes</option>
                 </select>
             </div>
             
@@ -294,7 +297,7 @@
                 </select>
             </div>
             
-            <div>
+            <div id="mam-disability-details-section" style="display: none;">
                 <label class="block text-sm font-medium text-gray-700 mb-1">If Yes, Specify Disability</label>
                 <input type="text" name="disability_details" value="{% if case %}{{ case.disability_details }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" placeholder="Type of disability">
             </div>
@@ -315,8 +318,8 @@
                 <label class="block text-sm font-medium text-gray-700 mb-1">Immunization Status</label>
                 <select name="immunization_status" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
                     <option value="">Select</option>
-                    <option value="1">1. Complete for Age</option>
-                    <option value="2">2. Not Complete for Age</option>
+                    <option value="Complete for Age" {% if case and case.immunization_status == 'Complete for Age' %}selected{% endif %}>Complete for Age</option>
+                    <option value="Not Complete for Age" {% if case and case.immunization_status == 'Not Complete for Age' %}selected{% endif %}>Not Complete for Age</option>
                 </select>
             </div>
             <div>
@@ -352,7 +355,7 @@
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Measles Vaccination</label>
                 <p class="text-xs text-gray-500 mb-1">(from 6 months, after 4 weeks in treatment)</p>
-                <input type="date" name="measles_vaccination_date" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                <input type="date" name="measles_vaccine_date" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" value="{% if case and case.measles_vaccine_date %}{{ case.measles_vaccine_date|date:'Y-m-d' }}{% endif %}">
             </div>
         </div>
         <div class="mt-4">
@@ -488,6 +491,20 @@ if (mamAgeField) {
     mamAgeField.addEventListener('change', toggleMamSections);
     // Check on page load
     toggleMamSections();
+}
+
+// ponytail: Show/hide MAM disability details based on disability status
+function toggleMamDisabilityDetails() {
+    const disStatus = document.querySelector('select[name="disability"]')?.value;
+    const detailsSection = document.getElementById('mam-disability-details-section');
+    if (detailsSection) {
+        detailsSection.style.display = (disStatus === 'Yes') ? 'block' : 'none';
+    }
+}
+const mamDisabilityField = document.querySelector('select[name="disability"]');
+if (mamDisabilityField) {
+    mamDisabilityField.addEventListener('change', toggleMamDisabilityDetails);
+    toggleMamDisabilityDetails();
 }
 
 // Add form submission validation for MAM infant exclusion

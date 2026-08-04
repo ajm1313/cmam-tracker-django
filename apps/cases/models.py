@@ -109,6 +109,20 @@ class OpcRegistration(TimeStampedModel):
     disability = models.CharField(max_length=10, null=True, blank=True)
     disability_details = models.CharField(max_length=255, null=True, blank=True)
     physical_exam_notes = models.TextField(null=True, blank=True)
+
+    # IPC Referral Clinical Signs (critical for patient safety — determines IPC referral)
+    intractable_vomiting = models.BooleanField(default=False, null=True, blank=True)
+    convulsions = models.BooleanField(default=False, null=True, blank=True)
+    lethargic_or_not_alert = models.BooleanField(default=False, null=True, blank=True)
+    unconscious = models.BooleanField(default=False, null=True, blank=True)
+    severe_dehydration = models.BooleanField(default=False, null=True, blank=True)
+    very_pale_or_severe_palmar_pallor = models.BooleanField(default=False, null=True, blank=True)
+
+    # Infant Under 6 Months Assessment
+    age_weeks = models.IntegerField(null=True, blank=True)
+    effective_suckling = models.CharField(max_length=10, null=True, blank=True)
+    relactation_needed = models.BooleanField(default=False, null=True, blank=True)
+    visible_severe_wasting = models.BooleanField(default=False, null=True, blank=True)
     
     # Medicines at Enrollment
     amoxicillin_date = models.DateField(null=True, blank=True)

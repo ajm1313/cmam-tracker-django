@@ -303,6 +303,11 @@ class OpcRegistrationDetailSerializer(serializers.ModelSerializer):
             'eyes_condition', 'conjunctiva', 'ears_condition', 'mouth_condition',
             'lymph_nodes', 'hands_feet', 'skin_changes',
             'disability', 'disability_details', 'physical_exam_notes',
+            # IPC Referral Clinical Signs
+            'intractable_vomiting', 'convulsions', 'lethargic_or_not_alert',
+            'unconscious', 'severe_dehydration', 'very_pale_or_severe_palmar_pallor',
+            # Infant Under 6 Months Assessment
+            'age_weeks', 'effective_suckling', 'relactation_needed', 'visible_severe_wasting',
             # Medicines at Enrollment
             'amoxicillin_date', 'amoxicillin_dosage',
             'vitamin_a_date', 'vitamin_a_dosage',
@@ -311,6 +316,7 @@ class OpcRegistrationDetailSerializer(serializers.ModelSerializer):
             'measles_vaccine_date', 'measles_vaccine_dosage',
             'malaria_test_date', 'malaria_test_result',
             'antimalarial_date', 'antimalarial_dosage',
+            'mebendazole_date', 'other_medicines',
             # RUTF and Other Supplies
             'rutf_sachets_given', 'rutf_ration_per_day', 'next_visit_date',
             # Other Medicines
@@ -320,6 +326,12 @@ class OpcRegistrationDetailSerializer(serializers.ModelSerializer):
             # Additional
             'additional_notes', 'child_photo',
             'registration_latitude', 'registration_longitude',
+            # MAM-specific fields
+            'previous_sam_episode', 'failed_counselling_only',
+            'hiv_tb_status', 'household_vulnerability',
+            'poor_maternal_health', 'mother_deceased',
+            'immunization_action', 'counselling',
+            'food_product_type', 'food_product_quantity',
             # Timestamps
             'created_at', 'updated_at',
         ]

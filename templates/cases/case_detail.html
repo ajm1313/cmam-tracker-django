@@ -296,7 +296,7 @@
     {% endif %}
 
     <!-- Physical Examination -->
-    {% if case.respiratory_rate or case.temperature_celsius or case.chest_indrawing or case.eyes_condition or case.conjunctiva or case.ears_condition or case.mouth_condition or case.lymph_nodes or case.hands_feet or case.skin_changes or case.disability or case.physical_exam_notes %}
+    {% if case.respiratory_rate or case.temperature_celsius or case.chest_indrawing or case.eyes_condition or case.conjunctiva or case.ears_condition or case.mouth_condition or case.lymph_nodes or case.hands_feet or case.skin_changes or case.disability or case.physical_exam_notes or case.intractable_vomiting or case.convulsions or case.lethargic_or_not_alert or case.unconscious or case.severe_dehydration or case.very_pale_or_severe_palmar_pallor %}
     <div class="bg-white shadow rounded-lg overflow-hidden">
         <div class="px-6 py-4 bg-gray-50 border-b">
             <h2 class="text-lg font-medium text-gray-900">Physical Examination</h2>
@@ -315,6 +315,37 @@
                 {% if case.skin_changes %}<div><dt class="text-sm font-medium text-gray-500">Skin Changes</dt><dd class="mt-1 text-sm text-gray-900">{{ case.skin_changes }}</dd></div>{% endif %}
                 {% if case.disability %}<div><dt class="text-sm font-medium text-gray-500">Disability</dt><dd class="mt-1 text-sm text-gray-900">{{ case.disability }}{% if case.disability_details %} — {{ case.disability_details }}{% endif %}</dd></div>{% endif %}
                 {% if case.physical_exam_notes %}<div class="col-span-2 md:col-span-3"><dt class="text-sm font-medium text-gray-500">Physical Exam Notes</dt><dd class="mt-1 text-sm text-gray-900">{{ case.physical_exam_notes }}</dd></div>{% endif %}
+            </dl>
+
+            {% if case.intractable_vomiting or case.convulsions or case.lethargic_or_not_alert or case.unconscious or case.severe_dehydration or case.very_pale_or_severe_palmar_pallor %}
+            <div class="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <h4 class="text-sm font-semibold text-red-800 mb-2">IPC Referral Clinical Signs</h4>
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {% if case.intractable_vomiting %}<div class="flex items-center text-sm text-red-800"><span class="w-2 h-2 bg-red-500 rounded-full mr-2"></span>Intractable Vomiting</div>{% endif %}
+                    {% if case.convulsions %}<div class="flex items-center text-sm text-red-800"><span class="w-2 h-2 bg-red-500 rounded-full mr-2"></span>Convulsions</div>{% endif %}
+                    {% if case.lethargic_or_not_alert %}<div class="flex items-center text-sm text-red-800"><span class="w-2 h-2 bg-red-500 rounded-full mr-2"></span>Lethargic or Not Alert</div>{% endif %}
+                    {% if case.unconscious %}<div class="flex items-center text-sm text-red-800"><span class="w-2 h-2 bg-red-500 rounded-full mr-2"></span>Unconscious</div>{% endif %}
+                    {% if case.severe_dehydration %}<div class="flex items-center text-sm text-red-800"><span class="w-2 h-2 bg-red-500 rounded-full mr-2"></span>Severe Dehydration</div>{% endif %}
+                    {% if case.very_pale_or_severe_palmar_pallor %}<div class="flex items-center text-sm text-red-800"><span class="w-2 h-2 bg-red-500 rounded-full mr-2"></span>Very Pale / Severe Palmar Pallor</div>{% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Infant Under 6 Months Assessment -->
+    {% if case.age_months < 6 and case.age_weeks or case.effective_suckling or case.relactation_needed or case.visible_severe_wasting %}
+    <div class="bg-white shadow rounded-lg overflow-hidden border-l-4 border-amber-500">
+        <div class="px-6 py-4 bg-amber-50 border-b">
+            <h2 class="text-lg font-medium text-amber-900">Infant Under 6 Months Assessment</h2>
+        </div>
+        <div class="p-6">
+            <dl class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {% if case.age_weeks %}<div><dt class="text-sm font-medium text-gray-500">Age (weeks)</dt><dd class="mt-1 text-sm text-gray-900">{{ case.age_weeks }}</dd></div>{% endif %}
+                {% if case.effective_suckling %}<div><dt class="text-sm font-medium text-gray-500">Effective Suckling</dt><dd class="mt-1 text-sm text-gray-900">{{ case.effective_suckling }}</dd></div>{% endif %}
+                {% if case.relactation_needed %}<div><dt class="text-sm font-medium text-gray-500">Relactation Needed</dt><dd class="mt-1 text-sm text-gray-900">Yes</dd></div>{% endif %}
+                {% if case.visible_severe_wasting %}<div><dt class="text-sm font-medium text-gray-500">Visible Severe Wasting</dt><dd class="mt-1 text-sm text-gray-900">Yes</dd></div>{% endif %}
             </dl>
         </div>
     </div>
