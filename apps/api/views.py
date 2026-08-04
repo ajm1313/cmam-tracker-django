@@ -570,6 +570,9 @@ def facilities_list(request):
     region_id = request.query_params.get('region')
     district_id = request.query_params.get('district')
     sub_district_id = request.query_params.get('sub_district')
+    facility_type = request.query_params.get('type', '').strip().upper()
+    if facility_type:
+        facilities = facilities.filter(type=facility_type)
     if sub_district_id:
         facilities = facilities.filter(sub_district_id=sub_district_id)
     elif district_id:
