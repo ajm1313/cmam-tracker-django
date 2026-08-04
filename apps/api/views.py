@@ -888,6 +888,14 @@ def case_create_api(request):
         food_product_type=data.get('food_product_type'),
         food_product_quantity=data.get('food_product_quantity'),
         
+        # Additional admission/clinical detail fields
+        complications_details=data.get('complications_details'),
+        admission_time=data.get('admission_time'),
+        referring_facility=data.get('referring_facility'),
+        oedema_grade=data.get('oedema_grade'),
+        bilateral_pitting_oedema=data.get('bilateral_pitting_oedema'),
+        time_to_travel_minutes=data.get('time_to_travel_minutes'),
+        
         status='Active',
         created_by=request.user,
     )
@@ -1476,6 +1484,13 @@ def case_edit_api(request, pk):
         'counselling': 'counselling',
         'food_product_type': 'food_product_type',
         'food_product_quantity': 'food_product_quantity',
+        # Additional admission/clinical detail fields
+        'complications_details': 'complications_details',
+        'admission_time': 'admission_time',
+        'referring_facility': 'referring_facility',
+        'oedema_grade': 'oedema_grade',
+        'bilateral_pitting_oedema': 'bilateral_pitting_oedema',
+        'time_to_travel_minutes': 'time_to_travel_minutes',
     }
     for key, attr in field_map.items():
         if key in data:

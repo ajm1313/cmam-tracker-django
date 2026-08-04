@@ -336,6 +336,13 @@ def case_create(request):
                     counselling=request.POST.get('counselling') or None,
                     food_product_type=request.POST.get('food_product_type') or None,
                     food_product_quantity=request.POST.get('food_product_quantity') or None,
+                    # Additional admission/clinical detail fields
+                    complications_details=request.POST.get('complications_details') or None,
+                    admission_time=request.POST.get('admission_time') or None,
+                    referring_facility=request.POST.get('referring_facility') or None,
+                    oedema_grade=request.POST.get('oedema_grade') or None,
+                    bilateral_pitting_oedema=request.POST.get('bilateral_pitting_oedema') or None,
+                    time_to_travel_minutes=request.POST.get('time_to_travel_minutes') or None,
                     status='Active',
                     created_by=request.user,
                 )
@@ -564,6 +571,13 @@ def case_edit(request, pk):
             case.counselling = request.POST.get('counselling') or None
             case.food_product_type = request.POST.get('food_product_type') or None
             case.food_product_quantity = request.POST.get('food_product_quantity') or None
+            # Additional admission/clinical detail fields
+            case.complications_details = request.POST.get('complications_details') or None
+            case.admission_time = request.POST.get('admission_time') or None
+            case.referring_facility = request.POST.get('referring_facility') or None
+            case.oedema_grade = request.POST.get('oedema_grade') or None
+            case.bilateral_pitting_oedema = request.POST.get('bilateral_pitting_oedema') or None
+            case.time_to_travel_minutes = request.POST.get('time_to_travel_minutes') or None
             case.updated_by = request.user
             
             # Handle photo upload

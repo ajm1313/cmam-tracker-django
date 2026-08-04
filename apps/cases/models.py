@@ -173,6 +173,14 @@ class OpcRegistration(TimeStampedModel):
     food_product_type = models.CharField(max_length=50, null=True, blank=True)
     food_product_quantity = models.CharField(max_length=50, null=True, blank=True)
 
+    # Additional admission/clinical detail fields
+    complications_details = models.TextField(null=True, blank=True)
+    admission_time = models.CharField(max_length=10, null=True, blank=True)
+    referring_facility = models.CharField(max_length=255, null=True, blank=True)
+    oedema_grade = models.CharField(max_length=10, null=True, blank=True)
+    bilateral_pitting_oedema = models.CharField(max_length=10, null=True, blank=True)
+    time_to_travel_minutes = models.IntegerField(null=True, blank=True)
+
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Active')
     outcome = models.CharField(max_length=50, null=True, blank=True)
     discharge_date = models.DateField(null=True, blank=True)

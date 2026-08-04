@@ -332,6 +332,9 @@ class OpcRegistrationDetailSerializer(serializers.ModelSerializer):
             'poor_maternal_health', 'mother_deceased',
             'immunization_action', 'counselling',
             'food_product_type', 'food_product_quantity',
+            # Additional admission/clinical detail fields
+            'complications_details', 'admission_time', 'referring_facility',
+            'oedema_grade', 'bilateral_pitting_oedema', 'time_to_travel_minutes',
             # Timestamps
             'created_at', 'updated_at',
         ]
