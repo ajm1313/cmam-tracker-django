@@ -1498,6 +1498,7 @@ def case_edit_api(request, pk):
 
     # Convert IPC clinical sign fields to proper booleans
     _bool_fields = [
+        'medical_complications',
         'intractable_vomiting', 'convulsions', 'lethargic_or_not_alert',
         'unconscious', 'severe_dehydration', 'very_pale_or_severe_palmar_pallor',
         'relactation_needed', 'visible_severe_wasting',
