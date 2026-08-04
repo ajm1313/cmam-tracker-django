@@ -996,17 +996,17 @@ function checkIpcReferralCriteria() {
     const data = {
         age_months: parseInt(document.getElementById('sam_age_months')?.value) || 0,
         weight_kg: document.getElementById('sam_reg_weight')?.value,
-        oedema: document.querySelector('input[name="oedema"]:checked')?.value,
+        oedema: document.querySelector('select[name="oedema"]')?.value,
         appetite_test: document.querySelector('select[name="appetite_test"]')?.value,
-        temperature_c: parseFloat(document.querySelector('input[name="temperature"]')?.value),
-        respiratory_rate: document.querySelector('input[name="respiratory_rate"]')?.value,
-        intractable_vomiting: document.querySelector('input[name="intractable_vomiting"]:checked')?.value === 'Yes',
-        convulsions: document.querySelector('input[name="convulsions"]:checked')?.value === 'Yes',
-        lethargic: document.querySelector('input[name="lethargic_or_not_alert"]:checked')?.value === 'Yes',
-        unconscious: document.querySelector('input[name="unconscious"]:checked')?.value === 'Yes',
-        chest_indrawing: document.querySelector('input[name="chest_indrawing"]:checked')?.value === 'Yes',
-        severe_dehydration: document.querySelector('input[name="severe_dehydration"]:checked')?.value === 'Yes',
-        severe_pallor: document.querySelector('input[name="very_pale_or_severe_palmar_pallor"]:checked')?.value === 'Yes',
+        temperature_c: parseFloat(document.querySelector('input[name="temperature_celsius"]')?.value),
+        respiratory_rate: document.querySelector('select[name="respiratory_rate"]')?.value,
+        intractable_vomiting: document.querySelector('select[name="intractable_vomiting"]')?.value === 'Yes',
+        convulsions: document.querySelector('select[name="convulsions"]')?.value === 'Yes',
+        lethargic: document.querySelector('select[name="lethargic_or_not_alert"]')?.value === 'Yes',
+        unconscious: document.querySelector('select[name="unconscious"]')?.value === 'Yes',
+        chest_indrawing: document.querySelector('select[name="chest_indrawing"]')?.value === 'Yes',
+        severe_dehydration: document.querySelector('select[name="severe_dehydration"]')?.value === 'Yes',
+        severe_pallor: document.querySelector('select[name="very_pale_or_severe_palmar_pallor"]')?.value === 'Yes',
         // Infant-specific fields
         effective_suckling: document.querySelector('select[name="effective_suckling"]')?.value,
         relactation_needed: document.querySelector('select[name="relactation_needed"]')?.value === 'True',
@@ -1072,7 +1072,11 @@ document.addEventListener('DOMContentLoaded', function() {
     toggleOedemaDuration();
 
     const fieldsToWatch = [
-        'sam_age_months', 'sam_reg_weight', 'appetite_test', 'temperature', 'respiratory_rate'
+        'sam_age_months', 'sam_reg_weight', 'appetite_test', 'temperature_celsius', 'respiratory_rate',
+        'oedema', 'intractable_vomiting', 'convulsions', 'lethargic_or_not_alert',
+        'unconscious', 'chest_indrawing', 'severe_dehydration', 'very_pale_or_severe_palmar_pallor',
+        'effective_suckling', 'relactation_needed', 'visible_severe_wasting', 'breastfeeding_prospect',
+        'breastfeeding_status'
     ];
     
     fieldsToWatch.forEach(id => {
