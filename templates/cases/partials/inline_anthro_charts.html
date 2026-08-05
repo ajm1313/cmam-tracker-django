@@ -219,13 +219,14 @@
         autoSelectZScores();
     }
 
-    // WHO LMS Z-score computation (simplified — uses embedded reference data)
-    function lmsZ(val, l, m, s) {
-        if (l === 0) return (val / m - 1) / s;
-        return (Math.pow(val / m, l) - 1) / (l * s);
+    // ── LMS helpers for computing Z-score line positions on the chart ──
+    // Inverse LMS: given z, compute the measurement value at that Z-score line
+    function lmsInv(z, l, m, s) {
+        if (l === 0) return m * Math.exp(s * z);
+        return m * Math.pow(1 + l * s * z, 1 / l);
     }
 
-    // Interpolate LMS from table
+    // Interpolate LMS from table by index (age-based tables: 0-60 months)
     function interpLMS(table, idx) {
         if (idx <= 0) return table[0];
         if (idx >= table.length) return table[table.length - 1];
@@ -239,40 +240,85 @@
         };
     }
 
-    {% include 'cases/partials/who_lms_data.html' %}
-
-    function computeWFH(w, h, gender) {
-        if (!w || !h) return null;
-        var table = gender === 'Female' ? WFH_GIRLS : WFH_BOYS;
-        if (h <= table[0].h) return lmsZ(w, table[0].l, table[0].m, table[0].s);
-        if (h >= table[table.length-1].h) { var t = table[table.length-1]; return lmsZ(w, t.l, t.m, t.s); }
+    // Interpolate LMS from WFH table by height value
+    function interpLMSbyHeight(table, h) {
+        if (h <= table[0].h) return table[0];
+        if (h >= table[table.length-1].h) return table[table.length-1];
         for (var i = 0; i < table.length-1; i++) {
             if (h >= table[i].h && h <= table[i+1].h) {
                 var f = (h - table[i].h) / (table[i+1].h - table[i].h);
-                var lms = { l: table[i].l + (table[i+1].l - table[i].l)*f, m: table[i].m + (table[i+1].m - table[i].m)*f, s: table[i].s + (table[i+1].s - table[i].s)*f };
-                return lmsZ(w, lms.l, lms.m, lms.s);
+                return {
+                    l: table[i].l + (table[i+1].l - table[i].l)*f,
+                    m: table[i].m + (table[i+1].m - table[i].m)*f,
+                    s: table[i].s + (table[i+1].s - table[i].s)*f,
+                };
             }
         }
-        return null;
+        return table[table.length-1];
     }
 
-    function computeWFA(w, age, gender) {
-        if (!w || age < 0) return null;
-        var table = gender === 'Female' ? WFA_GIRLS : WFA_BOYS;
-        var lms = interpLMS(table, age);
-        return lmsZ(w, lms.l, lms.m, lms.s);
+    {% include 'cases/partials/who_lms_data.html' %}
+
+    // ── Plot-position-based Z-score category detection ──
+    // Computes where the Z-score lines sit on the chart image (in percentage space),
+    // then checks which band the actual measurement's plot position falls into.
+    function yPct(type, yVal) {
+        var c = CAL[type];
+        return c.pyB - (yVal - c.yMin) / (c.yMax - c.yMin) * (c.pyB - c.pyT);
     }
 
-    function computeHFA(h, age, gender) {
-        if (!h || age < 0) return null;
-        var table = gender === 'Female' ? HFA_GIRLS : HFA_BOYS;
-        var lms = interpLMS(table, age);
-        return lmsZ(h, lms.l, lms.m, lms.s);
-    }
+    function bandFromPlot(type, xVal, yVal, gender) {
+        var lms, zLines = [-3, -2, -1, 0, 1, 2, 3];
+        var lineY = {};
 
-    function wfhCat(z) { if (z === null) return ''; if (z < -3) return '< -3 SD'; if (z < -2) return '-3 to < -2 SD'; if (z <= 1) return '-2 to +1 SD'; if (z <= 2) return '> +1 to +2 SD'; return '> +2 SD'; }
-    function wfaCat(z) { if (z === null) return ''; if (z < -3) return '< -3 SD'; if (z < -2) return '-3 to < -2 SD'; if (z <= 1) return '-2 to +1 SD'; return '> +1 SD'; }
-    function hfaCat(z) { if (z === null) return ''; if (z < -3) return '< -3 SD'; if (z < -2) return '-3 to < -2 SD'; if (z <= 3) return '-2 to +3 SD'; return '> +3 SD'; }
+        if (type === 'wfh') {
+            var table = gender === 'Female' ? WFH_GIRLS : WFH_BOYS;
+            lms = interpLMSbyHeight(table, xVal);
+        } else if (type === 'wfa') {
+            var table = gender === 'Female' ? WFA_GIRLS : WFA_BOYS;
+            lms = interpLMS(table, xVal);
+        } else if (type === 'hfa') {
+            var table = gender === 'Female' ? HFA_GIRLS : HFA_BOYS;
+            lms = interpLMS(table, xVal);
+        } else {
+            return '';
+        }
+
+        // Compute the y-value at each Z-score line and convert to chart percentage Y
+        for (var i = 0; i < zLines.length; i++) {
+            var z = zLines[i];
+            var valAtZ = lmsInv(z, lms.l, lms.m, lms.s);
+            lineY[z] = yPct(type, valAtZ);
+        }
+
+        // Actual measurement's percentage Y on the chart
+        var actualY = yPct(type, yVal);
+
+        // On the chart, higher Y% = lower on image = higher value.
+        // Z-score lines from top (high z) to bottom (low z):
+        //   +3 is at smallest lineY, -3 is at largest lineY
+        // Compare actualY against the line positions
+        if (type === 'wfh') {
+            if (actualY > lineY[-3]) return '< -3 SD';
+            if (actualY > lineY[-2]) return '-3 to < -2 SD';
+            if (actualY <= lineY[1]) return '-2 to +1 SD';
+            if (actualY <= lineY[2]) return '> +1 to +2 SD';
+            return '> +2 SD';
+        }
+        if (type === 'wfa') {
+            if (actualY > lineY[-3]) return '< -3 SD';
+            if (actualY > lineY[-2]) return '-3 to < -2 SD';
+            if (actualY <= lineY[1]) return '-2 to +1 SD';
+            return '> +1 SD';
+        }
+        if (type === 'hfa') {
+            if (actualY > lineY[-3]) return '< -3 SD';
+            if (actualY > lineY[-2]) return '-3 to < -2 SD';
+            if (actualY <= lineY[3]) return '-2 to +3 SD';
+            return '> +3 SD';
+        }
+        return '';
+    }
 
     function autoSelectZScores() {
         var w = getNum(CID + '_weight');
@@ -287,18 +333,15 @@
         var hfaEl = document.getElementById('id_z_score_hfa');
 
         if (wfhEl && w > 0 && h > 0) {
-            var z = computeWFH(w, h, gender);
-            var cat = wfhCat(z);
+            var cat = bandFromPlot('wfh', h, w, gender);
             if (cat) wfhEl.value = cat;
         }
         if (wfaEl && w > 0 && age >= 0) {
-            var z2 = computeWFA(w, age, gender);
-            var cat2 = wfaCat(z2);
+            var cat2 = bandFromPlot('wfa', age, w, gender);
             if (cat2) wfaEl.value = cat2;
         }
         if (hfaEl && h > 0 && age >= 0) {
-            var z3 = computeHFA(h, age, gender);
-            var cat3 = hfaCat(z3);
+            var cat3 = bandFromPlot('hfa', age, h, gender);
             if (cat3) hfaEl.value = cat3;
         }
     }
