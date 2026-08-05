@@ -1,0 +1,409 @@
+{% load static %}
+{% get_static_prefix as STATIC_PREFIX %}
+{% comment %}
+  Inline WHO Anthropometry Growth Charts — 3 chart types (WFH, WFA, HFA).
+  Gender-specific, clickable for zoom. Auto-selects Z-score categories.
+  Include with: chart_id, color, and optionally gender.
+  Expected input IDs: <chart_id>_weight, <chart_id>_height, <chart_id>_age_months
+  Gender select ID: <chart_id>_gender OR pass gender="Male"/"Female"
+  Z-score select IDs: id_z_score_wfh, id_z_score_wfa, id_z_score_hfa
+{% endcomment %}
+
+<div id="{{ chart_id }}_anthro_charts" class="mb-4">
+    <div class="flex items-center gap-2 mb-3">
+        <svg class="w-4 h-4 text-{{ color }}-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+        </svg>
+        <span class="text-xs font-bold text-gray-700 uppercase tracking-wider">WHO Growth Charts</span>
+        <span id="{{ chart_id }}_gender_label" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600"></span>
+    </div>
+
+    <!-- Tab buttons -->
+    <div class="flex gap-2 mb-3">
+        <button type="button" onclick="AnthroCharts_{{ chart_id }}.showTab('wfh')" id="{{ chart_id }}_tab_wfh"
+            class="px-3 py-1.5 rounded-lg text-xs font-bold bg-{{ color }}-100 text-{{ color }}-700 border border-{{ color }}-200">Weight-for-Height</button>
+        <button type="button" onclick="AnthroCharts_{{ chart_id }}.showTab('wfa')" id="{{ chart_id }}_tab_wfa"
+            class="px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-100 text-gray-500 border border-gray-200">Weight-for-Age</button>
+        <button type="button" onclick="AnthroCharts_{{ chart_id }}.showTab('hfa')" id="{{ chart_id }}_tab_hfa"
+            class="px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-100 text-gray-500 border border-gray-200">Height-for-Age</button>
+    </div>
+
+    <!-- Chart display area -->
+    <div class="border rounded-lg overflow-hidden shadow-sm bg-white relative" style="max-height:500px;overflow:auto;">
+        <div style="position:relative; display:inline-block; width:100%;">
+            <img id="{{ chart_id }}_chart_img"
+                 src="{% static 'img/cht-wflh-boys-z-0-5.jpg' %}"
+                 alt="WHO Growth Chart"
+                 style="width:100%; display:block;">
+            <canvas id="{{ chart_id }}_chart_canvas"
+                    style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;"></canvas>
+        </div>
+    </div>
+
+    <!-- Zoom button -->
+    <button type="button" onclick="AnthroCharts_{{ chart_id }}.openZoom()" class="mt-2 text-xs text-{{ color }}-600 font-semibold hover:underline flex items-center gap-1">
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m-3-3h6"/></svg>
+        Click to zoom
+    </button>
+</div>
+
+<!-- Zoom modal -->
+<div id="{{ chart_id }}_zoom_modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black bg-opacity-90" onclick="AnthroCharts_{{ chart_id }}.closeZoom(event)">
+    <div class="relative" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between mb-2 px-2">
+            <span id="{{ chart_id }}_zoom_title" class="text-white text-sm font-bold">WHO Growth Chart</span>
+            <div class="flex items-center gap-3">
+                <button type="button" onclick="AnthroCharts_{{ chart_id }}.zoomOut()" class="text-white bg-white/20 rounded-full w-8 h-8 flex items-center justify-center hover:bg-white/30">−</button>
+                <span id="{{ chart_id }}_zoom_level" class="text-white text-xs font-bold w-10 text-center">1x</span>
+                <button type="button" onclick="AnthroCharts_{{ chart_id }}.zoomIn()" class="text-white bg-white/20 rounded-full w-8 h-8 flex items-center justify-center hover:bg-white/30">+</button>
+                <button type="button" onclick="AnthroCharts_{{ chart_id }}.closeZoom()" class="text-white bg-white/20 rounded-full w-8 h-8 flex items-center justify-center hover:bg-white/30">✕</button>
+            </div>
+        </div>
+        <div style="overflow:auto; max-width:95vw; max-height:85vh;">
+            <div style="position:relative; display:inline-block;" id="{{ chart_id }}_zoom_container">
+                <img id="{{ chart_id }}_zoom_img"
+                     src="{% static 'img/cht-wflh-boys-z-0-5.jpg' %}"
+                     alt="WHO Growth Chart Zoom"
+                     style="display:block; transform-origin: top left; transition: transform 0.2s ease;">
+                <canvas id="{{ chart_id }}_zoom_canvas"
+                        style="position:absolute; top:0; left:0; pointer-events:none; transform-origin: top left; transition: transform 0.2s ease;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var CID = '{{ chart_id }}';
+    var FIXED_GENDER = '{{ gender|default:"" }}';
+    var STATIC = '{{ STATIC_PREFIX }}';
+    var COLOR = '{{ color }}';
+
+    var currentTab = 'wfh';
+    var zoomScale = 1;
+
+    // Calibration per chart type
+    var CAL = {
+        wfh: { xMin:45, xMax:120, yMin:2, yMax:34, pxL:8.05, pxR:91.50, pyT:9.80, pyB:82.80 },
+        wfa: { xMin:0, xMax:24, yMin:0, yMax:15, pxL:10.5, pxR:91.0, pyT:7.0, pyB:85.0 },
+        hfa: { xMin:0, xMax:24, yMin:45, yMax:90, pxL:10.5, pxR:91.0, pyT:7.0, pyB:85.0 },
+    };
+
+    var CHART_IMAGES = {
+        wfh: { Male: STATIC + 'img/cht-wflh-boys-z-0-5.jpg', Female: STATIC + 'img/cht-wflh-girls-z-0-5.jpg' },
+        wfa: { Male: STATIC + 'img/cht-wfa-boys-z-0-2.jpg', Female: STATIC + 'img/cht-wfa-girls-z-0-2.jpg' },
+        hfa: { Male: STATIC + 'img/cht-lfa-boys-z-0-2.jpg', Female: STATIC + 'img/cht-lfa-girls-z-0-2.jpg' },
+    };
+
+    var CHART_TITLES = {
+        wfh: 'Weight-for-Height', wfa: 'Weight-for-Age', hfa: 'Height-for-Age'
+    };
+
+    function getGender() {
+        if (FIXED_GENDER) return FIXED_GENDER;
+        var el = document.getElementById(CID + '_gender');
+        return el ? el.value : 'Male';
+    }
+
+    function getVal(id) {
+        var el = document.getElementById(id);
+        if (el) return el.value;
+        // Fallback: try common alternate IDs
+        var altMap = { weight: ['id_weight_kg'], height: ['id_height_cm'], age_months: ['id_age_months', CID.replace('_reg','') + '_age_months'] };
+        var suffix = id.replace(CID + '_', '');
+        if (altMap[suffix]) {
+            for (var i = 0; i < altMap[suffix].length; i++) {
+                el = document.getElementById(altMap[suffix][i]);
+                if (el) return el.value;
+            }
+        }
+        return '';
+    }
+
+    function getNum(id) {
+        var v = getVal(id);
+        var n = parseFloat(v);
+        return isNaN(n) ? 0 : n;
+    }
+
+    function toPixel(type, xVal, yVal, imgW, imgH) {
+        var c = CAL[type];
+        var xPct = c.pxL + (xVal - c.xMin) / (c.xMax - c.xMin) * (c.pxR - c.pxL);
+        var yPct = c.pyB - (yVal - c.yMin) / (c.yMax - c.yMin) * (c.pyB - c.pyT);
+        return { x: xPct / 100 * imgW, y: yPct / 100 * imgH };
+    }
+
+    function getPoint(type) {
+        var w = getNum(CID + '_weight');
+        var h = getNum(CID + '_height');
+        var age = getNum(CID + '_age_months');
+        if (type === 'wfh') { if (!w || !h) return null; return toPixel('wfh', h, w); }
+        if (type === 'wfa') { if (!w || age < 0) return null; return toPixel('wfa', age, w); }
+        if (type === 'hfa') { if (!h || age < 0) return null; return toPixel('hfa', age, h); }
+        return null;
+    }
+
+    function drawOnCanvas(canvas, img, type) {
+        var rect = img.getBoundingClientRect();
+        var dpr = window.devicePixelRatio || 1;
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        canvas.style.width = rect.width + 'px';
+        canvas.style.height = rect.height + 'px';
+        var ctx = canvas.getContext('2d');
+        ctx.scale(dpr, dpr);
+        var w = rect.width, h = rect.height;
+
+        var pt = getPoint(type);
+        if (!pt) return;
+
+        var px = pt.x, py = pt.y;
+        var dotSize = 12;
+
+        // Glow
+        ctx.beginPath();
+        ctx.arc(px, py, dotSize + 6, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
+        ctx.fill();
+
+        // White border
+        ctx.beginPath();
+        ctx.arc(px, py, dotSize / 2 + 3, 0, 2 * Math.PI);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+
+        // Red dot
+        ctx.beginPath();
+        ctx.arc(px, py, dotSize / 2, 0, 2 * Math.PI);
+        ctx.fillStyle = '#ef4444';
+        ctx.fill();
+
+        // Inner shine
+        ctx.beginPath();
+        ctx.arc(px - 2, py - 2, 2.5, 0, 2 * Math.PI);
+        ctx.fillStyle = 'rgba(255,255,255,0.45)';
+        ctx.fill();
+
+        // Label
+        var weight = getNum(CID + '_weight');
+        var height = getNum(CID + '_height');
+        var ageMo = getNum(CID + '_age_months');
+        var labelText = type === 'wfh' ? height + ' cm / ' + weight + ' kg'
+                      : type === 'wfa' ? ageMo + ' mo / ' + weight + ' kg'
+                      : ageMo + ' mo / ' + height + ' cm';
+        ctx.font = 'bold 11px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        var lm = ctx.measureText(labelText);
+        var ly = py - 18;
+        if (ly < 18) ly = py + 22;
+        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+        ctx.fillRect(px - lm.width/2 - 4, ly - 10, lm.width + 8, 15);
+        ctx.strokeStyle = 'rgba(239,68,68,0.4)';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(px - lm.width/2 - 4, ly - 10, lm.width + 8, 15);
+        ctx.fillStyle = '#b91c1c';
+        ctx.fillText(labelText, px, ly + 2);
+    }
+
+    function updateChart() {
+        var gender = getGender();
+        var img = document.getElementById(CID + '_chart_img');
+        var canvas = document.getElementById(CID + '_chart_canvas');
+        var genderLabel = document.getElementById(CID + '_gender_label');
+
+        if (genderLabel) {
+            genderLabel.textContent = gender === 'Female' ? 'Girls' : 'Boys';
+        }
+
+        var imgSrc = CHART_IMAGES[currentTab][gender];
+        if (img.src.indexOf(imgSrc.split('/').pop()) === -1) {
+            img.src = imgSrc;
+            img.onload = function() { drawOnCanvas(canvas, img, currentTab); };
+        } else {
+            drawOnCanvas(canvas, img, currentTab);
+        }
+
+        autoSelectZScores();
+    }
+
+    // WHO LMS Z-score computation (simplified — uses embedded reference data)
+    function lmsZ(val, l, m, s) {
+        if (l === 0) return (val / m - 1) / s;
+        return (Math.pow(val / m, l) - 1) / (l * s);
+    }
+
+    // Interpolate LMS from table
+    function interpLMS(table, idx) {
+        if (idx <= 0) return table[0];
+        if (idx >= table.length) return table[table.length - 1];
+        var lo = Math.floor(idx), hi = Math.ceil(idx);
+        if (lo === hi) return table[lo];
+        var f = idx - lo;
+        return {
+            l: table[lo].l + (table[hi].l - table[lo].l) * f,
+            m: table[lo].m + (table[hi].m - table[lo].m) * f,
+            s: table[lo].s + (table[hi].s - table[lo].s) * f,
+        };
+    }
+
+    {% include 'cases/partials/who_lms_data.html' %}
+
+    function computeWFH(w, h, gender) {
+        if (!w || !h) return null;
+        var table = gender === 'Female' ? WFH_GIRLS : WFH_BOYS;
+        if (h <= table[0].h) return lmsZ(w, table[0].l, table[0].m, table[0].s);
+        if (h >= table[table.length-1].h) { var t = table[table.length-1]; return lmsZ(w, t.l, t.m, t.s); }
+        for (var i = 0; i < table.length-1; i++) {
+            if (h >= table[i].h && h <= table[i+1].h) {
+                var f = (h - table[i].h) / (table[i+1].h - table[i].h);
+                var lms = { l: table[i].l + (table[i+1].l - table[i].l)*f, m: table[i].m + (table[i+1].m - table[i].m)*f, s: table[i].s + (table[i+1].s - table[i].s)*f };
+                return lmsZ(w, lms.l, lms.m, lms.s);
+            }
+        }
+        return null;
+    }
+
+    function computeWFA(w, age, gender) {
+        if (!w || age < 0) return null;
+        var table = gender === 'Female' ? WFA_GIRLS : WFA_BOYS;
+        var lms = interpLMS(table, age);
+        return lmsZ(w, lms.l, lms.m, lms.s);
+    }
+
+    function computeHFA(h, age, gender) {
+        if (!h || age < 0) return null;
+        var table = gender === 'Female' ? HFA_GIRLS : HFA_BOYS;
+        var lms = interpLMS(table, age);
+        return lmsZ(h, lms.l, lms.m, lms.s);
+    }
+
+    function wfhCat(z) { if (z === null) return ''; if (z < -3) return '< -3 SD'; if (z < -2) return '-3 to < -2 SD'; if (z <= 1) return '-2 to +1 SD'; if (z <= 2) return '> +1 to +2 SD'; return '> +2 SD'; }
+    function wfaCat(z) { if (z === null) return ''; if (z < -3) return '< -3 SD'; if (z < -2) return '-3 to < -2 SD'; if (z <= 1) return '-2 to +1 SD'; return '> +1 SD'; }
+    function hfaCat(z) { if (z === null) return ''; if (z < -3) return '< -3 SD'; if (z < -2) return '-3 to < -2 SD'; if (z <= 3) return '-2 to +3 SD'; return '> +3 SD'; }
+
+    function autoSelectZScores() {
+        var w = getNum(CID + '_weight');
+        var h = getNum(CID + '_height');
+        var age = getNum(CID + '_age_months');
+        var gender = getGender();
+
+        if (typeof WFH_BOYS === 'undefined') return;
+
+        var wfhEl = document.getElementById('id_z_score_wfh');
+        var wfaEl = document.getElementById('id_z_score_wfa');
+        var hfaEl = document.getElementById('id_z_score_hfa');
+
+        if (wfhEl && w > 0 && h > 0) {
+            var z = computeWFH(w, h, gender);
+            var cat = wfhCat(z);
+            if (cat) wfhEl.value = cat;
+        }
+        if (wfaEl && w > 0 && age >= 0) {
+            var z2 = computeWFA(w, age, gender);
+            var cat2 = wfaCat(z2);
+            if (cat2) wfaEl.value = cat2;
+        }
+        if (hfaEl && h > 0 && age >= 0) {
+            var z3 = computeHFA(h, age, gender);
+            var cat3 = hfaCat(z3);
+            if (cat3) hfaEl.value = cat3;
+        }
+    }
+
+    function showTab(tab) {
+        currentTab = tab;
+        // Update tab styles
+        var tabs = ['wfh', 'wfa', 'hfa'];
+        for (var i = 0; i < tabs.length; i++) {
+            var btn = document.getElementById(CID + '_tab_' + tabs[i]);
+            if (tabs[i] === tab) {
+                btn.className = 'px-3 py-1.5 rounded-lg text-xs font-bold bg-' + COLOR + '-100 text-' + COLOR + '-700 border border-' + COLOR + '-200';
+            } else {
+                btn.className = 'px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-100 text-gray-500 border border-gray-200';
+            }
+        }
+        updateChart();
+    }
+
+    function openZoom() {
+        var modal = document.getElementById(CID + '_zoom_modal');
+        var zoomImg = document.getElementById(CID + '_zoom_img');
+        var zoomCanvas = document.getElementById(CID + '_zoom_canvas');
+        var img = document.getElementById(CID + '_chart_img');
+        var title = document.getElementById(CID + '_zoom_title');
+
+        var gender = getGender();
+        zoomImg.src = CHART_IMAGES[currentTab][gender];
+        title.textContent = CHART_TITLES[currentTab] + ' — ' + (gender === 'Female' ? 'Girls' : 'Boys');
+        zoomScale = 1;
+        applyZoom();
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+
+        zoomImg.onload = function() {
+            drawOnCanvas(zoomCanvas, zoomImg, currentTab);
+            applyZoom();
+        };
+    }
+
+    function applyZoom() {
+        var zoomImg = document.getElementById(CID + '_zoom_img');
+        var zoomCanvas = document.getElementById(CID + '_zoom_canvas');
+        var level = document.getElementById(CID + '_zoom_level');
+        zoomImg.style.transform = 'scale(' + zoomScale + ')';
+        zoomCanvas.style.transform = 'scale(' + zoomScale + ')';
+        level.textContent = zoomScale + 'x';
+        // Redraw on canvas after image loads
+        if (zoomImg.complete) drawOnCanvas(zoomCanvas, zoomImg, currentTab);
+    }
+
+    function zoomIn() { zoomScale = Math.min(zoomScale + 0.5, 4); applyZoom(); }
+    function zoomOut() { zoomScale = Math.max(zoomScale - 0.5, 1); applyZoom(); }
+
+    function closeZoom(e) {
+        if (e && e.target && e.target.id !== CID + '_zoom_modal') return;
+        var modal = document.getElementById(CID + '_zoom_modal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+
+    // Expose public methods
+    window['AnthroCharts_' + CID] = {
+        showTab: showTab,
+        openZoom: openZoom,
+        closeZoom: closeZoom,
+        zoomIn: zoomIn,
+        zoomOut: zoomOut,
+        updateChart: updateChart,
+    };
+
+    // Attach listeners
+    function attach() {
+        var ids = [CID + '_weight', CID + '_height', CID + '_age_months'];
+        ids.forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) { el.addEventListener('input', updateChart); el.addEventListener('change', updateChart); }
+        });
+        // Also listen on alternate age field
+        var altAge = document.getElementById(CID.replace('_reg','') + '_age_months');
+        if (altAge) { altAge.addEventListener('input', updateChart); altAge.addEventListener('change', updateChart); }
+        var genderEl = document.getElementById(CID + '_gender');
+        if (genderEl) genderEl.addEventListener('change', updateChart);
+
+        window.addEventListener('resize', function() {
+            clearTimeout(window['_ac_resize_' + CID]);
+            window['_ac_resize_' + CID] = setTimeout(updateChart, 150);
+        });
+
+        // Initial draw
+        setTimeout(updateChart, 100);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', attach);
+    } else {
+        attach();
+    }
+})();
+</script>
