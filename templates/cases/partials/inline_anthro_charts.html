@@ -136,13 +136,13 @@
         return { x: xPct / 100 * imgW, y: yPct / 100 * imgH };
     }
 
-    function getPoint(type) {
+    function getPoint(type, imgW, imgH) {
         var w = getNum(CID + '_weight');
         var h = getNum(CID + '_height');
         var age = getNum(CID + '_age_months');
-        if (type === 'wfh') { if (!w || !h) return null; return toPixel('wfh', h, w); }
-        if (type === 'wfa') { if (!w || age < 0) return null; return toPixel('wfa', age, w); }
-        if (type === 'hfa') { if (!h || age < 0) return null; return toPixel('hfa', age, h); }
+        if (type === 'wfh') { if (!w || !h) return null; return toPixel('wfh', h, w, imgW, imgH); }
+        if (type === 'wfa') { if (!w || age < 0) return null; return toPixel('wfa', age, w, imgW, imgH); }
+        if (type === 'hfa') { if (!h || age < 0) return null; return toPixel('hfa', age, h, imgW, imgH); }
         return null;
     }
 
@@ -157,7 +157,7 @@
         ctx.scale(dpr, dpr);
         var w = rect.width, h = rect.height;
 
-        var pt = getPoint(type);
+        var pt = getPoint(type, w, h);
         if (!pt) return;
 
         var px = pt.x, py = pt.y;
