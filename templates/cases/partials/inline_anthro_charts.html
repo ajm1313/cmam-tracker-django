@@ -301,20 +301,20 @@
         if (type === 'wfh') {
             if (actualY > lineY[-3]) return '< -3 SD';
             if (actualY > lineY[-2]) return '-3 to < -2 SD';
-            if (actualY <= lineY[1]) return '-2 to +1 SD';
-            if (actualY <= lineY[2]) return '> +1 to +2 SD';
+            if (actualY >= lineY[1]) return '-2 to +1 SD';
+            if (actualY >= lineY[2]) return '> +1 to +2 SD';
             return '> +2 SD';
         }
         if (type === 'wfa') {
             if (actualY > lineY[-3]) return '< -3 SD';
             if (actualY > lineY[-2]) return '-3 to < -2 SD';
-            if (actualY <= lineY[1]) return '-2 to +1 SD';
+            if (actualY >= lineY[1]) return '-2 to +1 SD';
             return '> +1 SD';
         }
         if (type === 'hfa') {
             if (actualY > lineY[-3]) return '< -3 SD';
             if (actualY > lineY[-2]) return '-3 to < -2 SD';
-            if (actualY <= lineY[3]) return '-2 to +3 SD';
+            if (actualY >= lineY[3]) return '-2 to +3 SD';
             return '> +3 SD';
         }
         return '';
