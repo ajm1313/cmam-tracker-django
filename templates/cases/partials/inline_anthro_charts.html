@@ -56,7 +56,7 @@
                 <button type="button" onclick="AnthroCharts_{{ chart_id }}.zoomOut()" class="text-white bg-white/20 rounded-full w-8 h-8 flex items-center justify-center hover:bg-white/30">−</button>
                 <span id="{{ chart_id }}_zoom_level" class="text-white text-xs font-bold w-10 text-center">1x</span>
                 <button type="button" onclick="AnthroCharts_{{ chart_id }}.zoomIn()" class="text-white bg-white/20 rounded-full w-8 h-8 flex items-center justify-center hover:bg-white/30">+</button>
-                <button type="button" onclick="AnthroCharts_{{ chart_id }}.closeZoom()" class="text-white bg-white/20 rounded-full w-8 h-8 flex items-center justify-center hover:bg-white/30">✕</button>
+                <button type="button" onclick="AnthroCharts_{{ chart_id }}.closeZoom()" class="text-white bg-white/20 rounded-full w-8 h-8 flex items-center justify-center hover:bg-white/30" title="Back to form">✕</button>
             </div>
         </div>
         <div id="{{ chart_id }}_zoom_viewport" style="flex:1; overflow:hidden; display:flex; align-items:center; justify-content:center; touch-action:none; cursor:grab;">
@@ -161,14 +161,14 @@
         if (!pt) return;
 
         var px = pt.x, py = pt.y;
-        var dotSize = 4;
-        var ringRadius = 8;
+        var dotSize = 6;
+        var ringRadius = 12;
 
         // Thin red circle around the dot
         ctx.beginPath();
         ctx.arc(px, py, ringRadius, 0, 2 * Math.PI);
         ctx.strokeStyle = '#ef4444';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 2;
         ctx.stroke();
 
         // Small black dot
@@ -435,6 +435,9 @@
         var modal = document.getElementById(CID + '_zoom_modal');
         modal.classList.add('hidden');
         modal.classList.remove('flex');
+        zoomScale = 1;
+        zoomPanX = 0;
+        zoomPanY = 0;
     }
 
     // Expose public methods
