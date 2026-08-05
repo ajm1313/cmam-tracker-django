@@ -374,11 +374,13 @@ def case_create(request):
     return render(request, 'cases/case_create.html', context)
 
 
-@login_required
 def api_next_registration_number(request):
-    """API: return the next auto-generated registration number for a facility + type"""
+    """API: return the next auto-generated registration number for a facility + type.
+    Returns JSON 401 for unauthenticated requests (instead of 302 redirect)."""
     from django.http import JsonResponse
     from apps.facilities.models import Facility
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentication required'}, status=401)
     facility_id = request.GET.get('facility_id')
     mal_type = request.GET.get('type', 'SAM')
     if not facility_id:

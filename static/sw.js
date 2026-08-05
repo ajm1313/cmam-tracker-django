@@ -7,7 +7,7 @@
  *  - Form POSTs: When network fails, queue to IndexedDB for later sync
  */
 
-const CACHE_VERSION = 'cmam-v2.2.0';
+const CACHE_VERSION = 'cmam-v2.3.0';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const PAGE_CACHE = `${CACHE_VERSION}-pages`;
 const OFFLINE_URL = '/offline/';
@@ -187,7 +187,8 @@ async function staleWhileRevalidate(request, cacheName) {
 async function networkFirst(request, cacheName) {
   try {
     const networkResponse = await fetch(request);
-    if (networkResponse && networkResponse.ok) {
+    // Don't cache redirected responses (e.g. login page HTML for expired sessions)
+    if (networkResponse && networkResponse.ok && !networkResponse.redirected) {
       const cache = await caches.open(cacheName);
       cache.put(request, networkResponse.clone());
     }

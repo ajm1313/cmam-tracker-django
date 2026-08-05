@@ -434,14 +434,20 @@ function fetchMamRegNumber() {
     if (!facilityId) { regField.value = ''; return; }
     regField.value = 'Loading...';
     const url = '/api/next-registration-number/?facility_id=' + facilityId + '&type=MAM';
-    console.log('MAM fetch:', url);
-    fetch(url)
-        .then(r => { console.log('MAM response status:', r.status); return r.json(); })
-        .then(data => {
-            console.log('MAM data:', data);
-            regField.value = data.registration_number || '';
+    fetch(url, { credentials: 'same-origin' })
+        .then(r => {
+            if (r.redirected) { throw new Error('Session expired'); }
+            if (!r.ok) { throw new Error('Server error: ' + r.status); }
+            return r.json();
         })
-        .catch(err => { console.error('MAM fetch error:', err); regField.value = 'Error'; });
+        .then(data => {
+            regField.value = data.registration_number || data.error || '';
+        })
+        .catch(err => {
+            console.error('MAM reg number error:', err);
+            regField.value = '';
+            regField.placeholder = 'Error — reload page if persistent';
+        });
 }
 
 function getMamLocation() {
