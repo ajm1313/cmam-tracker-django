@@ -7,7 +7,7 @@
  *  - Form POSTs: When network fails, queue to IndexedDB for later sync
  */
 
-const CACHE_VERSION = 'cmam-v2.3.0';
+const CACHE_VERSION = 'cmam-v2.4.0';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const PAGE_CACHE = `${CACHE_VERSION}-pages`;
 const OFFLINE_URL = '/offline/';
@@ -31,6 +31,13 @@ self.addEventListener('install', (event) => {
       .then((cache) => cache.addAll(PRECACHE_URLS).catch(() => {}))
       .then(() => self.skipWaiting())
   );
+});
+
+// Listen for SKIP_WAITING message from the page
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 // ── ACTIVATE: clean old caches + pre-fetch app pages ───────────────────────
