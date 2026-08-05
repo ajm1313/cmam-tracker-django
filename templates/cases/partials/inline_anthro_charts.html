@@ -49,8 +49,8 @@
 
 <!-- Zoom modal -->
 <div id="{{ chart_id }}_zoom_modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black bg-opacity-90" onclick="AnthroCharts_{{ chart_id }}.closeZoom(event)">
-    <div class="relative" onclick="event.stopPropagation()">
-        <div class="flex items-center justify-between mb-2 px-2">
+    <div class="relative w-full h-full flex flex-col" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between px-4 py-3 bg-black/80">
             <span id="{{ chart_id }}_zoom_title" class="text-white text-sm font-bold">WHO Growth Chart</span>
             <div class="flex items-center gap-3">
                 <button type="button" onclick="AnthroCharts_{{ chart_id }}.zoomOut()" class="text-white bg-white/20 rounded-full w-8 h-8 flex items-center justify-center hover:bg-white/30">−</button>
@@ -59,14 +59,14 @@
                 <button type="button" onclick="AnthroCharts_{{ chart_id }}.closeZoom()" class="text-white bg-white/20 rounded-full w-8 h-8 flex items-center justify-center hover:bg-white/30">✕</button>
             </div>
         </div>
-        <div style="overflow:auto; max-width:95vw; max-height:85vh;">
-            <div style="position:relative; display:inline-block;" id="{{ chart_id }}_zoom_container">
+        <div id="{{ chart_id }}_zoom_viewport" style="flex:1; overflow:hidden; display:flex; align-items:center; justify-content:center; touch-action:none; cursor:grab;">
+            <div style="position:relative; display:inline-block; transform-origin: 0 0;" id="{{ chart_id }}_zoom_container">
                 <img id="{{ chart_id }}_zoom_img"
                      src="{% static 'img/cht-wflh-boys-z-0-5.jpg' %}"
                      alt="WHO Growth Chart Zoom"
-                     style="display:block; transform-origin: top left; transition: transform 0.2s ease;">
+                     style="display:block;">
                 <canvas id="{{ chart_id }}_zoom_canvas"
-                        style="position:absolute; top:0; left:0; pointer-events:none; transform-origin: top left; transition: transform 0.2s ease;"></canvas>
+                        style="position:absolute; top:0; left:0; pointer-events:none;"></canvas>
             </div>
         </div>
     </div>
@@ -81,6 +81,9 @@
 
     var currentTab = 'wfh';
     var zoomScale = 1;
+    var zoomPanX = 0;
+    var zoomPanY = 0;
+    var gestureState = null;
 
     // Calibration per chart type
     var CAL = {
@@ -158,30 +161,20 @@
         if (!pt) return;
 
         var px = pt.x, py = pt.y;
-        var dotSize = 12;
+        var dotSize = 4;
+        var ringRadius = 8;
 
-        // Glow
+        // Thin red circle around the dot
         ctx.beginPath();
-        ctx.arc(px, py, dotSize + 6, 0, 2 * Math.PI);
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
-        ctx.fill();
+        ctx.arc(px, py, ringRadius, 0, 2 * Math.PI);
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
 
-        // White border
+        // Small black dot
         ctx.beginPath();
-        ctx.arc(px, py, dotSize / 2 + 3, 0, 2 * Math.PI);
-        ctx.fillStyle = '#ffffff';
-        ctx.fill();
-
-        // Red dot
-        ctx.beginPath();
-        ctx.arc(px, py, dotSize / 2, 0, 2 * Math.PI);
-        ctx.fillStyle = '#ef4444';
-        ctx.fill();
-
-        // Inner shine
-        ctx.beginPath();
-        ctx.arc(px - 2, py - 2, 2.5, 0, 2 * Math.PI);
-        ctx.fillStyle = 'rgba(255,255,255,0.45)';
+        ctx.arc(px, py, dotSize, 0, 2 * Math.PI);
+        ctx.fillStyle = '#000000';
         ctx.fill();
 
         // Label
@@ -336,6 +329,8 @@
         zoomImg.src = CHART_IMAGES[currentTab][gender];
         title.textContent = CHART_TITLES[currentTab] + ' — ' + (gender === 'Female' ? 'Girls' : 'Boys');
         zoomScale = 1;
+        zoomPanX = 0;
+        zoomPanY = 0;
         applyZoom();
 
         modal.classList.remove('hidden');
@@ -345,21 +340,95 @@
             drawOnCanvas(zoomCanvas, zoomImg, currentTab);
             applyZoom();
         };
+
+        setupGestures();
     }
 
     function applyZoom() {
+        var container = document.getElementById(CID + '_zoom_container');
         var zoomImg = document.getElementById(CID + '_zoom_img');
         var zoomCanvas = document.getElementById(CID + '_zoom_canvas');
         var level = document.getElementById(CID + '_zoom_level');
-        zoomImg.style.transform = 'scale(' + zoomScale + ')';
-        zoomCanvas.style.transform = 'scale(' + zoomScale + ')';
-        level.textContent = zoomScale + 'x';
-        // Redraw on canvas after image loads
+        var transform = 'translate(' + zoomPanX + 'px,' + zoomPanY + 'px) scale(' + zoomScale + ')';
+        container.style.transform = transform;
+        level.textContent = Math.round(zoomScale * 10) / 10 + 'x';
         if (zoomImg.complete) drawOnCanvas(zoomCanvas, zoomImg, currentTab);
     }
 
-    function zoomIn() { zoomScale = Math.min(zoomScale + 0.5, 4); applyZoom(); }
-    function zoomOut() { zoomScale = Math.max(zoomScale - 0.5, 1); applyZoom(); }
+    function zoomIn() { zoomScale = Math.min(zoomScale + 0.5, 6); applyZoom(); }
+    function zoomOut() { zoomScale = Math.max(zoomScale - 0.5, 1); if (zoomScale === 1) { zoomPanX = 0; zoomPanY = 0; } applyZoom(); }
+
+    function setupGestures() {
+        var viewport = document.getElementById(CID + '_zoom_viewport');
+        if (viewport._gestureBound) return;
+        viewport._gestureBound = true;
+
+        function getTouches(e) {
+            var touches = [];
+            if (e.touches) {
+                for (var i = 0; i < e.touches.length; i++) {
+                    touches.push({ x: e.touches[i].clientX, y: e.touches[i].clientY });
+                }
+            } else if (e.pointerId !== undefined) {
+                touches.push({ x: e.clientX, y: e.clientY });
+            }
+            return touches;
+        }
+
+        function onPointerDown(e) {
+            e.preventDefault();
+            var touches = getTouches(e);
+            if (touches.length === 1) {
+                gestureState = { mode: 'pan', startX: touches[0].x, startY: touches[0].y, panX: zoomPanX, panY: zoomPanY };
+            } else if (touches.length === 2) {
+                var dx = touches[0].x - touches[1].x;
+                var dy = touches[0].y - touches[1].y;
+                gestureState = { mode: 'pinch', dist: Math.sqrt(dx*dx + dy*dy), scale: zoomScale, panX: zoomPanX, panY: zoomPanY,
+                    midX: (touches[0].x + touches[1].x) / 2, midY: (touches[0].y + touches[1].y) / 2 };
+            }
+        }
+
+        function onPointerMove(e) {
+            if (!gestureState) return;
+            e.preventDefault();
+            var touches = getTouches(e);
+            if (gestureState.mode === 'pan' && touches.length >= 1) {
+                zoomPanX = gestureState.panX + (touches[0].x - gestureState.startX);
+                zoomPanY = gestureState.panY + (touches[0].y - gestureState.startY);
+                applyZoom();
+            } else if (gestureState.mode === 'pinch' && touches.length >= 2) {
+                var dx = touches[0].x - touches[1].x;
+                var dy = touches[0].y - touches[1].y;
+                var newDist = Math.sqrt(dx*dx + dy*dy);
+                zoomScale = Math.max(1, Math.min(6, gestureState.scale * (newDist / gestureState.dist)));
+                applyZoom();
+            }
+        }
+
+        function onPointerUp(e) {
+            gestureState = null;
+        }
+
+        // Mouse events (desktop)
+        viewport.addEventListener('mousedown', onPointerDown);
+        window.addEventListener('mousemove', onPointerMove);
+        window.addEventListener('mouseup', onPointerUp);
+
+        // Touch events (mobile)
+        viewport.addEventListener('touchstart', onPointerDown, { passive: false });
+        viewport.addEventListener('touchmove', onPointerMove, { passive: false });
+        viewport.addEventListener('touchend', onPointerUp);
+        viewport.addEventListener('touchcancel', onPointerUp);
+
+        // Wheel zoom (desktop)
+        viewport.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            var delta = e.deltaY > 0 ? -0.2 : 0.2;
+            zoomScale = Math.max(1, Math.min(6, zoomScale + delta));
+            if (zoomScale === 1) { zoomPanX = 0; zoomPanY = 0; }
+            applyZoom();
+        }, { passive: false });
+    }
 
     function closeZoom(e) {
         if (e && e.target && e.target.id !== CID + '_zoom_modal') return;
