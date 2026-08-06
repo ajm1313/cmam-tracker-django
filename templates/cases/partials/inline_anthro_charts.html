@@ -813,8 +813,8 @@
         if (type === 'wfa') {
             if (actualY > lineY[0]) return '< -3 SD';
             if (actualY > lineY[1]) return '-3 to < -2 SD';
-            if (actualY >= lineY[4]) return '-2 to +1 SD';
-            return '> +1 SD';
+            if (actualY >= lineY[5]) return '-2 to +2 SD';
+            return '> +2 SD';
         }
         if (type === 'hfa') {
             if (actualY > lineY[0]) return '< -3 SD';
