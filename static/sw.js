@@ -7,7 +7,7 @@
  *  - Form POSTs: When network fails, queue to IndexedDB for later sync
  */
 
-const CACHE_VERSION = 'cmam-v2.4.4';
+const CACHE_VERSION = 'cmam-v2.4.5';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const PAGE_CACHE = `${CACHE_VERSION}-pages`;
 const OFFLINE_URL = '/offline/';

@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WHO Chart Calibration Tool</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; padding: 20px; }
+  h1 { margin-bottom: 10px; font-size: 22px; }
+  .desc { color: #aaa; margin-bottom: 20px; font-size: 14px; line-height: 1.5; }
+  .controls { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px; align-items: center; }
+  .controls label { font-size: 13px; }
+  .controls select, .controls button { padding: 6px 12px; border-radius: 6px; border: 1px solid #444; background: #2a2a4e; color: #eee; font-size: 13px; cursor: pointer; }
+  .controls button:hover { background: #3a3a6e; }
+  .main { display: flex; gap: 20px; flex-wrap: wrap; }
+  .chart-area { position: relative; }
+  .chart-wrap { position: relative; display: inline-block; }
+  .chart-wrap img { display: block; user-select: none; -webkit-user-drag: none; }
+  .chart-wrap canvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
+  .sidebar { width: 340px; }
+  .panel { background: #2a2a4e; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+  .panel h3 { font-size: 14px; margin-bottom: 10px; color: #8af; }
+  .cal-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .cal-row label { width: 60px; font-size: 12px; color: #aaa; }
+  .cal-row input[type=range] { flex: 1; }
+  .cal-row .val { width: 55px; font-size: 12px; text-align: right; font-family: monospace; color: #8f8; }
+  .ref-table { width: 100%; font-size: 11px; border-collapse: collapse; }
+  .ref-table th, .ref-table td { padding: 3px 6px; border: 1px solid #444; text-align: center; }
+  .ref-table th { background: #333366; }
+  .ref-table .good { color: #4f4; }
+  .ref-table .bad { color: #f44; }
+  .output { background: #111; border: 1px solid #444; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 12px; color: #8f8; white-space: pre-wrap; word-break: break-all; }
+  .btn-row { display: flex; gap: 8px; margin-top: 10px; }
+  .btn-row button { padding: 6px 12px; border-radius: 6px; border: 1px solid #444; background: #2a4a2e; color: #eee; font-size: 12px; cursor: pointer; }
+  .btn-row button:hover { background: #3a6a3e; }
+  .instructions { font-size: 12px; color: #aaa; line-height: 1.6; }
+  .instructions b { color: #8af; }
+  .click-mode { background: #4a2a2e; padding: 8px 12px; border-radius: 6px; margin-bottom: 10px; font-size: 13px; display: none; }
+  .click-mode.active { display: block; }
+  .click-mode .target { color: #fc8; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<h1>WHO Chart Calibration Tool</h1>
+<p class="desc">
+  This tool overlays computed Z-score lines (from LMS data) on top of the WHO chart images.
+  Adjust the calibration sliders until the overlaid lines match the printed lines on the chart.
+  You can also click on the chart to set precise reference points.
+  Copy the output constants into your code when done.
+</p>
+
+<div class="controls">
+  <label>Chart:
+    <select id="chartType">
+      <option value="wfh">Weight-for-Height (WFH)</option>
+      <option value="wfa">Weight-for-Age (WFA)</option>
+      <option value="hfa">Height-for-Age (HFA)</option>
+    </select>
+  </label>
+  <label>Gender:
+    <select id="gender">
+      <option value="Male">Boys</option>
+      <option value="Female">Girls</option>
+    </select>
+  </label>
+  <button id="resetBtn">Reset to Current</button>
+  <button id="copyBtn">Copy Constants</button>
+</div>
+
+<div class="click-mode" id="clickMode">
+  Click on the chart at: <span class="target" id="clickTarget"></span>
+  &nbsp;|&nbsp; <button onclick="cancelClick()" style="padding:2px 8px;font-size:11px;">Cancel</button>
+</div>
+
+<div class="main">
+  <div class="chart-area">
+    <div class="chart-wrap" id="chartWrap">
+      <img id="chartImg" src="" />
+      <canvas id="overlay"></canvas>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="panel">
+      <h3>Calibration Constants</h3>
+      <div id="sliders"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Z-Score Line Verification</h3>
+      <p class="instructions">
+        The table below shows where each Z-score line should be at a reference X value,
+        vs where the current calibration places it. Green = close, Red = off by >1%.
+      </p>
+      <div style="margin: 8px 0;">
+        <label style="font-size:12px;">Check at X = </label>
+        <input type="number" id="checkX" style="width:60px;padding:2px;background:#1a1a2e;color:#eee;border:1px solid #444;border-radius:4px;" />
+      </div>
+      <table class="ref-table" id="verifyTable">
+        <thead><tr><th>Z</th><th>Expected Y%</th><th>Computed Y%</th><th>Diff</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h3>Click-to-Calibrate</h3>
+      <p class="instructions">
+        <b>Method 1:</b> Click "Calibrate X" then click 2 known X-axis tick marks on the chart.<br>
+        <b>Method 2:</b> Click "Calibrate Y" then click 2 known Y-axis tick marks.<br>
+        The tool will compute pxLeft/pxRight or pyTop/pyBottom from your clicks.
+      </p>
+      <div class="btn-row">
+        <button onclick="startClickCalibration('x1')">Set X-min point</button>
+        <button onclick="startClickCalibration('x2')">Set X-max point</button>
+      </div>
+      <div class="btn-row">
+        <button onclick="startClickCalibration('y1')">Set Y-min point</button>
+        <button onclick="startClickCalibration('y2')">Set Y-max point</button>
+      </div>
+      <div style="margin-top:8px;">
+        <label style="font-size:12px;">X-min value:</label>
+        <input type="number" id="xMinVal" style="width:50px;padding:2px;background:#1a1a2e;color:#eee;border:1px solid #444;border-radius:4px;" />
+        <label style="font-size:12px; margin-left:8px;">X-max value:</label>
+        <input type="number" id="xMaxVal" style="width:50px;padding:2px;background:#1a1a2e;color:#eee;border:1px solid #444;border-radius:4px;" />
+      </div>
+      <div style="margin-top:4px;">
+        <label style="font-size:12px;">Y-min value:</label>
+        <input type="number" id="yMinVal" style="width:50px;padding:2px;background:#1a1a2e;color:#eee;border:1px solid #444;border-radius:4px;" />
+        <label style="font-size:12px; margin-left:8px;">Y-max value:</label>
+        <input type="number" id="yMaxVal" style="width:50px;padding:2px;background:#1a1a2e;color:#eee;border:1px solid #444;border-radius:4px;" />
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Output Constants</h3>
+      <div class="output" id="output"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── LMS Data ──────────────────────────────────────────────────────────
+{% include 'cases/partials/who_lms_data.html' %}
+
+// ── Current Calibration Constants ─────────────────────────────────────
+var DEFAULT_CAL = {
+  wfh: { xMin:45, xMax:120, yMin:2, yMax:34, pxL:8.05, pxR:91.50, pyT:9.80, pyB:82.80 },
+  wfa: { xMin:0, xMax:60, yMin:0, yMax:30, pxL:10.5, pxR:91.0, pyT:7.0, pyB:85.0 },
+  hfa: { xMin:0, xMax:60, yMin:45, yMax:120, pxL:10.5, pxR:91.0, pyT:7.0, pyB:85.0 },
+};
+
+var STATIC = '{% load static %}{% get_static_prefix as STATIC_URL %}{{ STATIC_URL }}';
+
+var CHART_IMAGES = {
+  wfh: { Male: STATIC + 'img/cht-wflh-boys-z-0-5.jpg', Female: STATIC + 'img/cht-wflh-girls-z-0-5.jpg' },
+  wfa: { Male: STATIC + 'img/cht-wfa-boys-z-0-5.jpg', Female: STATIC + 'img/cht-wfa-girls-z-0-5.jpg' },
+  hfa: { Male: STATIC + 'img/cht-lhfa-boys-z-0-5.jpg', Female: STATIC + 'img/cht-lhfa-girls-z-0-5.jpg' },
+};
+
+// Working copy of calibration (editable)
+var cal = JSON.parse(JSON.stringify(DEFAULT_CAL));
+
+var currentType = 'wfh';
+var currentGender = 'Male';
+var clickCalMode = null; // 'x1', 'x2', 'y1', 'y2'
+var clickPoints = {};
+
+// ── LMS helpers ───────────────────────────────────────────────────────
+function lmsInv(z, l, m, s) {
+  if (l === 0) return m * Math.exp(s * z);
+  return m * Math.pow(1 + l * s * z, 1 / l);
+}
+
+function interpLMS(table, idx) {
+  if (idx <= 0) return table[0];
+  if (idx >= table.length) return table[table.length - 1];
+  var lo = Math.floor(idx), hi = Math.ceil(idx);
+  if (lo === hi) return table[lo];
+  var f = idx - lo;
+  return {
+    l: table[lo].l + (table[hi].l - table[lo].l) * f,
+    m: table[lo].m + (table[hi].m - table[lo].m) * f,
+    s: table[lo].s + (table[hi].s - table[lo].s) * f,
+  };
+}
+
+function interpLMSbyHeight(table, h) {
+  if (h <= table[0].h) return table[0];
+  if (h >= table[table.length-1].h) return table[table.length-1];
+  for (var i = 0; i < table.length-1; i++) {
+    if (h >= table[i].h && h <= table[i+1].h) {
+      var f = (h - table[i].h) / (table[i+1].h - table[i].h);
+      return {
+        l: table[i].l + (table[i+1].l - table[i].l)*f,
+        m: table[i].m + (table[i+1].m - table[i].m)*f,
+        s: table[i].s + (table[i+1].s - table[i].s)*f,
+      };
+    }
+  }
+  return table[table.length-1];
+}
+
+function getLMS(type, xVal, gender) {
+  if (type === 'wfh') {
+    var table = gender === 'Female' ? WFH_GIRLS : WFH_BOYS;
+    return interpLMSbyHeight(table, xVal);
+  } else if (type === 'wfa') {
+    var table = gender === 'Female' ? WFA_GIRLS : WFA_BOYS;
+    return interpLMS(table, xVal);
+  } else if (type === 'hfa') {
+    var table = gender === 'Female' ? HFA_GIRLS : HFA_BOYS;
+    return interpLMS(table, xVal);
+  }
+  return null;
+}
+
+// ── Calibration functions ─────────────────────────────────────────────
+function xPct(type, xVal) {
+  var c = cal[type];
+  return c.pxL + (xVal - c.xMin) / (c.xMax - c.xMin) * (c.pxR - c.pxL);
+}
+
+function yPct(type, yVal) {
+  var c = cal[type];
+  return c.pyB - (yVal - c.yMin) / (c.yMax - c.yMin) * (c.pyB - c.pyT);
+}
+
+// ── UI: Sliders ───────────────────────────────────────────────────────
+var sliderConfigs = [
+  { key: 'pxL', label: 'pxLeft',  min: 0, max: 30, step: 0.05 },
+  { key: 'pxR', label: 'pxRight', min: 70, max: 100, step: 0.05 },
+  { key: 'pyT', label: 'pyTop',   min: 0, max: 30, step: 0.05 },
+  { key: 'pyB', label: 'pyBottom',min: 70, max: 100, step: 0.05 },
+  { key: 'xMin',label: 'xMin',    min: 0, max: 50, step: 1 },
+  { key: 'xMax',label: 'xMax',    min: 50, max: 130, step: 1 },
+  { key: 'yMin',label: 'yMin',    min: 0, max: 50, step: 1 },
+  { key: 'yMax',label: 'yMax',    min: 20, max: 140, step: 1 },
+];
+
+function buildSliders() {
+  var container = document.getElementById('sliders');
+  container.innerHTML = '';
+  var c = cal[currentType];
+  sliderConfigs.forEach(function(cfg) {
+    var row = document.createElement('div');
+    row.className = 'cal-row';
+    row.innerHTML =
+      '<label>' + cfg.label + '</label>' +
+      '<input type="range" min="' + cfg.min + '" max="' + cfg.max + '" step="' + cfg.step + '" value="' + c[cfg.key] + '" data-key="' + cfg.key + '" />' +
+      '<span class="val" id="val_' + cfg.key + '">' + c[cfg.key].toFixed(2) + '</span>';
+    container.appendChild(row);
+  });
+  container.querySelectorAll('input[type=range]').forEach(function(inp) {
+    inp.addEventListener('input', function() {
+      var key = this.getAttribute('data-key');
+      cal[currentType][key] = parseFloat(this.value);
+      document.getElementById('val_' + key).textContent = cal[currentType][key].toFixed(2);
+      drawOverlay();
+      updateVerifyTable();
+      updateOutput();
+    });
+  });
+}
+
+// ── Drawing ───────────────────────────────────────────────────────────
+function drawOverlay() {
+  var img = document.getElementById('chartImg');
+  var canvas = document.getElementById('overlay');
+  var w = img.naturalWidth || img.width;
+  var h = img.naturalHeight || img.height;
+  canvas.width = w;
+  canvas.height = h;
+  canvas.style.width = img.offsetWidth + 'px';
+  canvas.style.height = img.offsetHeight + 'px';
+  var ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+
+  var c = cal[currentType];
+  var zColors = {
+    '-3': '#ff0000', '-2': '#ff6600', '-1': '#ffcc00',
+    '0': '#00cc00', '1': '#ffcc00', '2': '#ff6600', '3': '#ff0000'
+  };
+  var zLines = [-3, -2, -1, 0, 1, 2, 3];
+
+  // Draw Z-score lines across the chart at multiple x values
+  var xSteps = 20;
+  for (var zi = 0; zi < zLines.length; zi++) {
+    var z = zLines[zi];
+    ctx.beginPath();
+    ctx.strokeStyle = zColors[z] || '#888';
+    ctx.lineWidth = (z === 0) ? 2 : 1.5;
+    ctx.setLineDash(z === 0 ? [] : [4, 3]);
+
+    for (var xi = 0; xi <= xSteps; xi++) {
+      var xVal = c.xMin + (c.xMax - c.xMin) * xi / xSteps;
+      var lms = getLMS(currentType, xVal, currentGender);
+      if (!lms) continue;
+      var yVal = lmsInv(z, lms.l, lms.m, lms.s);
+      var xp = xPct(currentType, xVal) / 100 * w;
+      var yp = yPct(currentType, yVal) / 100 * h;
+      if (xi === 0) ctx.moveTo(xp, yp);
+      else ctx.lineTo(xp, yp);
+    }
+    ctx.stroke();
+
+    // Label the line
+    var labelX = c.xMin + (c.xMax - c.xMin) * 0.02;
+    var lms0 = getLMS(currentType, labelX, currentGender);
+    if (lms0) {
+      var labelY = lmsInv(z, lms0.l, lms0.m, lms0.s);
+      var lx = xPct(currentType, labelX) / 100 * w;
+      var ly = yPct(currentType, labelY) / 100 * h;
+      ctx.setLineDash([]);
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillStyle = zColors[z] || '#888';
+      ctx.textAlign = 'left';
+      ctx.fillText((z > 0 ? '+' : '') + z + 'SD', lx + 4, ly - 4);
+    }
+  }
+
+  // Draw axis boundary rectangle
+  ctx.setLineDash([2, 2]);
+  ctx.strokeStyle = '#00ffff';
+  ctx.lineWidth = 1;
+  var bx1 = c.pxL / 100 * w;
+  var bx2 = c.pxR / 100 * w;
+  var by1 = c.pyT / 100 * h;
+  var by2 = c.pyB / 100 * h;
+  ctx.strokeRect(bx1, by1, bx2 - bx1, by2 - by1);
+
+  // Draw tick marks on axes
+  ctx.setLineDash([]);
+  ctx.font = '10px monospace';
+  ctx.fillStyle = '#00ffff';
+  ctx.textAlign = 'center';
+
+  // X-axis ticks
+  var xTickStep = (currentType === 'wfh') ? 5 : 6;
+  for (var xv = c.xMin; xv <= c.xMax; xv += xTickStep) {
+    var tx = xPct(currentType, xv) / 100 * w;
+    ctx.beginPath();
+    ctx.moveTo(tx, by2);
+    ctx.lineTo(tx, by2 + 8);
+    ctx.stroke();
+    ctx.fillText(xv, tx, by2 + 20);
+  }
+
+  // Y-axis ticks
+  var yTickStep = (currentType === 'wfh') ? 4 : 5;
+  if (currentType === 'hfa') yTickStep = 5;
+  for (var yv = c.yMin; yv <= c.yMax; yv += yTickStep) {
+    var ty = yPct(currentType, yv) / 100 * h;
+    ctx.beginPath();
+    ctx.moveTo(bx1, ty);
+    ctx.lineTo(bx1 - 8, ty);
+    ctx.stroke();
+    ctx.textAlign = 'right';
+    ctx.fillText(yv, bx1 - 12, ty + 3);
+  }
+}
+
+// ── Verification Table ────────────────────────────────────────────────
+function updateVerifyTable() {
+  var checkX = parseFloat(document.getElementById('checkX').value);
+  if (isNaN(checkX)) return;
+  var lms = getLMS(currentType, checkX, currentGender);
+  if (!lms) return;
+  var zLines = [-3, -2, -1, 0, 1, 2, 3];
+  var tbody = document.querySelector('#verifyTable tbody');
+  tbody.innerHTML = '';
+  zLines.forEach(function(z) {
+    var yVal = lmsInv(z, lms.l, lms.m, lms.s);
+    var computedY = yPct(currentType, yVal);
+    // "Expected" is where the line would be with default calibration
+    var expectedY = (function() {
+      var dc = DEFAULT_CAL[currentType];
+      return dc.pyB - (yVal - dc.yMin) / (dc.yMax - dc.yMin) * (dc.pyB - dc.pyT);
+    })();
+    var diff = Math.abs(computedY - expectedY);
+    var cls = diff < 0.5 ? 'good' : 'bad';
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + (z > 0 ? '+' : '') + z + '</td><td>' + expectedY.toFixed(2) + '%</td><td>' + computedY.toFixed(2) + '%</td><td class="' + cls + '">' + diff.toFixed(2) + '%</td>';
+    tbody.appendChild(tr);
+  });
+}
+
+// ── Output ────────────────────────────────────────────────────────────
+function updateOutput() {
+  var c = cal[currentType];
+  var out = document.getElementById('output');
+  out.textContent =
+    currentType + ': { xMin:' + c.xMin + ', xMax:' + c.xMax + ', yMin:' + c.yMin + ', yMax:' + c.yMax +
+    ', pxL:' + c.pxL.toFixed(2) + ', pxR:' + c.pxR.toFixed(2) + ', pyT:' + c.pyT.toFixed(2) + ', pyB:' + c.pyB.toFixed(2) + ' },';
+}
+
+// ── Click-to-Calibrate ────────────────────────────────────────────────
+function startClickCalibration(mode) {
+  clickCalMode = mode;
+  var targets = {
+    'x1': 'the LEFT edge of the plot area (x-min axis tick)',
+    'x2': 'the RIGHT edge of the plot area (x-max axis tick)',
+    'y1': 'the BOTTOM edge of the plot area (y-min axis tick)',
+    'y2': 'the TOP edge of the plot area (y-max axis tick)',
+  };
+  document.getElementById('clickTarget').textContent = targets[mode];
+  document.getElementById('clickMode').classList.add('active');
+}
+
+function cancelClick() {
+  clickCalMode = null;
+  document.getElementById('clickMode').classList.remove('active');
+}
+
+document.getElementById('overlay').addEventListener('click', function(e) {
+  if (!clickCalMode) return;
+  var img = document.getElementById('chartImg');
+  var rect = img.getBoundingClientRect();
+  var px = (e.clientX - rect.left) / rect.width * 100;
+  var py = (e.clientY - rect.top) / rect.height * 100;
+  clickPoints[clickCalMode] = { px: px, py: py };
+
+  // Update calibration from clicks
+  var c = cal[currentType];
+  if (clickCalMode === 'x1') {
+    c.pxL = px;
+  } else if (clickCalMode === 'x2') {
+    c.pxR = px;
+  } else if (clickCalMode === 'y1') {
+    c.pyB = py; // y-min is at bottom
+  } else if (clickCalMode === 'y2') {
+    c.pyT = py; // y-max is at top
+  }
+
+  cancelClick();
+  buildSliders();
+  drawOverlay();
+  updateVerifyTable();
+  updateOutput();
+});
+
+// ── Init ──────────────────────────────────────────────────────────────
+function loadChart() {
+  currentType = document.getElementById('chartType').value;
+  currentGender = document.getElementById('gender').value;
+  var img = document.getElementById('chartImg');
+  img.onload = function() {
+    drawOverlay();
+    updateVerifyTable();
+    updateOutput();
+  };
+  img.src = CHART_IMAGES[currentType][currentGender];
+
+  // Set default checkX
+  var checkXInput = document.getElementById('checkX');
+  if (!checkXInput.value) {
+    checkXInput.value = (currentType === 'wfh') ? 70 : 24;
+  }
+
+  // Set default min/max values
+  var c = cal[currentType];
+  document.getElementById('xMinVal').value = c.xMin;
+  document.getElementById('xMaxVal').value = c.xMax;
+  document.getElementById('yMinVal').value = c.yMin;
+  document.getElementById('yMaxVal').value = c.yMax;
+
+  buildSliders();
+}
+
+document.getElementById('chartType').addEventListener('change', function() {
+  // Save current type's cal
+  // Reset checkX for new type
+  var t = this.value;
+  document.getElementById('checkX').value = (t === 'wfh') ? 70 : 24;
+  loadChart();
+});
+document.getElementById('gender').addEventListener('change', loadChart);
+document.getElementById('checkX').addEventListener('input', updateVerifyTable);
+
+document.getElementById('resetBtn').addEventListener('click', function() {
+  cal = JSON.parse(JSON.stringify(DEFAULT_CAL));
+  buildSliders();
+  drawOverlay();
+  updateVerifyTable();
+  updateOutput();
+});
+
+document.getElementById('copyBtn').addEventListener('click', function() {
+  var out = document.getElementById('output');
+  navigator.clipboard.writeText(out.textContent).then(function() {
+    var orig = out.style.color;
+    out.style.color = '#fff';
+    setTimeout(function() { out.style.color = orig; }, 500);
+  });
+});
+
+// Initial load
+loadChart();
+</script>
+</body>
+</html>

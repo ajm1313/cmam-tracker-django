@@ -1,5 +1,6 @@
 from django.http import JsonResponse
 from django.utils import timezone
+from django.views.generic import TemplateView
 
 
 def health_check(request):
@@ -10,3 +11,7 @@ def health_check(request):
         'service': 'CMAM Tracker API',
         'deploy_commit': '27198f8',
     })
+
+
+class CalibrationToolView(TemplateView):
+    template_name = 'calibrate.html'

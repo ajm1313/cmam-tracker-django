@@ -85,7 +85,59 @@
     var zoomPanY = 0;
     var gestureState = null;
 
-    // Calibration per chart type
+    // Multi-point calibration reference data
+    // Each axis has an array of {val, pct} reference points.
+    // Linear regression (least-squares) is used to compute the mapping,
+    // which is more robust than a 2-point estimate and allows adding
+    // more reference points for better accuracy.
+    // Use the /calibrate/ tool to derive precise values.
+    var CAL_REF = {
+        wfh: {
+            x: [{val:45, pct:8.05}, {val:120, pct:91.50}],
+            y: [{val:2, pct:82.80}, {val:34, pct:9.80}],
+        },
+        wfa: {
+            x: [{val:0, pct:10.5}, {val:60, pct:91.0}],
+            y: [{val:0, pct:85.0}, {val:30, pct:7.0}],
+        },
+        hfa: {
+            x: [{val:0, pct:10.5}, {val:60, pct:91.0}],
+            y: [{val:45, pct:85.0}, {val:120, pct:7.0}],
+        },
+    };
+
+    // Linear regression: y = a*x + b
+    function linearFit(points) {
+        var n = points.length;
+        if (n === 0) return { a: 0, b: 0 };
+        if (n === 1) return { a: 0, b: points[0].pct };
+        var sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+        for (var i = 0; i < n; i++) {
+            sumX += points[i].val;
+            sumY += points[i].pct;
+            sumXY += points[i].val * points[i].pct;
+            sumXX += points[i].val * points[i].val;
+        }
+        var denom = n * sumXX - sumX * sumX;
+        if (Math.abs(denom) < 1e-12) return { a: 0, b: sumY / n };
+        var a = (n * sumXY - sumX * sumY) / denom;
+        var b = (sumY - a * sumX) / n;
+        return { a: a, b: b };
+    }
+
+    // Cache fitted curves per chart type
+    var CAL_FIT = {};
+    function getFit(type) {
+        if (!CAL_FIT[type]) {
+            CAL_FIT[type] = {
+                x: linearFit(CAL_REF[type].x),
+                y: linearFit(CAL_REF[type].y),
+            };
+        }
+        return CAL_FIT[type];
+    }
+
+    // Backward-compat: expose CAL with derived values for any code that references it
     var CAL = {
         wfh: { xMin:45, xMax:120, yMin:2, yMax:34, pxL:8.05, pxR:91.50, pyT:9.80, pyB:82.80 },
         wfa: { xMin:0, xMax:60, yMin:0, yMax:30, pxL:10.5, pxR:91.0, pyT:7.0, pyB:85.0 },
@@ -130,9 +182,9 @@
     }
 
     function toPixel(type, xVal, yVal, imgW, imgH) {
-        var c = CAL[type];
-        var xPct = c.pxL + (xVal - c.xMin) / (c.xMax - c.xMin) * (c.pxR - c.pxL);
-        var yPct = c.pyB - (yVal - c.yMin) / (c.yMax - c.yMin) * (c.pyB - c.pyT);
+        var fit = getFit(type);
+        var xPct = fit.x.a * xVal + fit.x.b;
+        var yPct = fit.y.a * yVal + fit.y.b;
         return { x: xPct / 100 * imgW, y: yPct / 100 * imgH };
     }
 
@@ -146,6 +198,50 @@
         return null;
     }
 
+    // Debug overlay: draws computed Z-score lines on top of the chart image
+    // so you can visually verify calibration accuracy. Activate with ?debug=1
+    function drawZScoreOverlay(ctx, type, w, h) {
+        var gender = getGender();
+        var zColors = {'-3':'#ff0000','-2':'#ff8800','-1':'#ffcc00','0':'#00cc00','1':'#ffcc00','2':'#ff8800','3':'#ff0000'};
+        var zLines = [-3, -2, -1, 0, 1, 2, 3];
+        var xSteps = 30;
+        for (var zi = 0; zi < zLines.length; zi++) {
+            var z = zLines[zi];
+            ctx.beginPath();
+            ctx.strokeStyle = zColors[z] || '#888';
+            ctx.lineWidth = (z === 0) ? 2 : 1;
+            ctx.setLineDash(z === 0 ? [] : [3, 2]);
+            for (var xi = 0; xi <= xSteps; xi++) {
+                var c = CAL[type];
+                var xVal = c.xMin + (c.xMax - c.xMin) * xi / xSteps;
+                var lms = getLMSForOverlay(type, xVal, gender);
+                if (!lms) continue;
+                var yVal = lmsInv(z, lms.l, lms.m, lms.s);
+                var fit = getFit(type);
+                var xp = (fit.x.a * xVal + fit.x.b) / 100 * w;
+                var yp = (fit.y.a * yVal + fit.y.b) / 100 * h;
+                if (xi === 0) ctx.moveTo(xp, yp);
+                else ctx.lineTo(xp, yp);
+            }
+            ctx.stroke();
+        }
+        ctx.setLineDash([]);
+    }
+
+    function getLMSForOverlay(type, xVal, gender) {
+        if (type === 'wfh') {
+            var table = gender === 'Female' ? WFH_GIRLS : WFH_BOYS;
+            return interpLMSbyHeight(table, xVal);
+        } else if (type === 'wfa') {
+            var table = gender === 'Female' ? WFA_GIRLS : WFA_BOYS;
+            return interpLMS(table, xVal);
+        } else if (type === 'hfa') {
+            var table = gender === 'Female' ? HFA_GIRLS : HFA_BOYS;
+            return interpLMS(table, xVal);
+        }
+        return null;
+    }
+
     function drawOnCanvas(canvas, img, type) {
         var rect = img.getBoundingClientRect();
         var dpr = window.devicePixelRatio || 1;
@@ -156,6 +252,12 @@
         var ctx = canvas.getContext('2d');
         ctx.scale(dpr, dpr);
         var w = rect.width, h = rect.height;
+
+        // Debug overlay: draw computed Z-score lines for verification
+        // Activate with ?debug=1 in URL
+        if (window.location.search.indexOf('debug=1') !== -1) {
+            drawZScoreOverlay(ctx, type, w, h);
+        }
 
         var pt = getPoint(type, w, h);
         if (!pt) return;
@@ -263,8 +365,8 @@
     // Computes where the Z-score lines sit on the chart image (in percentage space),
     // then checks which band the actual measurement's plot position falls into.
     function yPct(type, yVal) {
-        var c = CAL[type];
-        return c.pyB - (yVal - c.yMin) / (c.yMax - c.yMin) * (c.pyB - c.pyT);
+        var fit = getFit(type);
+        return fit.y.a * yVal + fit.y.b;
     }
 
     function bandFromPlot(type, xVal, yVal, gender) {
