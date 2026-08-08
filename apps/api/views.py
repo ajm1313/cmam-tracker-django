@@ -740,7 +740,7 @@ def next_reg_number_api(request):
         facility = Facility.objects.get(pk=facility_id)
     except Facility.DoesNotExist:
         return Response({'success': False, 'message': 'Facility not found'}, status=status.HTTP_404_NOT_FOUND)
-    reg_number = OpcRegistration.generate_registration_number(facility, mal_type)
+    reg_number = OpcRegistration.preview_registration_number(facility, mal_type)
     return Response({'success': True, 'data': {'registration_number': reg_number}})
 
 

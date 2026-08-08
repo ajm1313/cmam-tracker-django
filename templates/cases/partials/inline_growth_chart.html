@@ -38,7 +38,7 @@
 
     // Calibration (same for boys & girls charts)
     var CAL = {
-        xMin: 45, xMax: 120, yMin: 2, yMax: 34,
+        xMin: 45, xMax: 120, yMin: 0, yMax: 30,
         pxL: 8.05, pxR: 91.50, pyT: 9.80, pyB: 82.80
     };
 
@@ -78,7 +78,7 @@
         }
 
         // Clamp to chart range
-        if (height < 45 || height > 120 || weight < 1 || weight > 35) {
+        if (height < 45 || height > 120 || weight < 0 || weight > 30) {
             wrapper.classList.add('hidden');
             return;
         }

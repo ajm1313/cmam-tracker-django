@@ -224,6 +224,42 @@ class OpcRegistration(TimeStampedModel):
         super().save(*args, **kwargs)
 
     @classmethod
+    def _compute_next_sequence(cls, facility, malnutrition_type):
+        """Return (last_sequence, needs_backfill) without incrementing.
+        If no FacilitySequence row exists, compute the backfill value from
+        existing registration numbers but do NOT persist it."""
+        seq_obj = FacilitySequence.objects.filter(
+            facility=facility,
+            malnutrition_type=malnutrition_type,
+        ).first()
+        if seq_obj:
+            return seq_obj.last_sequence, False
+        # No sequence row — backfill from existing cases
+        max_seq = 0
+        prefix = f"{facility.code}/"
+        for case in cls.objects.filter(
+            facility=facility,
+            malnutrition_type=malnutrition_type,
+            registration_number__isnull=False
+        ).exclude(registration_number=''):
+            if case.registration_number.startswith(prefix):
+                try:
+                    parts = case.registration_number.split('/')
+                    if len(parts) >= 2:
+                        max_seq = max(max_seq, int(parts[1]))
+                except (ValueError, IndexError):
+                    continue
+        return max_seq, True
+
+    @classmethod
+    def preview_registration_number(cls, facility, malnutrition_type):
+        """Preview the next registration number WITHOUT incrementing the counter.
+        Safe to call from preview/GET endpoints."""
+        last_seq, _ = cls._compute_next_sequence(facility, malnutrition_type)
+        seq = str(last_seq + 1).zfill(3)
+        return f"{facility.code}/{seq}/{malnutrition_type}/{facility.type}"
+
+    @classmethod
     def generate_registration_number(cls, facility, malnutrition_type):
         """Auto-generate: FACILITY_CODE/NNN/SAM-FACILITY_TYPE or MAM-FACILITY_TYPE.
         

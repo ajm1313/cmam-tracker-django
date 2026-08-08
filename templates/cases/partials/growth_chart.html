@@ -82,14 +82,14 @@ var CHART_CAL = {
     // Data range
     xMin: 45,   // cm  (left axis)
     xMax: 120,  // cm  (right axis)
-    yMin: 2,    // kg  (bottom axis)
-    yMax: 34,   // kg  (top axis)
+    yMin: 0,    // kg  (bottom axis)
+    yMax: 30,   // kg  (top axis)
     // Percentage positions within the image (0-100%)
     // These are calibrated from the chart grid boundaries
     pxLeft:   8.05,   // % from left where x=45cm gridline sits
     pxRight: 91.50,   // % from left where x=120cm gridline sits
-    pyTop:    9.80,   // % from top where y=34kg gridline sits
-    pyBottom: 82.80   // % from top where y=2kg gridline sits
+    pyTop:    9.80,   // % from top where y=30kg gridline sits
+    pyBottom: 82.80   // % from top where y=0kg gridline sits
 };
 
 function dataToPercent(height_cm, weight_kg) {

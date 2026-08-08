@@ -146,9 +146,9 @@
 
 // ── Current Calibration Constants ─────────────────────────────────────
 var DEFAULT_CAL = {
-  wfh: { xMin:45, xMax:120, yMin:2, yMax:34, pxL:8.05, pxR:91.50, pyT:9.80, pyB:82.80 },
+  wfh: { xMin:45, xMax:120, yMin:0, yMax:30, pxL:8.05, pxR:91.50, pyT:9.80, pyB:82.80 },
   wfa: { xMin:0, xMax:60, yMin:0, yMax:30, pxL:10.5, pxR:91.0, pyT:7.0, pyB:85.0 },
-  hfa: { xMin:0, xMax:60, yMin:45, yMax:120, pxL:10.5, pxR:91.0, pyT:7.0, pyB:85.0 },
+  hfa: { xMin:0, xMax:60, yMin:40, yMax:140, pxL:10.5, pxR:91.0, pyT:7.0, pyB:85.0 },
 };
 
 var STATIC = '{% load static %}{% get_static_prefix as STATIC_URL %}{{ STATIC_URL }}';

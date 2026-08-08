@@ -399,7 +399,7 @@ def api_next_registration_number(request):
     accessible = request.user.get_accessible_facilities()
     if accessible is not None and not accessible.filter(id=facility.id).exists():
         return JsonResponse({'error': 'Access denied'}, status=403)
-    reg_number = OpcRegistration.generate_registration_number(facility, mal_type)
+    reg_number = OpcRegistration.preview_registration_number(facility, mal_type)
     return JsonResponse({'registration_number': reg_number})
 
 
