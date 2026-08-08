@@ -1,7 +1,23 @@
-from django.db import models
+from django.db import models, transaction
 from apps.core.models import TimeStampedModel
 from django.conf import settings
 from datetime import datetime, timedelta
+
+
+class FacilitySequence(models.Model):
+    """Persistent per-facility per-type sequence counter for registration numbers.
+    Ensures monotonic sequence even when cases are deleted."""
+
+    facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE, related_name='sequences')
+    malnutrition_type = models.CharField(max_length=10)
+    last_sequence = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = 'facility_sequences'
+        unique_together = [['facility', 'malnutrition_type']]
+
+    def __str__(self):
+        return f"{self.facility.code}/{self.malnutrition_type} → {self.last_sequence}"
 
 
 class OpcRegistration(TimeStampedModel):
@@ -209,29 +225,45 @@ class OpcRegistration(TimeStampedModel):
 
     @classmethod
     def generate_registration_number(cls, facility, malnutrition_type):
-        """Auto-generate: FACILITY_CODE/NNN/SAM-FACILITY_TYPE or MAM-FACILITY_TYPE"""
-        # Find the highest existing sequence number for this facility and type
-        existing_cases = cls.objects.filter(
-            facility=facility,
-            malnutrition_type=malnutrition_type,
-            registration_number__isnull=False
-        ).exclude(registration_number='')
+        """Auto-generate: FACILITY_CODE/NNN/SAM-FACILITY_TYPE or MAM-FACILITY_TYPE.
         
-        max_seq = 0
-        prefix = f"{facility.code}/"
-        for case in existing_cases:
-            if case.registration_number and case.registration_number.startswith(prefix):
-                try:
-                    # Extract sequence number from format: CODE/SEQ/TYPE/FACILITY_TYPE
-                    parts = case.registration_number.split('/')
-                    if len(parts) >= 2:
-                        seq_num = int(parts[1])
-                        max_seq = max(max_seq, seq_num)
-                except (ValueError, IndexError):
-                    continue
-        
-        seq = str(max_seq + 1).zfill(3)
-        return f"{facility.code}/{seq}/{malnutrition_type}/{facility.type}"
+        Uses a persistent FacilitySequence counter with row-level locking to
+        guarantee unique, monotonic sequence numbers even under concurrent
+        requests.  Deleting a case does NOT decrement the counter, so the
+        sequence never reuses numbers from deleted cases.
+        """
+        with transaction.atomic():
+            seq_obj, _created = FacilitySequence.objects.select_for_update().get_or_create(
+                facility=facility,
+                malnutrition_type=malnutrition_type,
+                defaults={'last_sequence': 0},
+            )
+
+            # On first creation (no prior sequence), backfill from existing
+            # registration numbers so we don't start from 1 if cases already
+            # exist in the database.
+            if _created and seq_obj.last_sequence == 0:
+                max_seq = 0
+                prefix = f"{facility.code}/"
+                for case in cls.objects.filter(
+                    facility=facility,
+                    malnutrition_type=malnutrition_type,
+                    registration_number__isnull=False
+                ).exclude(registration_number=''):
+                    if case.registration_number.startswith(prefix):
+                        try:
+                            parts = case.registration_number.split('/')
+                            if len(parts) >= 2:
+                                max_seq = max(max_seq, int(parts[1]))
+                        except (ValueError, IndexError):
+                            continue
+                seq_obj.last_sequence = max_seq
+
+            seq_obj.last_sequence += 1
+            seq_obj.save(update_fields=['last_sequence'])
+
+            seq = str(seq_obj.last_sequence).zfill(3)
+            return f"{facility.code}/{seq}/{malnutrition_type}/{facility.type}"
     
     def is_sam(self):
         return self.malnutrition_type == 'SAM'

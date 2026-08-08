@@ -13,6 +13,7 @@ from django.utils.encoding import force_bytes
 from django.core.mail import send_mail
 from django.conf import settings
 from django.utils import timezone
+from django.db import transaction
 from datetime import datetime, timedelta, date
 
 from apps.users.models import User, UserRole, Role, RoleFeaturePermission, SystemFeature
@@ -767,146 +768,147 @@ def case_create_api(request):
     if denied:
         return denied
     
-    reg_number = OpcRegistration.generate_registration_number(facility, data['malnutrition_type'])
+    with transaction.atomic():
+        reg_number = OpcRegistration.generate_registration_number(facility, data['malnutrition_type'])
     
-    case = OpcRegistration.objects.create(
-        facility=facility,
-        registration_number=reg_number,
-        child_name=data['child_name'],
-        child_gender=data['child_gender'],
-        date_of_birth=data['date_of_birth'],
-        age_months=int(data['age_months']),
-        caregiver_name=data.get('caregiver_name', ''),
-        caregiver_phone=data.get('caregiver_phone', ''),
-        caregiver_relationship=data.get('caregiver_relationship', ''),
-        total_household_members=data.get('total_household_members'),
-        address=data.get('address', ''),
-        malnutrition_type=data['malnutrition_type'],
-        mam_type=data.get('mam_type', ''),
-        admission_criteria=data.get('admission_criteria', ''),
-        admission_type=data.get('admission_type', 'New Admission'),
-        admission_date=data['admission_date'],
-        registration_date=data.get('registration_date', data['admission_date']),
-        weight_kg=data['weight_kg'],
-        height_cm=data['height_cm'],
-        muac_cm=data.get('muac_cm'),
-        z_score_wfh=data.get('z_score_wfh') or data.get('z_score_value'),
-        z_score_wfa=data.get('z_score_wfa'),
-        z_score_hfa=data.get('z_score_hfa'),
-        oedema=data.get('oedema', ''),
-        appetite_test=data.get('appetite_test', ''),
-        medical_complications=data.get('medical_complications', False),
-        complications_notes=data.get('complications_notes', ''),
-        registration_latitude=data.get('registration_latitude'),
-        registration_longitude=data.get('registration_longitude'),
-        
-        # Additional demographic/social fields
-        father_alive=data.get('father_alive'),
-        mother_alive=data.get('mother_alive'),
-        house_location=data.get('house_location'),
-        travel_time=data.get('travel_time'),
-        referral_source=data.get('referral_source'),
-        
-        # Medical History
-        diarrhoea=data.get('diarrhoea'),
-        stool_frequency=data.get('stool_frequency'),
-        vomiting=data.get('vomiting'),
-        cough=data.get('cough'),
-        passing_urine=data.get('passing_urine'),
-        oedema_duration_days=data.get('oedema_duration_days'),
-        breastfeeding_status=data.get('breastfeeding_status'),
-        breastfeeding_prospect=data.get('breastfeeding_prospect'),
-        immunization_status=data.get('immunization_status'),
-        g6pd_status=data.get('g6pd_status'),
-        additional_medical_history=data.get('additional_medical_history'),
-        
-        # Physical Examination
-        respiratory_rate=data.get('respiratory_rate'),
-        temperature_celsius=data.get('temperature_celsius'),
-        chest_indrawing=data.get('chest_indrawing'),
-        eyes_condition=data.get('eyes_condition'),
-        conjunctiva=data.get('conjunctiva'),
-        ears_condition=data.get('ears_condition'),
-        mouth_condition=data.get('mouth_condition'),
-        lymph_nodes=data.get('lymph_nodes'),
-        hands_feet=data.get('hands_feet'),
-        skin_changes=data.get('skin_changes'),
-        disability=data.get('disability'),
-        disability_details=data.get('disability_details'),
-        physical_exam_notes=data.get('physical_exam_notes'),
-        # IPC Referral Clinical Signs
-        intractable_vomiting=_to_bool(data.get('intractable_vomiting')),
-        convulsions=_to_bool(data.get('convulsions')),
-        lethargic_or_not_alert=_to_bool(data.get('lethargic_or_not_alert')),
-        unconscious=_to_bool(data.get('unconscious')),
-        severe_dehydration=_to_bool(data.get('severe_dehydration')),
-        very_pale_or_severe_palmar_pallor=_to_bool(data.get('very_pale_or_severe_palmar_pallor')),
+        case = OpcRegistration.objects.create(
+            facility=facility,
+            registration_number=reg_number,
+            child_name=data['child_name'],
+            child_gender=data['child_gender'],
+            date_of_birth=data['date_of_birth'],
+            age_months=int(data['age_months']),
+            caregiver_name=data.get('caregiver_name', ''),
+            caregiver_phone=data.get('caregiver_phone', ''),
+            caregiver_relationship=data.get('caregiver_relationship', ''),
+            total_household_members=data.get('total_household_members'),
+            address=data.get('address', ''),
+            malnutrition_type=data['malnutrition_type'],
+            mam_type=data.get('mam_type', ''),
+            admission_criteria=data.get('admission_criteria', ''),
+            admission_type=data.get('admission_type', 'New Admission'),
+            admission_date=data['admission_date'],
+            registration_date=data.get('registration_date', data['admission_date']),
+            weight_kg=data['weight_kg'],
+            height_cm=data['height_cm'],
+            muac_cm=data.get('muac_cm'),
+            z_score_wfh=data.get('z_score_wfh') or data.get('z_score_value'),
+            z_score_wfa=data.get('z_score_wfa'),
+            z_score_hfa=data.get('z_score_hfa'),
+            oedema=data.get('oedema', ''),
+            appetite_test=data.get('appetite_test', ''),
+            medical_complications=data.get('medical_complications', False),
+            complications_notes=data.get('complications_notes', ''),
+            registration_latitude=data.get('registration_latitude'),
+            registration_longitude=data.get('registration_longitude'),
+            
+            # Additional demographic/social fields
+            father_alive=data.get('father_alive'),
+            mother_alive=data.get('mother_alive'),
+            house_location=data.get('house_location'),
+            travel_time=data.get('travel_time'),
+            referral_source=data.get('referral_source'),
+            
+            # Medical History
+            diarrhoea=data.get('diarrhoea'),
+            stool_frequency=data.get('stool_frequency'),
+            vomiting=data.get('vomiting'),
+            cough=data.get('cough'),
+            passing_urine=data.get('passing_urine'),
+            oedema_duration_days=data.get('oedema_duration_days'),
+            breastfeeding_status=data.get('breastfeeding_status'),
+            breastfeeding_prospect=data.get('breastfeeding_prospect'),
+            immunization_status=data.get('immunization_status'),
+            g6pd_status=data.get('g6pd_status'),
+            additional_medical_history=data.get('additional_medical_history'),
+            
+            # Physical Examination
+            respiratory_rate=data.get('respiratory_rate'),
+            temperature_celsius=data.get('temperature_celsius'),
+            chest_indrawing=data.get('chest_indrawing'),
+            eyes_condition=data.get('eyes_condition'),
+            conjunctiva=data.get('conjunctiva'),
+            ears_condition=data.get('ears_condition'),
+            mouth_condition=data.get('mouth_condition'),
+            lymph_nodes=data.get('lymph_nodes'),
+            hands_feet=data.get('hands_feet'),
+            skin_changes=data.get('skin_changes'),
+            disability=data.get('disability'),
+            disability_details=data.get('disability_details'),
+            physical_exam_notes=data.get('physical_exam_notes'),
+            # IPC Referral Clinical Signs
+            intractable_vomiting=_to_bool(data.get('intractable_vomiting')),
+            convulsions=_to_bool(data.get('convulsions')),
+            lethargic_or_not_alert=_to_bool(data.get('lethargic_or_not_alert')),
+            unconscious=_to_bool(data.get('unconscious')),
+            severe_dehydration=_to_bool(data.get('severe_dehydration')),
+            very_pale_or_severe_palmar_pallor=_to_bool(data.get('very_pale_or_severe_palmar_pallor')),
 
-        # Medicines at Enrollment
-        amoxicillin_date=data.get('amoxicillin_date'),
-        amoxicillin_dosage=data.get('amoxicillin_dosage'),
-        vitamin_a_date=data.get('vitamin_a_date'),
-        vitamin_a_dosage=data.get('vitamin_a_dosage'),
-        folic_acid_date=data.get('folic_acid_date'),
-        folic_acid_dosage=data.get('folic_acid_dosage'),
-        deworming_date=data.get('deworming_date'),
-        deworming_dosage=data.get('deworming_dosage'),
-        measles_vaccine_date=data.get('measles_vaccine_date'),
-        measles_vaccine_dosage=data.get('measles_vaccine_dosage'),
-        malaria_test_date=data.get('malaria_test_date'),
-        malaria_test_result=data.get('malaria_test_result'),
-        antimalarial_date=data.get('antimalarial_date'),
-        antimalarial_dosage=data.get('antimalarial_dosage'),
-        mebendazole_date=data.get('mebendazole_date'),
-        other_medicines=data.get('other_medicines'),
+            # Medicines at Enrollment
+            amoxicillin_date=data.get('amoxicillin_date'),
+            amoxicillin_dosage=data.get('amoxicillin_dosage'),
+            vitamin_a_date=data.get('vitamin_a_date'),
+            vitamin_a_dosage=data.get('vitamin_a_dosage'),
+            folic_acid_date=data.get('folic_acid_date'),
+            folic_acid_dosage=data.get('folic_acid_dosage'),
+            deworming_date=data.get('deworming_date'),
+            deworming_dosage=data.get('deworming_dosage'),
+            measles_vaccine_date=data.get('measles_vaccine_date'),
+            measles_vaccine_dosage=data.get('measles_vaccine_dosage'),
+            malaria_test_date=data.get('malaria_test_date'),
+            malaria_test_result=data.get('malaria_test_result'),
+            antimalarial_date=data.get('antimalarial_date'),
+            antimalarial_dosage=data.get('antimalarial_dosage'),
+            mebendazole_date=data.get('mebendazole_date'),
+            other_medicines=data.get('other_medicines'),
+            
+            # RUTF and Other Supplies
+            rutf_sachets_given=data.get('rutf_sachets_given'),
+            rutf_ration_per_day=data.get('rutf_ration_per_day'),
+            next_visit_date=data.get('next_visit_date'),
+            
+            # Other Medicines
+            other_drug_1=data.get('other_drug_1'),
+            other_drug_1_date=data.get('other_drug_1_date'),
+            other_drug_1_dosage=data.get('other_drug_1_dosage'),
+            other_drug_2=data.get('other_drug_2'),
+            other_drug_2_date=data.get('other_drug_2_date'),
+            other_drug_2_dosage=data.get('other_drug_2_dosage'),
+            other_drug_3=data.get('other_drug_3'),
+            other_drug_3_date=data.get('other_drug_3_date'),
+            other_drug_3_dosage=data.get('other_drug_3_dosage'),
+            
+            # Additional Notes
+            additional_notes=data.get('additional_notes'),
+            
+            # MAM-specific fields
+            previous_sam_episode=_to_bool(data.get('previous_sam_episode')),
+            failed_counselling_only=_to_bool(data.get('failed_counselling_only')),
+            hiv_tb_status=data.get('hiv_tb_status'),
+            household_vulnerability=data.get('household_vulnerability'),
+            poor_maternal_health=_to_bool(data.get('poor_maternal_health')),
+            mother_deceased=_to_bool(data.get('mother_deceased')),
+            immunization_action=data.get('immunization_action'),
+            counselling=data.get('counselling'),
+            food_product_type=data.get('food_product_type'),
+            food_product_quantity=data.get('food_product_quantity'),
+            
+            # Additional admission/clinical detail fields
+            complications_details=data.get('complications_details'),
+            admission_time=data.get('admission_time'),
+            referring_facility=data.get('referring_facility'),
+            oedema_grade=data.get('oedema_grade'),
+            bilateral_pitting_oedema=data.get('bilateral_pitting_oedema'),
+            time_to_travel_minutes=data.get('time_to_travel_minutes'),
+            
+            status='Active',
+            created_by=request.user,
+        )
         
-        # RUTF and Other Supplies
-        rutf_sachets_given=data.get('rutf_sachets_given'),
-        rutf_ration_per_day=data.get('rutf_ration_per_day'),
-        next_visit_date=data.get('next_visit_date'),
-        
-        # Other Medicines
-        other_drug_1=data.get('other_drug_1'),
-        other_drug_1_date=data.get('other_drug_1_date'),
-        other_drug_1_dosage=data.get('other_drug_1_dosage'),
-        other_drug_2=data.get('other_drug_2'),
-        other_drug_2_date=data.get('other_drug_2_date'),
-        other_drug_2_dosage=data.get('other_drug_2_dosage'),
-        other_drug_3=data.get('other_drug_3'),
-        other_drug_3_date=data.get('other_drug_3_date'),
-        other_drug_3_dosage=data.get('other_drug_3_dosage'),
-        
-        # Additional Notes
-        additional_notes=data.get('additional_notes'),
-        
-        # MAM-specific fields
-        previous_sam_episode=_to_bool(data.get('previous_sam_episode')),
-        failed_counselling_only=_to_bool(data.get('failed_counselling_only')),
-        hiv_tb_status=data.get('hiv_tb_status'),
-        household_vulnerability=data.get('household_vulnerability'),
-        poor_maternal_health=_to_bool(data.get('poor_maternal_health')),
-        mother_deceased=_to_bool(data.get('mother_deceased')),
-        immunization_action=data.get('immunization_action'),
-        counselling=data.get('counselling'),
-        food_product_type=data.get('food_product_type'),
-        food_product_quantity=data.get('food_product_quantity'),
-        
-        # Additional admission/clinical detail fields
-        complications_details=data.get('complications_details'),
-        admission_time=data.get('admission_time'),
-        referring_facility=data.get('referring_facility'),
-        oedema_grade=data.get('oedema_grade'),
-        bilateral_pitting_oedema=data.get('bilateral_pitting_oedema'),
-        time_to_travel_minutes=data.get('time_to_travel_minutes'),
-        
-        status='Active',
-        created_by=request.user,
-    )
-    
-    # Handle child photo upload
-    if 'child_photo' in request.FILES:
-        case.child_photo = request.FILES['child_photo']
-        case.save(update_fields=['child_photo'])
+        # Handle child photo upload
+        if 'child_photo' in request.FILES:
+            case.child_photo = request.FILES['child_photo']
+            case.save(update_fields=['child_photo'])
     
     # Auto-deduct stock for commodities given at enrollment
     try:
@@ -957,8 +959,6 @@ def record_visit_api(request, registration_id):
 
     # Convert empty strings to None so blank numeric fields become NULL
     data = {k: v for k, v in request.data.items() if v != ''}
-    last_visit = case.visits.order_by('-visit_number').first()
-    next_number = (last_visit.visit_number + 1) if last_visit else 1
 
     # Duplicate check: prevent multiple visits on the same date for the same case
     visit_date = data.get('visit_date') or timezone.now().date().isoformat()
@@ -966,69 +966,77 @@ def record_visit_api(request, registration_id):
     if existing:
         return Response({'success': False, 'message': 'A visit for this case has already been recorded on this date.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    outcome = data.get('visit_outcome', 'Continue')
-    if outcome not in ('Absent', 'Defaulted'):
-        if not data.get('weight_kg'):
-            return Response({'success': False, 'message': 'Weight is required.'}, status=status.HTTP_400_BAD_REQUEST)
-        if not data.get('muac_cm'):
-            return Response({'success': False, 'message': 'MUAC is required.'}, status=status.HTTP_400_BAD_REQUEST)
-        if not data.get('appetite'):
-            return Response({'success': False, 'message': 'Appetite Test is required.'}, status=status.HTTP_400_BAD_REQUEST)
-        if next_number in (4, 8, 12, 16) and (not data.get('height_cm') or not data.get('z_score_wfh')):
-            return Response({'success': False, 'message': 'Height and W/H Z-Score are required for anthropometry visits.'}, status=status.HTTP_400_BAD_REQUEST)
-
     try:
-        visit = OpcVisit.objects.create(
-            registration=case,
-            visit_number=next_number,
-            visit_date=data.get('visit_date', timezone.now().date()),
-            visit_type=data.get('visit_type', 'Routine'),
-            weight_kg=data.get('weight_kg'),
-            weight_lost=data.get('weight_lost', False),
-            height_cm=data.get('height_cm'),
-            muac_cm=data.get('muac_cm'),
-            z_score_wfh=data.get('z_score_wfh'),
-            oedema=data.get('oedema', ''),
-            diarrhoea_days=data.get('diarrhoea_days'),
-            vomiting_days=data.get('vomiting_days'),
-            fever_days=data.get('fever_days'),
-            cough_days=data.get('cough_days'),
-            temperature=data.get('temperature'),
-            respiratory_rate=data.get('respiratory_rate'),
-            dehydrated=data.get('dehydrated', False),
-            anaemia_palmar_pallor=data.get('anaemia_palmar_pallor', False),
-            skin_infection=data.get('skin_infection', False),
-            appetite=data.get('appetite') or None,
-            rutf_test=data.get('rutf_test') or None,
-            breastfeeding_status=data.get('breastfeeding_status') or None,
-            general_condition=data.get('general_condition', ''),
-            has_complications=data.get('has_complications', False),
-            complications_notes=data.get('complications_notes', ''),
-            medical_notes=data.get('medical_notes', '') or data.get('remarks', ''),
-            rutf_sachets_given=data.get('rutf_sachets_given'),
-            csb_plus_given=data.get('csb_plus_given'),
-            oil_given=data.get('oil_given'),
-            other_supplies=data.get('other_supplies', ''),
-            other_medication=data.get('other_medication', ''),
-            food_product_type=data.get('food_product_type', ''),
-            food_product_quantity=data.get('food_product_quantity', ''),
-            staff_name=data.get('staff_name', ''),
-            z_score_wfa=data.get('z_score_wfa'),
-            z_score_hfa=data.get('z_score_hfa'),
-            counseling_topics=data.get('counseling_topics', ''),
-            caregiver_understanding=data.get('caregiver_understanding', ''),
-            next_visit_date=data.get('next_visit_date'),
-            treatment_response=data.get('treatment_response', ''),
-            action_needed=data.get('action_needed', False),
-            home_visit_needed=data.get('home_visit_needed', False),
-            home_visit_date=data.get('home_visit_date'),
-            home_visit_notes=data.get('home_visit_notes', ''),
-            community_volunteer=data.get('community_volunteer', ''),
-            visit_outcome=data.get('visit_outcome', 'Continue'),
-            outcome_notes=data.get('outcome_notes', ''),
-            conducted_by=request.user,
-            created_by=request.user,
-        )
+        with transaction.atomic():
+            # Lock the registration row to serialize concurrent visit creations
+            case = OpcRegistration.objects.select_for_update().get(pk=registration_id)
+            
+            # Get last visit number from remaining (undeleted) visits
+            last_visit = case.visits.order_by('-visit_number').first()
+            next_number = (last_visit.visit_number + 1) if last_visit else 1
+
+            outcome = data.get('visit_outcome', 'Continue')
+            if outcome not in ('Absent', 'Defaulted'):
+                if not data.get('weight_kg'):
+                    return Response({'success': False, 'message': 'Weight is required.'}, status=status.HTTP_400_BAD_REQUEST)
+                if not data.get('muac_cm'):
+                    return Response({'success': False, 'message': 'MUAC is required.'}, status=status.HTTP_400_BAD_REQUEST)
+                if not data.get('appetite'):
+                    return Response({'success': False, 'message': 'Appetite Test is required.'}, status=status.HTTP_400_BAD_REQUEST)
+                if next_number in (4, 8, 12, 16) and (not data.get('height_cm') or not data.get('z_score_wfh')):
+                    return Response({'success': False, 'message': 'Height and W/H Z-Score are required for anthropometry visits.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            visit = OpcVisit.objects.create(
+                registration=case,
+                visit_number=next_number,
+                visit_date=data.get('visit_date', timezone.now().date()),
+                visit_type=data.get('visit_type', 'Routine'),
+                weight_kg=data.get('weight_kg'),
+                weight_lost=data.get('weight_lost', False),
+                height_cm=data.get('height_cm'),
+                muac_cm=data.get('muac_cm'),
+                z_score_wfh=data.get('z_score_wfh'),
+                oedema=data.get('oedema', ''),
+                diarrhoea_days=data.get('diarrhoea_days'),
+                vomiting_days=data.get('vomiting_days'),
+                fever_days=data.get('fever_days'),
+                cough_days=data.get('cough_days'),
+                temperature=data.get('temperature'),
+                respiratory_rate=data.get('respiratory_rate'),
+                dehydrated=data.get('dehydrated', False),
+                anaemia_palmar_pallor=data.get('anaemia_palmar_pallor', False),
+                skin_infection=data.get('skin_infection', False),
+                appetite=data.get('appetite') or None,
+                rutf_test=data.get('rutf_test') or None,
+                breastfeeding_status=data.get('breastfeeding_status') or None,
+                general_condition=data.get('general_condition', ''),
+                has_complications=data.get('has_complications', False),
+                complications_notes=data.get('complications_notes', ''),
+                medical_notes=data.get('medical_notes', '') or data.get('remarks', ''),
+                rutf_sachets_given=data.get('rutf_sachets_given'),
+                csb_plus_given=data.get('csb_plus_given'),
+                oil_given=data.get('oil_given'),
+                other_supplies=data.get('other_supplies', ''),
+                other_medication=data.get('other_medication', ''),
+                food_product_type=data.get('food_product_type', ''),
+                food_product_quantity=data.get('food_product_quantity', ''),
+                staff_name=data.get('staff_name', ''),
+                z_score_wfa=data.get('z_score_wfa'),
+                z_score_hfa=data.get('z_score_hfa'),
+                counseling_topics=data.get('counseling_topics', ''),
+                caregiver_understanding=data.get('caregiver_understanding', ''),
+                next_visit_date=data.get('next_visit_date'),
+                treatment_response=data.get('treatment_response', ''),
+                action_needed=data.get('action_needed', False),
+                home_visit_needed=data.get('home_visit_needed', False),
+                home_visit_date=data.get('home_visit_date'),
+                home_visit_notes=data.get('home_visit_notes', ''),
+                community_volunteer=data.get('community_volunteer', ''),
+                visit_outcome=data.get('visit_outcome', 'Continue'),
+                outcome_notes=data.get('outcome_notes', ''),
+                conducted_by=request.user,
+                created_by=request.user,
+            )
     except Exception as e:
         return Response({'success': False, 'message': f'Failed to record visit: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
     

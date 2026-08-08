@@ -209,148 +209,155 @@ def case_create(request):
             from apps.facilities.models import Facility
             facility = get_object_or_404(Facility, pk=facility_id)
             
+            # RBAC: verify user has access to this facility
+            accessible = request.user.get_accessible_facilities()
+            if accessible is not None and not accessible.filter(id=facility.id).exists():
+                messages.error(request, 'You do not have access to this facility.')
+                return redirect('cases:case_list')
+            
             try:
-                reg_number = OpcRegistration.generate_registration_number(facility, malnutrition_type)
-                
-                registration = OpcRegistration.objects.create(
-                    facility=facility,
-                    registration_number=reg_number,
-                    malnutrition_type=malnutrition_type,
-                    mam_type=request.POST.get('mam_type') or None,
-                    child_name=request.POST.get('child_name', '').strip(),
-                    child_gender=request.POST.get('child_gender') or request.POST.get('gender', ''),
-                    date_of_birth=request.POST.get('date_of_birth'),
-                    age_months=request.POST.get('child_age_months', 0) or request.POST.get('age_months', 0),
-                    caregiver_name=request.POST.get('caregiver_name', '').strip(),
-                    caregiver_phone=request.POST.get('caregiver_phone', '').strip() or None,
-                    caregiver_relationship=request.POST.get('caregiver_relationship') or None,
-                    total_household_members=request.POST.get('total_household_members') or None,
-                    address=request.POST.get('community', '').strip() or None,
-                    admission_criteria=request.POST.get('enrolment_criteria') or request.POST.get('entry_criteria') or None,
-                    admission_type='New Admission',
-                    admission_date=request.POST.get('admission_date'),
-                    registration_date=request.POST.get('admission_date'),
-                    weight_kg=request.POST.get('weight_kg') or None,
-                    height_cm=request.POST.get('height_cm') or None,
-                    muac_cm=request.POST.get('muac_cm') or None,
-                    z_score_wfh=request.POST.get('z_score_wfh') or request.POST.get('z_score_value') or None,
-                    z_score_wfa=request.POST.get('z_score_wfa') or None,
-                    z_score_hfa=request.POST.get('z_score_hfa') or None,
-                    oedema=request.POST.get('oedema') or None,
-                    appetite_test=request.POST.get('appetite_test') or None,
-                    medical_complications=any([
-                        request.POST.get('diarrhoea') == 'Yes',
-                        request.POST.get('vomiting') == 'Yes',
-                        request.POST.get('cough') == 'Yes',
-                        request.POST.get('chest_indrawing') == 'Yes',
-                        request.POST.get('appetite_test') == 'Fail',
-                    ]),
-                    complications_notes=request.POST.get('additional_medical_history') or request.POST.get('physical_exam_notes') or None,
-                    registration_latitude=request.POST.get('registration_latitude') or None,
-                    registration_longitude=request.POST.get('registration_longitude') or None,
-                    # Demographic/social fields
-                    father_alive=request.POST.get('father_alive') or None,
-                    mother_alive=request.POST.get('mother_alive') or None,
-                    house_location=request.POST.get('house_location') or None,
-                    travel_time=request.POST.get('travel_time') or None,
-                    referral_source=request.POST.get('referral_source') or None,
-                    # Medical History
-                    diarrhoea=request.POST.get('diarrhoea') or None,
-                    stool_frequency=request.POST.get('stool_frequency') or None,
-                    vomiting=request.POST.get('vomiting') or None,
-                    cough=request.POST.get('cough') or None,
-                    passing_urine=request.POST.get('passing_urine') or None,
-                    oedema_duration_days=request.POST.get('oedema_duration_days') or None,
-                    breastfeeding_status=request.POST.get('breastfeeding_status') or None,
-                    breastfeeding_prospect=request.POST.get('breastfeeding_prospect') or None,
-                    immunization_status=request.POST.get('immunization_status') or None,
-                    g6pd_status=request.POST.get('g6pd_status') or None,
-                    additional_medical_history=request.POST.get('additional_medical_history') or None,
-                    # Physical Examination
-                    respiratory_rate=request.POST.get('respiratory_rate') or None,
-                    temperature_celsius=request.POST.get('temperature_celsius') or request.POST.get('temperature') or None,
-                    chest_indrawing=request.POST.get('chest_indrawing') or None,
-                    eyes_condition=request.POST.get('eyes_condition') or None,
-                    conjunctiva=request.POST.get('conjunctiva') or None,
-                    ears_condition=request.POST.get('ears_condition') or None,
-                    mouth_condition=request.POST.get('mouth_condition') or None,
-                    lymph_nodes=request.POST.get('lymph_nodes') or None,
-                    hands_feet=request.POST.get('hands_feet') or None,
-                    skin_changes=request.POST.get('skin_changes') or None,
-                    disability=request.POST.get('disability') or None,
-                    disability_details=request.POST.get('disability_details') or None,
-                    physical_exam_notes=request.POST.get('physical_exam_notes') or None,
-                    # IPC Referral Clinical Signs
-                    intractable_vomiting=request.POST.get('intractable_vomiting') == 'Yes',
-                    convulsions=request.POST.get('convulsions') == 'Yes',
-                    lethargic_or_not_alert=request.POST.get('lethargic_or_not_alert') == 'Yes',
-                    unconscious=request.POST.get('unconscious') == 'Yes',
-                    severe_dehydration=request.POST.get('severe_dehydration') == 'Yes',
-                    very_pale_or_severe_palmar_pallor=request.POST.get('very_pale_or_severe_palmar_pallor') == 'Yes',
-                    # Infant Under 6 Months Assessment
-                    age_weeks=request.POST.get('age_weeks') or None,
-                    effective_suckling=request.POST.get('effective_suckling') or None,
-                    relactation_needed=request.POST.get('relactation_needed') == 'Yes',
-                    visible_severe_wasting=request.POST.get('visible_severe_wasting') == 'Yes',
-                    # Medicines at Enrollment
-                    amoxicillin_date=request.POST.get('amoxicillin_date') or None,
-                    amoxicillin_dosage=request.POST.get('amoxicillin_dosage') or None,
-                    vitamin_a_date=request.POST.get('vitamin_a_date') or None,
-                    vitamin_a_dosage=request.POST.get('vitamin_a_dosage') or None,
-                    folic_acid_date=request.POST.get('folic_acid_date') or None,
-                    folic_acid_dosage=request.POST.get('folic_acid_dosage') or None,
-                    deworming_date=request.POST.get('deworming_date') or None,
-                    deworming_dosage=request.POST.get('deworming_dosage') or None,
-                    measles_vaccine_date=request.POST.get('measles_vaccine_date') or request.POST.get('measles_vaccination_date') or None,
-                    measles_vaccine_dosage=request.POST.get('measles_vaccine_dosage') or None,
-                    malaria_test_date=request.POST.get('malaria_test_date') or None,
-                    malaria_test_result=request.POST.get('malaria_test_result') or None,
-                    antimalarial_date=request.POST.get('antimalarial_date') or None,
-                    antimalarial_dosage=request.POST.get('antimalarial_dosage') or None,
-                    # RUTF and Other Supplies
-                    rutf_sachets_given=request.POST.get('rutf_sachets_given') or None,
-                    rutf_ration_per_day=request.POST.get('rutf_ration_per_day') or None,
-                    next_visit_date=request.POST.get('next_visit_date') or None,
-                    # Other Medicines
-                    other_drug_1=request.POST.get('other_drug_1') or None,
-                    other_drug_1_date=request.POST.get('other_drug_1_date') or None,
-                    other_drug_1_dosage=request.POST.get('other_drug_1_dosage') or None,
-                    other_drug_2=request.POST.get('other_drug_2') or None,
-                    other_drug_2_date=request.POST.get('other_drug_2_date') or None,
-                    other_drug_2_dosage=request.POST.get('other_drug_2_dosage') or None,
-                    other_drug_3=request.POST.get('other_drug_3') or None,
-                    other_drug_3_date=request.POST.get('other_drug_3_date') or None,
-                    other_drug_3_dosage=request.POST.get('other_drug_3_dosage') or None,
-                    # Additional Notes
-                    additional_notes=request.POST.get('additional_notes') or None,
-                    # MAM Aggravating Factors
-                    previous_sam_episode=request.POST.get('previous_sam_episode') == 'Yes',
-                    failed_counselling_only=request.POST.get('failed_counselling_only') == 'Yes',
-                    hiv_tb_status=request.POST.get('hiv_tb_status') or None,
-                    household_vulnerability=request.POST.get('household_vulnerability') or None,
-                    poor_maternal_health=request.POST.get('poor_maternal_health') == 'Yes',
-                    mother_deceased=request.POST.get('mother_deceased') == 'Yes',
-                    immunization_action=request.POST.get('immunization_action') or None,
-                    mebendazole_date=request.POST.get('mebendazole_date') or None,
-                    other_medicines=request.POST.get('other_medicines') or None,
-                    counselling=request.POST.get('counselling') or None,
-                    food_product_type=request.POST.get('food_product_type') or None,
-                    food_product_quantity=request.POST.get('food_product_quantity') or None,
-                    # Additional admission/clinical detail fields
-                    complications_details=request.POST.get('complications_details') or None,
-                    admission_time=request.POST.get('admission_time') or None,
-                    referring_facility=request.POST.get('referring_facility') or None,
-                    oedema_grade=request.POST.get('oedema_grade') or None,
-                    bilateral_pitting_oedema=request.POST.get('bilateral_pitting_oedema') or None,
-                    time_to_travel_minutes=request.POST.get('time_to_travel_minutes') or None,
-                    status='Active',
-                    created_by=request.user,
-                )
-                
-                # Handle child photo upload
-                if 'child_photo' in request.FILES:
-                    registration.child_photo = request.FILES['child_photo']
-                    registration.save(update_fields=['child_photo'])
+                with transaction.atomic():
+                    reg_number = OpcRegistration.generate_registration_number(facility, malnutrition_type)
+                    
+                    registration = OpcRegistration.objects.create(
+                        facility=facility,
+                        registration_number=reg_number,
+                        malnutrition_type=malnutrition_type,
+                        mam_type=request.POST.get('mam_type') or None,
+                        child_name=request.POST.get('child_name', '').strip(),
+                        child_gender=request.POST.get('child_gender') or request.POST.get('gender', ''),
+                        date_of_birth=request.POST.get('date_of_birth'),
+                        age_months=request.POST.get('child_age_months', 0) or request.POST.get('age_months', 0),
+                        caregiver_name=request.POST.get('caregiver_name', '').strip(),
+                        caregiver_phone=request.POST.get('caregiver_phone', '').strip() or None,
+                        caregiver_relationship=request.POST.get('caregiver_relationship') or None,
+                        total_household_members=request.POST.get('total_household_members') or None,
+                        address=request.POST.get('community', '').strip() or None,
+                        admission_criteria=request.POST.get('enrolment_criteria') or request.POST.get('entry_criteria') or None,
+                        admission_type='New Admission',
+                        admission_date=request.POST.get('admission_date'),
+                        registration_date=request.POST.get('admission_date'),
+                        weight_kg=request.POST.get('weight_kg') or None,
+                        height_cm=request.POST.get('height_cm') or None,
+                        muac_cm=request.POST.get('muac_cm') or None,
+                        z_score_wfh=request.POST.get('z_score_wfh') or request.POST.get('z_score_value') or None,
+                        z_score_wfa=request.POST.get('z_score_wfa') or None,
+                        z_score_hfa=request.POST.get('z_score_hfa') or None,
+                        oedema=request.POST.get('oedema') or None,
+                        appetite_test=request.POST.get('appetite_test') or None,
+                        medical_complications=any([
+                            request.POST.get('diarrhoea') == 'Yes',
+                            request.POST.get('vomiting') == 'Yes',
+                            request.POST.get('cough') == 'Yes',
+                            request.POST.get('chest_indrawing') == 'Yes',
+                            request.POST.get('appetite_test') == 'Fail',
+                        ]),
+                        complications_notes=request.POST.get('additional_medical_history') or request.POST.get('physical_exam_notes') or None,
+                        registration_latitude=request.POST.get('registration_latitude') or None,
+                        registration_longitude=request.POST.get('registration_longitude') or None,
+                        # Demographic/social fields
+                        father_alive=request.POST.get('father_alive') or None,
+                        mother_alive=request.POST.get('mother_alive') or None,
+                        house_location=request.POST.get('house_location') or None,
+                        travel_time=request.POST.get('travel_time') or None,
+                        referral_source=request.POST.get('referral_source') or None,
+                        # Medical History
+                        diarrhoea=request.POST.get('diarrhoea') or None,
+                        stool_frequency=request.POST.get('stool_frequency') or None,
+                        vomiting=request.POST.get('vomiting') or None,
+                        cough=request.POST.get('cough') or None,
+                        passing_urine=request.POST.get('passing_urine') or None,
+                        oedema_duration_days=request.POST.get('oedema_duration_days') or None,
+                        breastfeeding_status=request.POST.get('breastfeeding_status') or None,
+                        breastfeeding_prospect=request.POST.get('breastfeeding_prospect') or None,
+                        immunization_status=request.POST.get('immunization_status') or None,
+                        g6pd_status=request.POST.get('g6pd_status') or None,
+                        additional_medical_history=request.POST.get('additional_medical_history') or None,
+                        # Physical Examination
+                        respiratory_rate=request.POST.get('respiratory_rate') or None,
+                        temperature_celsius=request.POST.get('temperature_celsius') or request.POST.get('temperature') or None,
+                        chest_indrawing=request.POST.get('chest_indrawing') or None,
+                        eyes_condition=request.POST.get('eyes_condition') or None,
+                        conjunctiva=request.POST.get('conjunctiva') or None,
+                        ears_condition=request.POST.get('ears_condition') or None,
+                        mouth_condition=request.POST.get('mouth_condition') or None,
+                        lymph_nodes=request.POST.get('lymph_nodes') or None,
+                        hands_feet=request.POST.get('hands_feet') or None,
+                        skin_changes=request.POST.get('skin_changes') or None,
+                        disability=request.POST.get('disability') or None,
+                        disability_details=request.POST.get('disability_details') or None,
+                        physical_exam_notes=request.POST.get('physical_exam_notes') or None,
+                        # IPC Referral Clinical Signs
+                        intractable_vomiting=request.POST.get('intractable_vomiting') == 'Yes',
+                        convulsions=request.POST.get('convulsions') == 'Yes',
+                        lethargic_or_not_alert=request.POST.get('lethargic_or_not_alert') == 'Yes',
+                        unconscious=request.POST.get('unconscious') == 'Yes',
+                        severe_dehydration=request.POST.get('severe_dehydration') == 'Yes',
+                        very_pale_or_severe_palmar_pallor=request.POST.get('very_pale_or_severe_palmar_pallor') == 'Yes',
+                        # Infant Under 6 Months Assessment
+                        age_weeks=request.POST.get('age_weeks') or None,
+                        effective_suckling=request.POST.get('effective_suckling') or None,
+                        relactation_needed=request.POST.get('relactation_needed') == 'Yes',
+                        visible_severe_wasting=request.POST.get('visible_severe_wasting') == 'Yes',
+                        # Medicines at Enrollment
+                        amoxicillin_date=request.POST.get('amoxicillin_date') or None,
+                        amoxicillin_dosage=request.POST.get('amoxicillin_dosage') or None,
+                        vitamin_a_date=request.POST.get('vitamin_a_date') or None,
+                        vitamin_a_dosage=request.POST.get('vitamin_a_dosage') or None,
+                        folic_acid_date=request.POST.get('folic_acid_date') or None,
+                        folic_acid_dosage=request.POST.get('folic_acid_dosage') or None,
+                        deworming_date=request.POST.get('deworming_date') or None,
+                        deworming_dosage=request.POST.get('deworming_dosage') or None,
+                        measles_vaccine_date=request.POST.get('measles_vaccine_date') or request.POST.get('measles_vaccination_date') or None,
+                        measles_vaccine_dosage=request.POST.get('measles_vaccine_dosage') or None,
+                        malaria_test_date=request.POST.get('malaria_test_date') or None,
+                        malaria_test_result=request.POST.get('malaria_test_result') or None,
+                        antimalarial_date=request.POST.get('antimalarial_date') or None,
+                        antimalarial_dosage=request.POST.get('antimalarial_dosage') or None,
+                        # RUTF and Other Supplies
+                        rutf_sachets_given=request.POST.get('rutf_sachets_given') or None,
+                        rutf_ration_per_day=request.POST.get('rutf_ration_per_day') or None,
+                        next_visit_date=request.POST.get('next_visit_date') or None,
+                        # Other Medicines
+                        other_drug_1=request.POST.get('other_drug_1') or None,
+                        other_drug_1_date=request.POST.get('other_drug_1_date') or None,
+                        other_drug_1_dosage=request.POST.get('other_drug_1_dosage') or None,
+                        other_drug_2=request.POST.get('other_drug_2') or None,
+                        other_drug_2_date=request.POST.get('other_drug_2_date') or None,
+                        other_drug_2_dosage=request.POST.get('other_drug_2_dosage') or None,
+                        other_drug_3=request.POST.get('other_drug_3') or None,
+                        other_drug_3_date=request.POST.get('other_drug_3_date') or None,
+                        other_drug_3_dosage=request.POST.get('other_drug_3_dosage') or None,
+                        # Additional Notes
+                        additional_notes=request.POST.get('additional_notes') or None,
+                        # MAM Aggravating Factors
+                        previous_sam_episode=request.POST.get('previous_sam_episode') == 'Yes',
+                        failed_counselling_only=request.POST.get('failed_counselling_only') == 'Yes',
+                        hiv_tb_status=request.POST.get('hiv_tb_status') or None,
+                        household_vulnerability=request.POST.get('household_vulnerability') or None,
+                        poor_maternal_health=request.POST.get('poor_maternal_health') == 'Yes',
+                        mother_deceased=request.POST.get('mother_deceased') == 'Yes',
+                        immunization_action=request.POST.get('immunization_action') or None,
+                        mebendazole_date=request.POST.get('mebendazole_date') or None,
+                        other_medicines=request.POST.get('other_medicines') or None,
+                        counselling=request.POST.get('counselling') or None,
+                        food_product_type=request.POST.get('food_product_type') or None,
+                        food_product_quantity=request.POST.get('food_product_quantity') or None,
+                        # Additional admission/clinical detail fields
+                        complications_details=request.POST.get('complications_details') or None,
+                        admission_time=request.POST.get('admission_time') or None,
+                        referring_facility=request.POST.get('referring_facility') or None,
+                        oedema_grade=request.POST.get('oedema_grade') or None,
+                        bilateral_pitting_oedema=request.POST.get('bilateral_pitting_oedema') or None,
+                        time_to_travel_minutes=request.POST.get('time_to_travel_minutes') or None,
+                        status='Active',
+                        created_by=request.user,
+                    )
+                    
+                    # Handle child photo upload
+                    if 'child_photo' in request.FILES:
+                        registration.child_photo = request.FILES['child_photo']
+                        registration.save(update_fields=['child_photo'])
 
                 # Auto-deduct stock for commodities given at enrollment
                 try:
@@ -777,10 +784,6 @@ def visit_form(request, registration_id):
         return HttpResponseForbidden('You do not have access to this case.')
     visit_type = case.malnutrition_type
     
-    # Get last visit
-    last_visit = case.visits.order_by('-visit_number').first()
-    next_visit_number = (last_visit.visit_number + 1) if last_visit else 1
-    
     # Reference weight (enrollment weight)
     reference_weight = case.weight_kg
     
@@ -791,198 +794,210 @@ def visit_form(request, registration_id):
     # Max weeks: 16 for SAM, 10 for MAM
     max_weeks = 16 if visit_type == 'SAM' else 10
     
+    # Get last visit for display context (GET requests)
+    last_visit = case.visits.order_by('-visit_number').first()
+    next_visit_number = (last_visit.visit_number + 1) if last_visit else 1
+    
     if request.method == 'POST':
         # Handle visit submission
         try:
-            # Duplicate check: prevent multiple visits on the same date
-            visit_date = request.POST.get('visit_date')
-            if visit_date and case.visits.filter(visit_date=visit_date).exists():
-                raise ValueError('A visit for this case has already been recorded on this date.')
+            with transaction.atomic():
+                # Lock the registration row to serialize concurrent visit creations
+                case = OpcRegistration.objects.select_for_update().get(pk=registration_id)
+                
+                # Get last visit number from remaining (undeleted) visits
+                last_visit = case.visits.order_by('-visit_number').first()
+                next_visit_number = (last_visit.visit_number + 1) if last_visit else 1
+                
+                # Duplicate check: prevent multiple visits on the same date
+                visit_date = request.POST.get('visit_date')
+                if visit_date and case.visits.filter(visit_date=visit_date).exists():
+                    raise ValueError('A visit for this case has already been recorded on this date.')
 
-            if visit_type == 'SAM':
-                # Parse boolean fields from Y/N values for SAM
-                weight_lost = request.POST.get('weight_lost') == 'Y'
-                dehydrated = request.POST.get('dehydrated') == 'Y'
-                anaemia_palmar_pallor = request.POST.get('anaemia_palmar_pallor') == 'Y'
-                skin_infection = request.POST.get('skin_infection') == 'Y'
-                action_needed = request.POST.get('action_needed') == 'Y'
-                home_visit_needed = request.POST.get('home_visit_needed') == 'Y'
-                # Clinical signs for IPC referral criteria
-                intractable_vomiting = request.POST.get('intractable_vomiting') == 'Y'
-                lethargic_or_not_alert = request.POST.get('lethargic_or_not_alert') == 'Y'
-                convulsions = request.POST.get('convulsions') == 'Y'
-                chest_indrawing = request.POST.get('chest_indrawing') == 'Y'
-                unconscious = request.POST.get('unconscious') == 'Y'
-                very_pale_or_severe_palmar_pallor = request.POST.get('very_pale_or_severe_palmar_pallor') == 'Y'
-                severe_dehydration = request.POST.get('severe_dehydration') == 'Y'
+                if visit_type == 'SAM':
+                    # Parse boolean fields from Y/N values for SAM
+                    weight_lost = request.POST.get('weight_lost') == 'Y'
+                    dehydrated = request.POST.get('dehydrated') == 'Y'
+                    anaemia_palmar_pallor = request.POST.get('anaemia_palmar_pallor') == 'Y'
+                    skin_infection = request.POST.get('skin_infection') == 'Y'
+                    action_needed = request.POST.get('action_needed') == 'Y'
+                    home_visit_needed = request.POST.get('home_visit_needed') == 'Y'
+                    # Clinical signs for IPC referral criteria
+                    intractable_vomiting = request.POST.get('intractable_vomiting') == 'Y'
+                    lethargic_or_not_alert = request.POST.get('lethargic_or_not_alert') == 'Y'
+                    convulsions = request.POST.get('convulsions') == 'Y'
+                    chest_indrawing = request.POST.get('chest_indrawing') == 'Y'
+                    unconscious = request.POST.get('unconscious') == 'Y'
+                    very_pale_or_severe_palmar_pallor = request.POST.get('very_pale_or_severe_palmar_pallor') == 'Y'
+                    severe_dehydration = request.POST.get('severe_dehydration') == 'Y'
 
-                # Validate required fields unless outcome is Absent/Defaulted
-                outcome = request.POST.get('visit_outcome') or 'Continue'
-                if outcome not in ('Absent', 'Defaulted'):
-                    if not request.POST.get('weight_kg'):
-                        raise ValueError('Weight is required.')
-                    if not request.POST.get('muac_cm'):
-                        raise ValueError('MUAC is required.')
-                    if not request.POST.get('appetite'):
-                        raise ValueError('Appetite Test is required.')
-                    if next_visit_number in (4, 8, 12, 16) and (not request.POST.get('height_cm') or not request.POST.get('z_score_wfh')):
-                        raise ValueError('Height and W/H Z-Score are required for anthropometry visits.')
+                    # Validate required fields unless outcome is Absent/Defaulted
+                    outcome = request.POST.get('visit_outcome') or 'Continue'
+                    if outcome not in ('Absent', 'Defaulted'):
+                        if not request.POST.get('weight_kg'):
+                            raise ValueError('Weight is required.')
+                        if not request.POST.get('muac_cm'):
+                            raise ValueError('MUAC is required.')
+                        if not request.POST.get('appetite'):
+                            raise ValueError('Appetite Test is required.')
+                        if next_visit_number in (4, 8, 12, 16) and (not request.POST.get('height_cm') or not request.POST.get('z_score_wfh')):
+                            raise ValueError('Height and W/H Z-Score are required for anthropometry visits.')
 
-                visit = OpcVisit.objects.create(
-                    registration=case,
-                    visit_number=next_visit_number,
-                    visit_date=request.POST.get('visit_date'),
-                    visit_type=request.POST.get('visit_type', 'Follow-up'),
-                    # Anthropometry
-                    weight_kg=request.POST.get('weight_kg') or None,
-                    weight_lost=weight_lost,
-                    height_cm=request.POST.get('height_cm') or None,
-                    muac_cm=request.POST.get('muac_cm') or None,
-                    z_score_wfh=request.POST.get('z_score_wfh') or None,
-                    z_score_wfa=request.POST.get('z_score_wfa') or None,
-                    z_score_hfa=request.POST.get('z_score_hfa') or None,
-                    oedema=request.POST.get('oedema') or None,
-                    # Medical History
-                    diarrhoea_days=request.POST.get('diarrhoea_days') or None,
-                    vomiting_days=request.POST.get('vomiting_days') or None,
-                    fever_days=request.POST.get('fever_days') or None,
-                    cough_days=request.POST.get('cough_days') or None,
-                    # Physical Examination
-                    temperature=request.POST.get('temperature') or None,
-                    respiratory_rate=request.POST.get('respiratory_rate') or None,
-                    dehydrated=dehydrated,
-                    anaemia_palmar_pallor=anaemia_palmar_pallor,
-                    skin_infection=skin_infection,
-                    # Clinical Signs (IPC referral criteria)
-                    intractable_vomiting=intractable_vomiting,
-                    lethargic_or_not_alert=lethargic_or_not_alert,
-                    convulsions=convulsions,
-                    chest_indrawing=chest_indrawing,
-                    unconscious=unconscious,
-                    very_pale_or_severe_palmar_pallor=very_pale_or_severe_palmar_pallor,
-                    severe_dehydration=severe_dehydration,
-                    # Appetite / Feeding
-                    appetite=request.POST.get('appetite') or None,
-                    rutf_test=request.POST.get('rutf_test') or None,
-                    breastfeeding_status=request.POST.get('breastfeeding_status') or None,
-                    rutf_sachets_given=request.POST.get('rutf_sachets_given') or None,
-                    # Clinical
-                    general_condition=request.POST.get('general_condition') or None,
-                    has_complications=request.POST.get('has_complications') == 'Y',
-                    complications_notes=request.POST.get('complications_notes') or None,
-                    medical_notes=request.POST.get('medical_notes') or None,
-                    # Commodities
-                    csb_plus_given=request.POST.get('csb_plus_given') or None,
-                    oil_given=request.POST.get('oil_given') or None,
-                    other_supplies=request.POST.get('other_supplies') or None,
-                    # Counseling
-                    counseling_topics=request.POST.get('counseling_topics') or None,
-                    caregiver_understanding=request.POST.get('caregiver_understanding') or None,
-                    treatment_response=request.POST.get('treatment_response') or None,
-                    next_visit_date=request.POST.get('next_visit_date') or None,
-                    # Action / Follow-up
-                    action_needed=action_needed,
-                    other_medication=request.POST.get('other_medication') or None,
-                    home_visit_needed=home_visit_needed,
-                    home_visit_date=request.POST.get('home_visit_date') or None,
-                    home_visit_notes=request.POST.get('home_visit_notes') or None,
-                    community_volunteer=request.POST.get('community_volunteer') or None,
-                    # Outcome
-                    visit_outcome=request.POST.get('visit_outcome', 'Continue'),
-                    outcome_notes=request.POST.get('outcome_notes') or None,
-                    staff_name=request.POST.get('staff_name') or None,
-                    conducted_by=request.user,
-                    created_by=request.user,
-                )
-            else:
-                # MAM visit
-                outcome = request.POST.get('visit_outcome') or 'Continue'
-                if outcome not in ('Absent', 'Defaulted'):
-                    if not request.POST.get('weight_kg'):
-                        raise ValueError('Weight is required.')
-                    if not request.POST.get('muac_cm'):
-                        raise ValueError('MUAC is required.')
-                    if not request.POST.get('appetite_test'):
-                        raise ValueError('Appetite Test is required.')
-                    if next_visit_number in (4, 8, 12, 16) and (not request.POST.get('height_cm') or not request.POST.get('z_score_wfh')):
-                        raise ValueError('Height and W/H Z-Score are required for anthropometry visits.')
+                    visit = OpcVisit.objects.create(
+                        registration=case,
+                        visit_number=next_visit_number,
+                        visit_date=request.POST.get('visit_date'),
+                        visit_type=request.POST.get('visit_type', 'Follow-up'),
+                        # Anthropometry
+                        weight_kg=request.POST.get('weight_kg') or None,
+                        weight_lost=weight_lost,
+                        height_cm=request.POST.get('height_cm') or None,
+                        muac_cm=request.POST.get('muac_cm') or None,
+                        z_score_wfh=request.POST.get('z_score_wfh') or None,
+                        z_score_wfa=request.POST.get('z_score_wfa') or None,
+                        z_score_hfa=request.POST.get('z_score_hfa') or None,
+                        oedema=request.POST.get('oedema') or None,
+                        # Medical History
+                        diarrhoea_days=request.POST.get('diarrhoea_days') or None,
+                        vomiting_days=request.POST.get('vomiting_days') or None,
+                        fever_days=request.POST.get('fever_days') or None,
+                        cough_days=request.POST.get('cough_days') or None,
+                        # Physical Examination
+                        temperature=request.POST.get('temperature') or None,
+                        respiratory_rate=request.POST.get('respiratory_rate') or None,
+                        dehydrated=dehydrated,
+                        anaemia_palmar_pallor=anaemia_palmar_pallor,
+                        skin_infection=skin_infection,
+                        # Clinical Signs (IPC referral criteria)
+                        intractable_vomiting=intractable_vomiting,
+                        lethargic_or_not_alert=lethargic_or_not_alert,
+                        convulsions=convulsions,
+                        chest_indrawing=chest_indrawing,
+                        unconscious=unconscious,
+                        very_pale_or_severe_palmar_pallor=very_pale_or_severe_palmar_pallor,
+                        severe_dehydration=severe_dehydration,
+                        # Appetite / Feeding
+                        appetite=request.POST.get('appetite') or None,
+                        rutf_test=request.POST.get('rutf_test') or None,
+                        breastfeeding_status=request.POST.get('breastfeeding_status') or None,
+                        rutf_sachets_given=request.POST.get('rutf_sachets_given') or None,
+                        # Clinical
+                        general_condition=request.POST.get('general_condition') or None,
+                        has_complications=request.POST.get('has_complications') == 'Y',
+                        complications_notes=request.POST.get('complications_notes') or None,
+                        medical_notes=request.POST.get('medical_notes') or None,
+                        # Commodities
+                        csb_plus_given=request.POST.get('csb_plus_given') or None,
+                        oil_given=request.POST.get('oil_given') or None,
+                        other_supplies=request.POST.get('other_supplies') or None,
+                        # Counseling
+                        counseling_topics=request.POST.get('counseling_topics') or None,
+                        caregiver_understanding=request.POST.get('caregiver_understanding') or None,
+                        treatment_response=request.POST.get('treatment_response') or None,
+                        next_visit_date=request.POST.get('next_visit_date') or None,
+                        # Action / Follow-up
+                        action_needed=action_needed,
+                        other_medication=request.POST.get('other_medication') or None,
+                        home_visit_needed=home_visit_needed,
+                        home_visit_date=request.POST.get('home_visit_date') or None,
+                        home_visit_notes=request.POST.get('home_visit_notes') or None,
+                        community_volunteer=request.POST.get('community_volunteer') or None,
+                        # Outcome
+                        visit_outcome=request.POST.get('visit_outcome', 'Continue'),
+                        outcome_notes=request.POST.get('outcome_notes') or None,
+                        staff_name=request.POST.get('staff_name') or None,
+                        conducted_by=request.user,
+                        created_by=request.user,
+                    )
+                else:
+                    # MAM visit
+                    outcome = request.POST.get('visit_outcome') or 'Continue'
+                    if outcome not in ('Absent', 'Defaulted'):
+                        if not request.POST.get('weight_kg'):
+                            raise ValueError('Weight is required.')
+                        if not request.POST.get('muac_cm'):
+                            raise ValueError('MUAC is required.')
+                        if not request.POST.get('appetite_test'):
+                            raise ValueError('Appetite Test is required.')
+                        if next_visit_number in (4, 8, 12, 16) and (not request.POST.get('height_cm') or not request.POST.get('z_score_wfh')):
+                            raise ValueError('Height and W/H Z-Score are required for anthropometry visits.')
 
-                visit = OpcVisit.objects.create(
-                    registration=case,
-                    visit_number=next_visit_number,
-                    visit_date=request.POST.get('visit_date'),
-                    visit_type=request.POST.get('visit_type', 'Follow-up'),
-                    # Anthropometry
-                    weight_kg=request.POST.get('weight_kg') or None,
-                    height_cm=request.POST.get('height_cm') or None,
-                    muac_cm=request.POST.get('muac_cm') or None,
-                    z_score_wfh=request.POST.get('z_score_wfh') or None,
-                    z_score_wfa=request.POST.get('z_score_wfa') or None,
-                    z_score_hfa=request.POST.get('z_score_hfa') or None,
-                    # Appetite Test
-                    appetite=request.POST.get('appetite_test') or None,
-                    # Food Product
-                    food_product_type=request.POST.get('food_product_type') or None,
-                    food_product_quantity=request.POST.get('food_product_quantity') or None,
-                    staff_name=request.POST.get('staff_name') or None,
-                    # Clinical
-                    general_condition=request.POST.get('general_condition') or None,
-                    has_complications=request.POST.get('has_complications') == 'Y',
-                    complications_notes=request.POST.get('complications_notes') or None,
-                    # Commodities
-                    csb_plus_given=request.POST.get('csb_plus_given') or None,
-                    oil_given=request.POST.get('oil_given') or None,
-                    other_supplies=request.POST.get('other_supplies') or None,
-                    # Counseling
-                    counseling_topics=request.POST.get('counseling_topics') or None,
-                    caregiver_understanding=request.POST.get('caregiver_understanding') or None,
-                    treatment_response=request.POST.get('treatment_response') or None,
-                    next_visit_date=request.POST.get('next_visit_date') or None,
-                    # Remarks
-                    medical_notes=request.POST.get('remarks') or None,
-                    # Outcome
-                    visit_outcome=request.POST.get('visit_outcome', 'Continue'),
-                    outcome_notes=request.POST.get('outcome_notes') or None,
-                    conducted_by=request.user,
-                    created_by=request.user,
-                )
-            
-            # Update case status if outcome requires it
-            raw_outcome = request.POST.get('visit_outcome')
-            outcome_map = {'Died': 'Death', 'Non-recovered': 'Non-Response', 'Transfer to IPC': 'Transfer-to-IPC'}
-            outcome = outcome_map.get(raw_outcome, raw_outcome)
-            discharge_outcomes = ['Cured', 'Defaulted', 'Death', 'Non-Response', 'Transfer-to-IPC', 'Referral']
-            
-            if outcome in discharge_outcomes:
-                if outcome == 'Cured':
+                    visit = OpcVisit.objects.create(
+                        registration=case,
+                        visit_number=next_visit_number,
+                        visit_date=request.POST.get('visit_date'),
+                        visit_type=request.POST.get('visit_type', 'Follow-up'),
+                        # Anthropometry
+                        weight_kg=request.POST.get('weight_kg') or None,
+                        height_cm=request.POST.get('height_cm') or None,
+                        muac_cm=request.POST.get('muac_cm') or None,
+                        z_score_wfh=request.POST.get('z_score_wfh') or None,
+                        z_score_wfa=request.POST.get('z_score_wfa') or None,
+                        z_score_hfa=request.POST.get('z_score_hfa') or None,
+                        # Appetite Test
+                        appetite=request.POST.get('appetite_test') or None,
+                        # Food Product
+                        food_product_type=request.POST.get('food_product_type') or None,
+                        food_product_quantity=request.POST.get('food_product_quantity') or None,
+                        staff_name=request.POST.get('staff_name') or None,
+                        # Clinical
+                        general_condition=request.POST.get('general_condition') or None,
+                        has_complications=request.POST.get('has_complications') == 'Y',
+                        complications_notes=request.POST.get('complications_notes') or None,
+                        # Commodities
+                        csb_plus_given=request.POST.get('csb_plus_given') or None,
+                        oil_given=request.POST.get('oil_given') or None,
+                        other_supplies=request.POST.get('other_supplies') or None,
+                        # Counseling
+                        counseling_topics=request.POST.get('counseling_topics') or None,
+                        caregiver_understanding=request.POST.get('caregiver_understanding') or None,
+                        treatment_response=request.POST.get('treatment_response') or None,
+                        next_visit_date=request.POST.get('next_visit_date') or None,
+                        # Remarks
+                        medical_notes=request.POST.get('remarks') or None,
+                        # Outcome
+                        visit_outcome=request.POST.get('visit_outcome', 'Continue'),
+                        outcome_notes=request.POST.get('outcome_notes') or None,
+                        conducted_by=request.user,
+                        created_by=request.user,
+                    )
+                
+                # Update case status if outcome requires it
+                raw_outcome = request.POST.get('visit_outcome')
+                outcome_map = {'Died': 'Death', 'Non-recovered': 'Non-Response', 'Transfer to IPC': 'Transfer-to-IPC'}
+                outcome = outcome_map.get(raw_outcome, raw_outcome)
+                discharge_outcomes = ['Cured', 'Defaulted', 'Death', 'Non-Response', 'Transfer-to-IPC', 'Referral']
+                
+                if outcome in discharge_outcomes:
+                    if outcome == 'Cured':
+                        case.status = 'Discharged'
+                        case.outcome = 'Cured'
+                    elif outcome == 'Defaulted':
+                        case.status = 'Defaulted'
+                        case.outcome = 'Defaulted'
+                    elif outcome == 'Death':
+                        case.status = 'Death'
+                        case.outcome = 'Death'
+                    elif outcome == 'Non-Response':
+                        case.status = 'Discharged'
+                        case.outcome = 'Non-Response'
+                    elif outcome == 'Transfer-to-IPC':
+                        case.status = 'Transfer'
+                        case.outcome = 'Transfer-to-IPC'
+                    elif outcome == 'Referral':
+                        case.status = 'Transfer'
+                        case.outcome = 'Referral'
+                    case.discharge_date = timezone.now().date()
+                    case.save()
+                
+                # Auto-discharge after max weeks if still active
+                if weeks_since_enrollment >= max_weeks and case.status == 'Active':
                     case.status = 'Discharged'
-                    case.outcome = 'Cured'
-                elif outcome == 'Defaulted':
-                    case.status = 'Defaulted'
-                    case.outcome = 'Defaulted'
-                elif outcome == 'Death':
-                    case.status = 'Death'
-                    case.outcome = 'Death'
-                elif outcome == 'Non-Response':
-                    case.status = 'Discharged'
-                    case.outcome = 'Non-Response'
-                elif outcome == 'Transfer-to-IPC':
-                    case.status = 'Transfer'
-                    case.outcome = 'Transfer-to-IPC'
-                elif outcome == 'Referral':
-                    case.status = 'Transfer'
-                    case.outcome = 'Referral'
-                case.discharge_date = timezone.now().date()
-                case.save()
-            
-            # Auto-discharge after max weeks if still active
-            if weeks_since_enrollment >= max_weeks and case.status == 'Active':
-                case.status = 'Discharged'
-                case.outcome = f'Auto-discharged ({max_weeks} weeks)'
-                case.discharge_date = timezone.now().date()
-                case.outcome_notes = f'Automatically discharged after {weeks_since_enrollment} weeks in program.'
-                case.save()
-                messages.warning(request, f'Case auto-discharged after {weeks_since_enrollment} weeks in program.')
+                    case.outcome = f'Auto-discharged ({max_weeks} weeks)'
+                    case.discharge_date = timezone.now().date()
+                    case.outcome_notes = f'Automatically discharged after {weeks_since_enrollment} weeks in program.'
+                    case.save()
+                    messages.warning(request, f'Case auto-discharged after {weeks_since_enrollment} weeks in program.')
             
             # Auto-deduct stock for commodities given during visit
             try:

@@ -33,6 +33,33 @@
                 <button type="submit" class="bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded">Close Case</button>
             </div>
         </form>
+
+        {% if request.user.is_superuser %}
+        <div class="mt-8 border-t pt-6">
+            <div class="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm text-red-700">
+                            <strong>Super Admin only:</strong> Permanently delete this case and all its visits.
+                            The registration number sequence will not be affected — the next case will continue from the current counter.
+                            This action cannot be undone.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <form method="post" action="{% url 'cases:case_hard_delete' case.pk %}" onsubmit="return confirm('PERMANENTLY DELETE this case and ALL its visits? This cannot be undone.')">
+                {% csrf_token %}
+                <div class="flex justify-end">
+                    <button type="submit" class="bg-red-700 hover:bg-red-900 text-white font-bold py-2 px-4 rounded">Permanently Delete</button>
+                </div>
+            </form>
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

@@ -28,7 +28,7 @@
                     <dd class="mt-1 text-sm text-gray-900">{{ visit.weight_kg|default:"N/A" }} kg</dd>
                 </div>
             </dl>
-            <p class="text-red-600 text-sm mb-6">This action cannot be undone. Stock deductions for this visit will be reversed.</p>
+            <p class="text-red-600 text-sm mb-6">This action cannot be undone. Stock deductions for this visit will be reversed. The next visit will continue from the last remaining visit number.</p>
             <form method="post">
                 {% csrf_token %}
                 <div class="flex gap-3">
