@@ -883,7 +883,7 @@ def import_template_download(request, model_type):
     elif model_type == 'inventory':
         headers = [
             'item_name', 'quantity', 'batch_number',
-            'expiry_date', 'unit_cost', 'notes'
+            'expiry_date', 'notes'
         ]
         ws.title = "Inventory Import Template"
         ws.append(headers)

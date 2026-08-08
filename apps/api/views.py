@@ -2499,7 +2499,6 @@ def inventory_item_create_api(request):
         has_expiry=data.get('has_expiry', False),
         manufacturer=data.get('manufacturer', ''), supplier=data.get('supplier', ''),
         storage_conditions=data.get('storage_conditions', ''),
-        unit_cost=data.get('unit_cost'),
         initial_stock=data.get('initial_stock', 0),
     )
     return Response({'success': True, 'message': 'Item created', 'data': InventoryItemSerializer(item).data},
@@ -2527,7 +2526,6 @@ def inventory_item_detail_api(request, pk):
 
     data = InventoryItemSerializer(item).data
     data['stock_levels'] = stock_data
-    data['unit_cost'] = str(item.unit_cost) if item.unit_cost else None
     data['min_stock_level'] = item.min_stock_level
     data['max_stock_level'] = item.max_stock_level
     data['has_expiry'] = item.has_expiry
@@ -2551,7 +2549,7 @@ def inventory_item_edit_api(request, pk):
     data = request.data
     for field in ('name', 'category', 'description', 'unit_of_measure', 'conversion_factor',
                   'reorder_level', 'min_stock_level', 'max_stock_level', 'has_expiry',
-                  'manufacturer', 'supplier', 'storage_conditions', 'unit_cost',
+                  'manufacturer', 'supplier', 'storage_conditions',
                   'initial_stock'):
         if field in data:
             setattr(item, field, data[field] if data[field] != '' else None)

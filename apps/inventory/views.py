@@ -100,7 +100,6 @@ def inventory_create(request):
         code = request.POST.get('code', '').strip().upper()
         category = request.POST.get('category', '')
         unit_of_measure = request.POST.get('unit_of_measure', '')
-        unit_cost = request.POST.get('unit_cost') or None
         initial_stock = request.POST.get('initial_stock') or 0
         manufacturer = request.POST.get('manufacturer', '').strip() or None
         supplier = request.POST.get('supplier', '').strip() or None
@@ -121,7 +120,6 @@ def inventory_create(request):
                 code=code,
                 category=category,
                 unit_of_measure=unit_of_measure,
-                unit_cost=unit_cost,
                 initial_stock=initial_stock,
                 manufacturer=manufacturer,
                 supplier=supplier,
@@ -172,7 +170,6 @@ def inventory_edit(request, pk):
         code = request.POST.get('code', '').strip().upper()
         category = request.POST.get('category', '')
         unit_of_measure = request.POST.get('unit_of_measure', '')
-        unit_cost = request.POST.get('unit_cost') or None
         initial_stock = request.POST.get('initial_stock') or 0
         manufacturer = request.POST.get('manufacturer', '').strip() or None
         supplier = request.POST.get('supplier', '').strip() or None
@@ -193,7 +190,6 @@ def inventory_edit(request, pk):
             item.code = code
             item.category = category
             item.unit_of_measure = unit_of_measure
-            item.unit_cost = unit_cost
             item.initial_stock = initial_stock
             item.manufacturer = manufacturer
             item.supplier = supplier
@@ -760,8 +756,6 @@ def new_request(request):
         # Get items from form
         item_ids = request.POST.getlist('item_id[]')
         quantities = request.POST.getlist('quantity[]')
-        unit_costs = request.POST.getlist('unit_cost[]')
-        
         # RBAC: validate facility access for facility-level requests
         if request_level == 'facility' and requesting_facility_id:
             if not _validate_facility_access(user, requesting_facility_id):
@@ -832,7 +826,6 @@ def new_request(request):
                         request=stock_request,
                         inventory_item_id=item_id,
                         quantity_requested=int(quantities[i]),
-                        unit_cost=float(unit_costs[i]) if i < len(unit_costs) and unit_costs[i] else None,
                     )
             
             messages.success(request, f'Stock request {stock_request.request_number} created successfully')
@@ -1212,17 +1205,11 @@ def expiry_management(request):
     filter_date = today + timedelta(days=days_ahead)
     expiring_soon = batches.filter(expiry_date__gte=today, expiry_date__lte=filter_date)
     
-    # Calculate expired value
-    expired_value = sum(
-        (b.quantity * (b.inventory_item.unit_cost or 0)) for b in expired
-    )
-    
     context = {
         'expired_count': expired.count(),
         'this_week_count': expiring_this_week.count(),
         'this_month_count': expiring_this_month.count(),
         'three_months_count': expiring_3_months.count(),
-        'expired_value': expired_value,
         'expiring_soon': expiring_soon,
         'expired_items': expired,
         'all_batches': batches.filter(expiry_date__isnull=False),

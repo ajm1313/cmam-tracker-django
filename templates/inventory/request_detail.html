@@ -196,8 +196,6 @@
                         <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Fulfilled Qty</th>
                         <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Remaining</th>
                         {% endif %}
-                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Unit Cost</th>
-                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total Cost</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
@@ -211,10 +209,6 @@
                         <td class="px-6 py-4 text-sm text-center text-gray-900">{{ item.quantity_fulfilled|default:"0" }}</td>
                         <td class="px-6 py-4 text-sm text-center text-gray-500">{{ item.remaining_to_fulfill }}</td>
                         {% endif %}
-                        <td class="px-6 py-4 text-sm text-right text-gray-500">{{ item.unit_cost|default:"—" }}</td>
-                        <td class="px-6 py-4 text-sm text-right text-gray-500">
-                            {% if item.total_cost %}{{ item.total_cost }}{% else %}—{% endif %}
-                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>

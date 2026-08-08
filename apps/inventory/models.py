@@ -51,7 +51,6 @@ class InventoryItem(TimeStampedModel):
     category = models.CharField(max_length=50, choices=ITEM_CATEGORIES)
     description = models.TextField(null=True, blank=True)
     unit_of_measure = models.CharField(max_length=50, choices=UNIT_CHOICES)
-    unit_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     
     # Stock level thresholds
     min_stock_level = models.IntegerField(default=0, help_text='Minimum stock level before alert')
@@ -403,7 +402,6 @@ class StockRequestItem(TimeStampedModel):
     quantity_requested = models.IntegerField()
     quantity_approved = models.IntegerField(null=True, blank=True)
     quantity_fulfilled = models.IntegerField(null=True, blank=True)
-    unit_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     notes = models.TextField(null=True, blank=True)
     
     class Meta:
@@ -413,12 +411,6 @@ class StockRequestItem(TimeStampedModel):
     
     def __str__(self):
         return f"{self.inventory_item.name} x {self.quantity_requested}"
-    
-    @property
-    def total_cost(self):
-        if self.unit_cost and self.quantity_requested:
-            return self.unit_cost * self.quantity_requested
-        return None
     
     @property
     def remaining_to_fulfill(self):

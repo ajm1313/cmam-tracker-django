@@ -165,7 +165,7 @@ class InventoryItemSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'code', 'category', 'description',
                   'unit_of_measure', 'conversion_factor', 'reorder_level',
                   'min_stock_level', 'max_stock_level', 'has_expiry',
-                  'manufacturer', 'supplier', 'storage_conditions', 'unit_cost',
+                  'manufacturer', 'supplier', 'storage_conditions',
                   'initial_stock', 'is_active']
 
 

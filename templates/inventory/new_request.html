@@ -192,7 +192,7 @@
                 </div>
                 <div id="itemsContainer">
                     <div class="grid grid-cols-12 gap-2 mb-2 items-center request-item">
-                        <div class="col-span-5">
+                        <div class="col-span-8">
                             <select name="item_id[]" required class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
                                 <option value="">Select Item</option>
                                 {% for item in items %}
@@ -202,9 +202,6 @@
                         </div>
                         <div class="col-span-3">
                             <input type="number" name="quantity[]" required min="1" placeholder="Quantity" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
-                        </div>
-                        <div class="col-span-3">
-                            <input type="number" name="unit_cost[]" step="0.01" placeholder="Unit Cost" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
                         </div>
                         <div class="col-span-1">
                             <button type="button" onclick="removeItem(this)" class="text-red-500 hover:text-red-700">
