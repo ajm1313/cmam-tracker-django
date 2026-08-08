@@ -2321,7 +2321,7 @@ def facility_edit_api(request, facility_id):
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def facility_delete_api(request, facility_id):
-    """Deactivate a facility"""
+    """Deactivate a facility (soft delete)"""
     try:
         f = Facility.objects.get(pk=facility_id)
     except Facility.DoesNotExist:
@@ -2329,6 +2329,21 @@ def facility_delete_api(request, facility_id):
     f.is_active = False
     f.save()
     return Response({'success': True, 'message': 'Facility deactivated'})
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def facility_hard_delete_api(request, facility_id):
+    """Permanently delete a facility and all related data — super admin only"""
+    if not request.user.is_superuser:
+        return Response({'success': False, 'message': 'Only Super Admin can permanently delete facilities.'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        f = Facility.objects.get(pk=facility_id)
+    except Facility.DoesNotExist:
+        return Response({'success': False, 'message': 'Facility not found'}, status=status.HTTP_404_NOT_FOUND)
+    name = f.name
+    f.delete()
+    return Response({'success': True, 'message': f'Facility "{name}" permanently deleted'})
 
 
 # ── Location Management ──────────────────────────────────────────────────────

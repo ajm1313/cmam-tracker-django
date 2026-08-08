@@ -9,4 +9,5 @@ urlpatterns = [
     path('manage/facilities/<int:pk>/', views.facility_detail, name='facility_detail'),
     path('manage/facilities/<int:pk>/edit/', views.facility_edit, name='facility_edit'),
     path('manage/facilities/<int:pk>/delete/', views.facility_delete, name='facility_delete'),
+    path('manage/facilities/<int:pk>/hard-delete/', views.facility_hard_delete, name='facility_hard_delete'),
 ]

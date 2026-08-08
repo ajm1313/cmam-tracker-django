@@ -45,6 +45,7 @@ urlpatterns = [
     path('v1/facilities/<int:facility_id>/', views.facility_detail_api, name='facility_detail'),
     path('v1/facilities/<int:facility_id>/edit/', views.facility_edit_api, name='facility_edit'),
     path('v1/facilities/<int:facility_id>/delete/', views.facility_delete_api, name='facility_delete'),
+    path('v1/facilities/<int:facility_id>/hard-delete/', views.facility_hard_delete_api, name='facility_hard_delete'),
 
     # Password
     path('v1/change-password/', views.change_password, name='change_password'),

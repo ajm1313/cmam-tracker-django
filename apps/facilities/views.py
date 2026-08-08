@@ -155,7 +155,7 @@ def facility_edit(request, pk):
 
 @login_required
 def facility_delete(request, pk):
-    """Delete facility"""
+    """Deactivate facility (soft delete)"""
     facility = get_object_or_404(Facility, pk=pk)
     accessible = request.user.get_accessible_facilities()
     if accessible is not None and facility not in accessible:
@@ -165,6 +165,24 @@ def facility_delete(request, pk):
         facility.is_active = False
         facility.save()
         messages.success(request, 'Facility deactivated successfully')
+        return redirect('facilities:facility_list')
+    
+    context = {'facility': facility}
+    return render(request, 'facilities/facility_confirm_delete.html', context)
+
+
+@login_required
+def facility_hard_delete(request, pk):
+    """Permanently delete facility and all related data (super admin only)"""
+    if not request.user.is_superuser:
+        messages.error(request, 'Only Super Admin can permanently delete facilities')
+        return redirect('facilities:facility_list')
+    facility = get_object_or_404(Facility, pk=pk)
+    
+    if request.method == 'POST':
+        name = facility.name
+        facility.delete()
+        messages.success(request, f'Facility "{name}" permanently deleted')
         return redirect('facilities:facility_list')
     
     context = {'facility': facility}
