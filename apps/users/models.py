@@ -90,7 +90,13 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
         return self.get_accessible_facilities().filter(id=facility_id).exists()
     
     def get_accessible_facilities(self):
-        """Get all facilities user can access based on role hierarchy"""
+        """Get all facilities user can access based on role hierarchy.
+        
+        Facility-level users always see their assigned facility even if it
+        has been deactivated — this prevents them from losing access to
+        all their cases when an admin soft-deletes the facility.
+        Higher-level users only see active facilities.
+        """
         from apps.facilities.models import Facility
         
         # Superuser and staff always see all active facilities
@@ -104,6 +110,7 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
             return Facility.objects.none()
         
         facility_ids = set()
+        has_facility_level = False
         
         for user_role in user_roles:
             if not user_role.region_id:
@@ -137,8 +144,13 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
                 )
             else:
                 # Facility-level access - only their specific facility
+                # (include even if deactivated so they can still see their cases)
                 facility_ids.add(user_role.facility_id)
+                has_facility_level = True
         
+        if has_facility_level and facility_ids:
+            # Don't filter by is_active for facility-level users
+            return Facility.objects.filter(id__in=facility_ids)
         return Facility.objects.filter(id__in=facility_ids, is_active=True)
     
     def has_national_access(self):

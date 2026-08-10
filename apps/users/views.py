@@ -147,12 +147,20 @@ def dashboard(request):
         'total_users': scoped_user_count,
         'total_facilities': len(facility_ids),
         'active_sam_cases': OpcRegistration.objects.filter(
-            date_filter,
             malnutrition_type='SAM',
+            status='Active',
             facility_id__in=facility_ids,
         ).count(),
         'active_mam_cases': OpcRegistration.objects.filter(
-            date_filter,
+            malnutrition_type='MAM',
+            status='Active',
+            facility_id__in=facility_ids,
+        ).count(),
+        'total_sam_cases': OpcRegistration.objects.filter(
+            malnutrition_type='SAM',
+            facility_id__in=facility_ids,
+        ).count(),
+        'total_mam_cases': OpcRegistration.objects.filter(
             malnutrition_type='MAM',
             facility_id__in=facility_ids,
         ).count(),
@@ -165,9 +173,12 @@ def dashboard(request):
             status='Active',
         ).count(),
         'total_discharged': OpcRegistration.objects.filter(
-            date_filter,
             facility_id__in=facility_ids,
             status='Discharged',
+        ).count(),
+        'new_admissions': OpcRegistration.objects.filter(
+            date_filter,
+            facility_id__in=facility_ids,
         ).count(),
     }
     
@@ -710,12 +721,17 @@ def reports(request):
         # Inventory Summary
         try:
             from apps.inventory.models import StockLevel
-            stock_levels = StockLevel.objects.filter(facility_id__in=facility_ids)
-            inventory_summary['total_items'] = stock_levels.values('item').distinct().count()
+            stock_levels = StockLevel.objects.filter(
+                facility_id__in=facility_ids,
+                location_type='facility'
+            ).select_related('inventory_item')
+            inventory_summary['total_items'] = stock_levels.values('inventory_item').distinct().count()
             inventory_summary['total_stock'] = sum(sl.current_stock or 0 for sl in stock_levels)
-            inventory_summary['low_stock'] = stock_levels.filter(
-                current_stock__lte=F('reorder_point')
-            ).exclude(current_stock=0).count()
+            inventory_summary['low_stock'] = sum(
+                1 for sl in stock_levels
+                if sl.inventory_item and sl.current_stock > 0
+                and sl.current_stock <= (sl.inventory_item.reorder_level or 0)
+            )
             inventory_summary['out_of_stock'] = stock_levels.filter(current_stock=0).count()
         except Exception:
             pass
@@ -803,7 +819,7 @@ def _calculate_rutf_stock_data(facility_ids, week_ranges):
             if week_start is None:
                 continue
             
-            # Received: IN + TRANSFER incoming to facility
+            # Received: IN + TRANSFER incoming + positive ADJUSTMENT (stock reversals)
             received = StockMovement.objects.filter(
                 inventory_item__in=rutf_items,
                 destination_facility_id__in=facility_ids,
@@ -811,13 +827,32 @@ def _calculate_rutf_stock_data(facility_ids, week_ranges):
                 movement_date__date__gte=week_start,
                 movement_date__date__lte=week_end
             ).aggregate(total=Sum('quantity'))['total'] or 0
+            # Add positive ADJUSTMENT quantities (stock returned from reversals)
+            received += StockMovement.objects.filter(
+                inventory_item__in=rutf_items,
+                destination_facility_id__in=facility_ids,
+                movement_type='ADJUSTMENT',
+                quantity__gt=0,
+                movement_date__date__gte=week_start,
+                movement_date__date__lte=week_end
+            ).aggregate(total=Sum('quantity'))['total'] or 0
             result['rutf_received'][week_idx] = received
             
-            # Issued: ALL outgoing movements from facility
+            # Issued: outgoing movements from facility (CONSUMPTION, OUT, TRANSFER out)
+            # Only negative ADJUSTMENTs count as issued; positive ones are reversals (stock returned)
             issued = StockMovement.objects.filter(
                 inventory_item__in=rutf_items,
                 source_facility_id__in=facility_ids,
-                movement_type__in=['OUT', 'TRANSFER', 'CONSUMPTION', 'ADJUSTMENT'],
+                movement_type__in=['OUT', 'TRANSFER', 'CONSUMPTION'],
+                movement_date__date__gte=week_start,
+                movement_date__date__lte=week_end
+            ).aggregate(total=Sum('quantity'))['total'] or 0
+            # Add negative ADJUSTMENT quantities (manual stock reductions)
+            issued += StockMovement.objects.filter(
+                inventory_item__in=rutf_items,
+                source_facility_id__in=facility_ids,
+                movement_type='ADJUSTMENT',
+                quantity__lt=0,
                 movement_date__date__gte=week_start,
                 movement_date__date__lte=week_end
             ).aggregate(total=Sum('quantity'))['total'] or 0
@@ -849,11 +884,27 @@ def _calculate_rutf_stock_data(facility_ids, week_ranges):
             movement_type__in=['IN', 'TRANSFER'],
             movement_date__date__gt=last_week_end
         ).aggregate(total=Sum('quantity'))['total'] or 0
+        # Add positive ADJUSTMENT (stock reversals) to received_after
+        received_after += StockMovement.objects.filter(
+            inventory_item__in=rutf_items,
+            destination_facility_id__in=facility_ids,
+            movement_type='ADJUSTMENT',
+            quantity__gt=0,
+            movement_date__date__gt=last_week_end
+        ).aggregate(total=Sum('quantity'))['total'] or 0
         
         issued_after = StockMovement.objects.filter(
             inventory_item__in=rutf_items,
             source_facility_id__in=facility_ids,
-            movement_type__in=['OUT', 'TRANSFER', 'CONSUMPTION', 'ADJUSTMENT'],
+            movement_type__in=['OUT', 'TRANSFER', 'CONSUMPTION'],
+            movement_date__date__gt=last_week_end
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+        # Add negative ADJUSTMENT (manual reductions) to issued_after
+        issued_after += StockMovement.objects.filter(
+            inventory_item__in=rutf_items,
+            source_facility_id__in=facility_ids,
+            movement_type='ADJUSTMENT',
+            quantity__lt=0,
             movement_date__date__gt=last_week_end
         ).aggregate(total=Sum('quantity'))['total'] or 0
         
@@ -1118,14 +1169,17 @@ def weekly_sam_report(request):
         total_exits = total_discharges + referrals + other_exits
         data['total_exits'][week_idx] = total_exits
         
-        # RUTF issued for SAM this week
+        # RUTF issued for SAM this week (apply conversion factor to match stock units)
+        from apps.inventory.models import InventoryItem
         sam_visits = OpcVisit.objects.filter(
             registration__facility_id__in=facility_ids,
             registration__malnutrition_type='SAM',
             visit_date__gte=week_start,
             visit_date__lte=week_end
         )
-        rutf_issued = sum(v.rutf_sachets_given or 0 for v in sam_visits)
+        rutf_item = InventoryItem.objects.filter(category='RUTF', is_active=True).first()
+        rutf_factor = float(rutf_item.conversion_factor or 1) if rutf_item else 1.0
+        rutf_issued = sum(int(round((v.rutf_sachets_given or 0) * rutf_factor)) for v in sam_visits)
         data['rutf_issued_sam'][week_idx] = rutf_issued
     
     # Calculate start of week (A) with continuity (CMAM guide)
@@ -1427,14 +1481,17 @@ def weekly_mam_report(request):
         data['total_exits'][week_idx] = total_exits
         
         # RUTF/food product issued for MAM this week
+        from apps.inventory.models import InventoryItem as _InvItem
         mam_visits = OpcVisit.objects.filter(
             registration__facility_id__in=facility_ids,
             registration__malnutrition_type='MAM',
             visit_date__gte=week_start,
             visit_date__lte=week_end
         )
-        # Sum RUTF sachets or food product quantity
-        rutf_issued = sum(v.rutf_sachets_given or 0 for v in mam_visits)
+        # Sum RUTF sachets (apply conversion factor to match stock units)
+        _rutf_item = _InvItem.objects.filter(category='RUTF', is_active=True).first()
+        _rutf_factor = float(_rutf_item.conversion_factor or 1) if _rutf_item else 1.0
+        rutf_issued = sum(int(round((v.rutf_sachets_given or 0) * _rutf_factor)) for v in mam_visits)
         data['rutf_issued_mam'][week_idx] = rutf_issued
         
         # Other commodities (CSB+, oil) issued from visits
@@ -1926,62 +1983,62 @@ def monthly_facility_report(request):
     try:
         rutf_items = InventoryItem.objects.filter(category='RUTF')
         
-        for item in rutf_items:
-            # Get stock levels for facilities
-            stock_levels = StockLevel.objects.filter(
-                inventory_item=item,
-                facility_id__in=facility_ids
-            )
-            commodity['rutf_balance'] += sum(sl.current_stock for sl in stock_levels)
-            
-            # Get movements for this month
-            movements = StockMovement.objects.filter(
-                inventory_item=item,
-                destination_facility_id__in=facility_ids,
-                movement_date__gte=first_day,
-                movement_date__lte=last_day
-            )
-            
-            received = sum(m.quantity for m in movements.filter(movement_type='IN'))
-            # Also count transfers in
-            received += sum(m.quantity for m in StockMovement.objects.filter(
-                inventory_item=item,
-                destination_facility_id__in=facility_ids,
-                movement_type='TRANSFER',
-                movement_date__gte=first_day,
-                movement_date__lte=last_day
-            ))
-            commodity['rutf_received'] += received
-            
-            # Calculate issued (CONSUMPTION + OUT + TRANSFER out)
-            issued = sum(m.quantity for m in StockMovement.objects.filter(
-                inventory_item=item,
-                source_facility_id__in=facility_ids,
-                movement_type__in=['CONSUMPTION', 'OUT'],
-                movement_date__gte=first_day,
-                movement_date__lte=last_day
-            ))
-            issued += sum(m.quantity for m in StockMovement.objects.filter(
-                inventory_item=item,
-                source_facility_id__in=facility_ids,
-                movement_type='TRANSFER',
-                movement_date__gte=first_day,
-                movement_date__lte=last_day
-            ))
-            
-            # Opening stock = current balance + issued - received
-            commodity['rutf_start'] += (commodity['rutf_balance'] + issued - received)
+        # Use DB aggregates instead of Python loops
+        commodity['rutf_balance'] = StockLevel.objects.filter(
+            inventory_item__in=rutf_items,
+            facility_id__in=facility_ids,
+            location_type='facility'
+        ).aggregate(total=Sum('current_stock'))['total'] or 0
+        
+        # Received: IN + TRANSFER incoming + positive ADJUSTMENT (stock reversals)
+        commodity['rutf_received'] = StockMovement.objects.filter(
+            inventory_item__in=rutf_items,
+            destination_facility_id__in=facility_ids,
+            movement_type__in=['IN', 'TRANSFER'],
+            movement_date__gte=first_day,
+            movement_date__lte=last_day
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+        commodity['rutf_received'] += StockMovement.objects.filter(
+            inventory_item__in=rutf_items,
+            destination_facility_id__in=facility_ids,
+            movement_type='ADJUSTMENT',
+            quantity__gt=0,
+            movement_date__gte=first_day,
+            movement_date__lte=last_day
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+        
+        # Issued: CONSUMPTION + OUT + TRANSFER out + negative ADJUSTMENT (manual reductions)
+        issued = StockMovement.objects.filter(
+            inventory_item__in=rutf_items,
+            source_facility_id__in=facility_ids,
+            movement_type__in=['CONSUMPTION', 'OUT', 'TRANSFER'],
+            movement_date__gte=first_day,
+            movement_date__lte=last_day
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+        issued += StockMovement.objects.filter(
+            inventory_item__in=rutf_items,
+            source_facility_id__in=facility_ids,
+            movement_type='ADJUSTMENT',
+            quantity__lt=0,
+            movement_date__gte=first_day,
+            movement_date__lte=last_day
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+        
+        # Opening stock = current balance + issued - received
+        commodity['rutf_start'] = commodity['rutf_balance'] + issued - commodity['rutf_received']
     except Exception:
         pass
     
-    # Get RUTF issued from visits
+    # Get RUTF issued from visits (apply conversion factor to match stock units)
+    rutf_item = InventoryItem.objects.filter(category='RUTF', is_active=True).first()
+    rutf_factor = float(rutf_item.conversion_factor or 1) if rutf_item else 1.0
     sam_visits = OpcVisit.objects.filter(
         registration__facility_id__in=facility_ids,
         registration__malnutrition_type='SAM',
         visit_date__gte=first_day,
         visit_date__lte=last_day
     )
-    commodity['rutf_issued_sam'] = sum(v.rutf_sachets_given or 0 for v in sam_visits)
+    commodity['rutf_issued_sam'] = sum(int(round((v.rutf_sachets_given or 0) * rutf_factor)) for v in sam_visits)
     
     mam_visits = OpcVisit.objects.filter(
         registration__facility_id__in=facility_ids,
@@ -1989,7 +2046,7 @@ def monthly_facility_report(request):
         visit_date__gte=first_day,
         visit_date__lte=last_day
     )
-    commodity['rutf_issued_mam'] = sum(v.rutf_sachets_given or 0 for v in mam_visits)
+    commodity['rutf_issued_mam'] = sum(int(round((v.rutf_sachets_given or 0) * rutf_factor)) for v in mam_visits)
     
     # Other commodities (CSB+, oil, RUSF) from visits
     commodity['others_issued_sam'] = sum(
@@ -2004,30 +2061,49 @@ def monthly_facility_report(request):
     # Other commodities stock movements
     try:
         other_items = InventoryItem.objects.filter(category__in=['CSB', 'Oil', 'RUSF', 'CSB++'])
-        for item in other_items:
-            stock_levels = StockLevel.objects.filter(
-                inventory_item=item,
-                facility_id__in=facility_ids
-            )
-            commodity['others_balance'] += sum(sl.current_stock for sl in stock_levels)
-            
-            received = sum(m.quantity for m in StockMovement.objects.filter(
-                inventory_item=item,
-                destination_facility_id__in=facility_ids,
-                movement_type__in=['IN', 'TRANSFER'],
-                movement_date__gte=first_day,
-                movement_date__lte=last_day
-            ))
-            commodity['others_received'] += received
-            
-            issued = sum(m.quantity for m in StockMovement.objects.filter(
-                inventory_item=item,
-                source_facility_id__in=facility_ids,
-                movement_type__in=['CONSUMPTION', 'OUT', 'TRANSFER'],
-                movement_date__gte=first_day,
-                movement_date__lte=last_day
-            ))
-            commodity['others_start'] += (commodity['others_balance'] + issued - received)
+        
+        # Use DB aggregates
+        commodity['others_balance'] = StockLevel.objects.filter(
+            inventory_item__in=other_items,
+            facility_id__in=facility_ids,
+            location_type='facility'
+        ).aggregate(total=Sum('current_stock'))['total'] or 0
+        
+        # Received: IN + TRANSFER incoming + positive ADJUSTMENT
+        commodity['others_received'] = StockMovement.objects.filter(
+            inventory_item__in=other_items,
+            destination_facility_id__in=facility_ids,
+            movement_type__in=['IN', 'TRANSFER'],
+            movement_date__gte=first_day,
+            movement_date__lte=last_day
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+        commodity['others_received'] += StockMovement.objects.filter(
+            inventory_item__in=other_items,
+            destination_facility_id__in=facility_ids,
+            movement_type='ADJUSTMENT',
+            quantity__gt=0,
+            movement_date__gte=first_day,
+            movement_date__lte=last_day
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+        
+        # Issued: CONSUMPTION + OUT + TRANSFER out + negative ADJUSTMENT
+        others_issued = StockMovement.objects.filter(
+            inventory_item__in=other_items,
+            source_facility_id__in=facility_ids,
+            movement_type__in=['CONSUMPTION', 'OUT', 'TRANSFER'],
+            movement_date__gte=first_day,
+            movement_date__lte=last_day
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+        others_issued += StockMovement.objects.filter(
+            inventory_item__in=other_items,
+            source_facility_id__in=facility_ids,
+            movement_type='ADJUSTMENT',
+            quantity__lt=0,
+            movement_date__gte=first_day,
+            movement_date__lte=last_day
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+        
+        commodity['others_start'] = commodity['others_balance'] + others_issued - commodity['others_received']
     except Exception:
         pass
     

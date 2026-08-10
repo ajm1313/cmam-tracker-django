@@ -6,6 +6,7 @@ import logging
 from datetime import date
 from django.utils import timezone
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from apps.inventory.models import InventoryItem, ItemBatch, StockLevel, StockMovement, FacilityConsumption
 
 logger = logging.getLogger(__name__)
@@ -130,11 +131,13 @@ def deduct_stock_for_registration(registration, user=None):
     """
     Deduct RUTF stock given at the time of OpcRegistration (enrollment).
     Called after a registration is created/saved.
+    Returns a list of warning strings for items that could not be deducted.
     """
     facility = registration.facility
     user = user or registration.created_by
     reg_date = registration.admission_date or registration.registration_date or timezone.now().date()
     rutf_qty = registration.rutf_sachets_given or 0
+    warnings = []
 
     if rutf_qty > 0:
         rutf_item = _find_rutf_item()
@@ -148,6 +151,10 @@ def deduct_stock_for_registration(registration, user=None):
                 reference=f"REG-{registration.registration_number}",
                 notes=f"RUTF given at enrollment for {registration.child_name or registration.registration_number}",
             )
+        else:
+            warnings.append("No RUTF inventory item found — RUTF stock not deducted.")
+
+    return warnings
 
 
 def deduct_stock_for_visit(visit, user=None):
@@ -155,12 +162,14 @@ def deduct_stock_for_visit(visit, user=None):
     Deduct stock for all commodities dispensed during an OpcVisit.
     Handles RUTF, CSB+, oil, and food products.
     Called after a visit is created/saved.
+    Returns a list of warning strings for items that could not be deducted.
     """
     facility = visit.registration.facility
     user = user or visit.conducted_by or visit.created_by
     visit_date = visit.visit_date or timezone.now().date()
     reg_num = visit.registration.registration_number or str(visit.registration_id)
     ref = f"VISIT-{reg_num}-V{visit.visit_number}"
+    warnings = []
 
     # 1. RUTF sachets
     rutf_qty = visit.rutf_sachets_given or 0
@@ -176,6 +185,8 @@ def deduct_stock_for_visit(visit, user=None):
                 reference=ref,
                 notes=f"RUTF given at visit {visit.visit_number} for {reg_num}",
             )
+        else:
+            warnings.append("No RUTF inventory item found — RUTF stock not deducted.")
 
     # 2. CSB+ (Corn-Soya Blend)
     csb_qty = visit.csb_plus_given
@@ -191,6 +202,8 @@ def deduct_stock_for_visit(visit, user=None):
                 reference=ref,
                 notes=f"CSB+ given at visit {visit.visit_number} for {reg_num}",
             )
+        else:
+            warnings.append("No CSB+ inventory item found — CSB+ stock not deducted.")
 
     # 3. Fortified Vegetable Oil
     oil_qty = visit.oil_given
@@ -206,6 +219,8 @@ def deduct_stock_for_visit(visit, user=None):
                 reference=ref,
                 notes=f"Oil given at visit {visit.visit_number} for {reg_num}",
             )
+        else:
+            warnings.append("No Oil inventory item found — Oil stock not deducted.")
 
     # 4. Food product (RUSF or other supplementary food)
     fp_type = visit.food_product_type
@@ -231,26 +246,54 @@ def deduct_stock_for_visit(visit, user=None):
                 reference=ref,
                 notes=f"{fp_type} given at visit {visit.visit_number} for {reg_num}",
             )
+        elif fp_raw > 0:
+            warnings.append(f"No inventory item found for food product '{fp_type}' — stock not deducted.")
+
+    return warnings
 
 
 def _reverse_stock(inventory_item, facility, quantity, user, movement_date, reference, notes=''):
-    """Create an ADJUSTMENT StockMovement that reverses a previous CONSUMPTION deduction."""
+    """Create an ADJUSTMENT StockMovement that reverses a previous CONSUMPTION deduction.
+    Also restores ItemBatch quantities by finding the original CONSUMPTION movements."""
     if not inventory_item or not quantity or quantity <= 0 or not facility:
         raise ValueError("Invalid inventory item, facility, or quantity for stock reversal.")
 
-    movement = StockMovement.objects.create(
-        inventory_item=inventory_item,
-        movement_type='ADJUSTMENT',
-        quantity=quantity,
-        source_type='facility',
-        source_facility=facility,
-        destination_type='facility',
-        destination_facility=facility,
-        reference_number=reference,
-        notes=f"REVERSAL: {notes}",
-        created_by=user,
-        movement_date=movement_date or timezone.now(),
-    )
+    with transaction.atomic():
+        # Restore batch quantities from the original CONSUMPTION movements
+        original_movements = StockMovement.objects.select_for_update().filter(
+            inventory_item=inventory_item,
+            movement_type='CONSUMPTION',
+            source_facility=facility,
+            reference_number=reference,
+        ).order_by('-movement_date')
+
+        remaining_to_restore = quantity
+        for orig in original_movements:
+            if remaining_to_restore <= 0:
+                break
+            if orig.batch:
+                restore_qty = min(remaining_to_restore, orig.quantity)
+                batch = ItemBatch.objects.select_for_update().get(pk=orig.batch.pk)
+                batch.quantity += restore_qty
+                if batch.quantity > 0:
+                    batch.is_disposed = False
+                    batch.disposed_date = None
+                batch.save(update_fields=['quantity', 'is_disposed', 'disposed_date'])
+                remaining_to_restore -= restore_qty
+
+        movement = StockMovement.objects.create(
+            inventory_item=inventory_item,
+            movement_type='ADJUSTMENT',
+            quantity=quantity,
+            source_type='facility',
+            source_facility=facility,
+            destination_type='facility',
+            destination_facility=facility,
+            reference_number=reference,
+            notes=f"REVERSAL: {notes}",
+            created_by=user,
+            movement_date=movement_date or timezone.now(),
+        )
     logger.info(
         f"Stock reversed: {inventory_item.name} x{quantity} to {facility.name} "
         f"(ref: {reference})"

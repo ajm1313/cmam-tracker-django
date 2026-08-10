@@ -241,7 +241,7 @@ class OpcRegistrationListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'registration_number', 'child_name', 'child_gender',
             'date_of_birth', 'age_months', 'malnutrition_type', 'mam_type',
-            'status', 'admission_date', 'facility_name',
+            'status', 'admission_date', 'facility_name', 'facility_id',
             'weight_kg', 'height_cm', 'muac_cm', 'oedema',
             'visit_count', 'latest_visit_date', 'next_visit_date', 'is_visit_due',
         ]

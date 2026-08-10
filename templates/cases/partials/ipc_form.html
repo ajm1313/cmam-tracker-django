@@ -209,6 +209,20 @@
     <!-- Form Actions -->
     <div class="flex justify-between items-center pt-4">
         <a href="{% url 'cases:case_list' %}" class="bg-gray-500 text-white px-6 py-3 rounded-lg hover:bg-gray-600">Cancel</a>
-        <button type="submit" class="bg-purple-600 text-white px-8 py-3 rounded-lg hover:bg-purple-700">Register IPC Case</button>
+        <button type="submit" id="ipcSubmitBtn" class="bg-purple-600 text-white px-8 py-3 rounded-lg hover:bg-purple-700">Register IPC Case</button>
     </div>
 </form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const ipcForm = document.querySelector('#form-IPC form');
+    const ipcBtn = document.getElementById('ipcSubmitBtn');
+    if (ipcForm && ipcBtn) {
+        ipcForm.addEventListener('submit', function() {
+            ipcBtn.disabled = true;
+            ipcBtn.textContent = 'Saving...';
+            ipcBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        });
+    }
+});
+</script>

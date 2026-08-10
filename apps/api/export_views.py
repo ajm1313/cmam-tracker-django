@@ -185,7 +185,7 @@ def _export_cases_csv(qs):
             case.admission_type or '',
             case.mam_type or '',
             float(case.weight_kg) if case.weight_kg else '',
-            float(visit.weight_kg) if visit else '',
+            float(visit.weight_kg) if visit else float(case.weight_kg) if case.weight_kg else '',
             float(visit.height_cm) if visit and visit.height_cm else float(case.height_cm) if case.height_cm else '',
             float(visit.muac_cm) if visit and visit.muac_cm else float(case.muac_cm) if case.muac_cm else '',
             case.oedema or 'No',
@@ -210,7 +210,7 @@ def export_inventory_excel(request):
     format_type = request.query_params.get('format', 'excel')
     facility_id = request.query_params.get('facility')
     
-    qs = StockLevel.objects.all().select_related('facility', 'item', 'item__category')
+    qs = StockLevel.objects.all().select_related('facility', 'facility__district', 'facility__district__region', 'inventory_item', 'inventory_item__category')
     
     accessible = request.user.get_accessible_facilities()
     if accessible is not None:

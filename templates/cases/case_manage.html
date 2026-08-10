@@ -11,7 +11,25 @@
       <p class="text-sm text-gray-500 mt-0.5">Performance indicators &amp; admission trends</p>
     </div>
     <div class="flex items-center gap-3">
-      <form method="get" class="flex items-center gap-2">
+      <form method="get" class="flex items-center gap-2 flex-wrap">
+        {% if access_level == 'admin' or access_level == 'national' %}
+        <select name="region" onchange="this.form.submit()" class="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500">
+          <option value="">All Regions</option>
+          {% for r in regions %}<option value="{{ r.id }}" {% if selected_region == r.id|stringformat:"s" %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+        </select>
+        {% endif %}
+        {% if access_level == 'admin' or access_level == 'national' or access_level == 'regional' %}
+        <select name="district" onchange="this.form.submit()" class="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500">
+          <option value="">All Districts</option>
+          {% for d in districts %}<option value="{{ d.id }}" {% if selected_district == d.id|stringformat:"s" %}selected{% endif %}>{{ d.name }}</option>{% endfor %}
+        </select>
+        {% endif %}
+        {% if access_level == 'admin' or access_level == 'national' or access_level == 'regional' or access_level == 'district' %}
+        <select name="sub_district" onchange="this.form.submit()" class="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500">
+          <option value="">All Sub-Districts</option>
+          {% for sd in sub_districts %}<option value="{{ sd.id }}" {% if selected_sub_district == sd.id|stringformat:"s" %}selected{% endif %}>{{ sd.name }}</option>{% endfor %}
+        </select>
+        {% endif %}
         <select name="facility" onchange="this.form.submit()" class="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500">
           <option value="">All Facilities</option>
           {% for f in all_facilities %}

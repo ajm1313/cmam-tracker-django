@@ -10,6 +10,7 @@ from datetime import timedelta, date
 from .models import OpcRegistration, OpcVisit, IpcCase, CaseTask
 from apps.inventory.stock_utils import deduct_stock_for_registration, deduct_stock_for_visit, reverse_stock_for_registration, reverse_stock_for_visit
 from django.http import HttpResponseForbidden
+from apps.users.views import get_user_location_context, enrich_location_context
 
 
 def _check_case_access(request, case):
@@ -24,10 +25,36 @@ def _check_case_access(request, case):
 def case_list(request):
     """List all cases with advanced filters"""
     user = request.user
-    facilities = user.get_accessible_facilities()
-    
+    all_facilities = user.get_accessible_facilities()
+
+    # Location context for cascading filter dropdowns
+    location_context = get_user_location_context(user)
+
+    # Location filter params
+    selected_region = request.GET.get('region', '')
+    selected_district = request.GET.get('district', '')
+    selected_sub_district = request.GET.get('sub_district', '')
+    facility_id = request.GET.get('facility', '')
+    enrich_location_context(location_context, selected_region, selected_district)
+
+    # Facility dropdown scoped to current location selection (cascading)
+    if selected_sub_district:
+        dropdown_facilities = all_facilities.filter(sub_district_id=selected_sub_district)
+    elif selected_district:
+        dropdown_facilities = all_facilities.filter(district_id=selected_district)
+    elif selected_region:
+        dropdown_facilities = all_facilities.filter(district__region_id=selected_region)
+    else:
+        dropdown_facilities = all_facilities
+
+    # Apply location filters to narrow facility scope for case query
+    if facility_id:
+        facilities = dropdown_facilities.filter(id=facility_id)
+    else:
+        facilities = dropdown_facilities
+
     qs = OpcRegistration.objects.filter(facility__in=facilities).select_related('facility')
-    
+
     # Advanced filters
     search = request.GET.get('search', '').strip()
     status = request.GET.get('status', '')
@@ -38,8 +65,7 @@ def case_list(request):
     muac_max = request.GET.get('muac_max', '')
     date_from = request.GET.get('date_from', '')
     date_to = request.GET.get('date_to', '')
-    facility_id = request.GET.get('facility', '')
-    
+
     if search:
         qs = qs.filter(
             Q(child_name__icontains=search) |
@@ -71,10 +97,9 @@ def case_list(request):
         qs = qs.filter(registration_date__gte=date_from)
     if date_to:
         qs = qs.filter(registration_date__lte=date_to)
-    if facility_id:
-        qs = qs.filter(facility_id=facility_id)
-    
-    filter_active = any([search, status, case_type, gender, age_min, age_max, muac_max, date_from, date_to, facility_id])
+
+    filter_active = any([search, status, case_type, gender, age_min, age_max, muac_max, date_from, date_to,
+                         selected_region, selected_district, selected_sub_district, facility_id])
 
     paginator = Paginator(qs.order_by('-registration_date'), 25)
     page_number = request.GET.get('page', 1)
@@ -84,13 +109,22 @@ def case_list(request):
         'opc_registrations': page_obj,
         'page_obj': page_obj,
         'paginator': paginator,
-        'facilities': facilities,
-        'all_facilities': facilities,
+        'facilities': dropdown_facilities,
+        'all_facilities': all_facilities,
         'filter_active': filter_active,
+        'access_level': location_context['access_level'],
+        'regions': location_context['regions'],
+        'districts': location_context['districts'],
+        'sub_districts': location_context['sub_districts'],
+        'selected_region': selected_region,
+        'selected_district': selected_district,
+        'selected_sub_district': selected_sub_district,
+        'selected_facility': facility_id,
         'filters': {
             'search': search, 'status': status, 'type': case_type, 'gender': gender,
             'age_min': age_min, 'age_max': age_max, 'muac_max': muac_max,
             'date_from': date_from, 'date_to': date_to, 'facility': facility_id,
+            'region': selected_region, 'district': selected_district, 'sub_district': selected_sub_district,
         }
     }
     return render(request, 'cases/case_list.html', context)
@@ -104,15 +138,31 @@ def case_manage(request):
     user = request.user
     all_facilities = user.get_accessible_facilities()
 
+    # Location context for cascading filter dropdowns
+    location_context = get_user_location_context(user)
+
     # --- Location filters ---
-    facility_id = request.GET.get('facility')
-    if facility_id:
-        try:
-            facilities = all_facilities.filter(id=int(facility_id))
-        except (ValueError, TypeError):
-            facilities = all_facilities
+    selected_region = request.GET.get('region', '')
+    selected_district = request.GET.get('district', '')
+    selected_sub_district = request.GET.get('sub_district', '')
+    facility_id = request.GET.get('facility', '')
+    enrich_location_context(location_context, selected_region, selected_district)
+
+    # Facility dropdown scoped to current location selection (cascading)
+    if selected_sub_district:
+        dropdown_facilities = all_facilities.filter(sub_district_id=selected_sub_district)
+    elif selected_district:
+        dropdown_facilities = all_facilities.filter(district_id=selected_district)
+    elif selected_region:
+        dropdown_facilities = all_facilities.filter(district__region_id=selected_region)
     else:
-        facilities = all_facilities
+        dropdown_facilities = all_facilities
+
+    # Apply location filters to narrow facility scope for case query
+    if facility_id:
+        facilities = dropdown_facilities.filter(id=facility_id)
+    else:
+        facilities = dropdown_facilities
 
     opc_qs = OpcRegistration.objects.filter(facility__in=facilities)
 
@@ -190,8 +240,15 @@ def case_manage(request):
         'trend_months': json.dumps(trend_months),
         'trend_sam': json.dumps(trend_sam),
         'trend_mam': json.dumps(trend_mam),
-        'all_facilities': all_facilities,
+        'all_facilities': dropdown_facilities,
         'selected_facility': facility_id,
+        'access_level': location_context['access_level'],
+        'regions': location_context['regions'],
+        'districts': location_context['districts'],
+        'sub_districts': location_context['sub_districts'],
+        'selected_region': selected_region,
+        'selected_district': selected_district,
+        'selected_sub_district': selected_sub_district,
     }
     return render(request, 'cases/case_manage.html', context)
 
@@ -214,6 +271,23 @@ def case_create(request):
             if accessible is not None and not accessible.filter(id=facility.id).exists():
                 messages.error(request, 'You do not have access to this facility.')
                 return redirect('cases:case_list')
+            
+            # Duplicate check: prevent same child from being registered twice
+            # at the same facility with the same enrolment date and caregiver.
+            admission_date = request.POST.get('admission_date')
+            child_name = request.POST.get('child_name', '').strip()
+            dob = request.POST.get('date_of_birth')
+            caregiver_name = (request.POST.get('caregiver_name') or '').strip()
+            existing = OpcRegistration.objects.filter(
+                facility=facility,
+                child_name__iexact=child_name,
+                date_of_birth=dob,
+                admission_date=admission_date,
+                caregiver_name__iexact=caregiver_name,
+            ).first()
+            if existing:
+                messages.error(request, f'A case for "{existing.child_name}" was already registered at this facility on {admission_date}. Duplicate registration is not allowed.')
+                return redirect('cases:case_create')
             
             try:
                 with transaction.atomic():
@@ -362,7 +436,9 @@ def case_create(request):
                 # Auto-deduct stock for commodities given at enrollment
                 try:
                     with transaction.atomic():
-                        deduct_stock_for_registration(registration, user=request.user)
+                        stock_warnings = deduct_stock_for_registration(registration, user=request.user)
+                    for w in stock_warnings:
+                        messages.warning(request, w)
                 except Exception as e:
                     messages.warning(request, f'Case saved, but stock deduction failed: {str(e)}')
                 
@@ -688,8 +764,8 @@ def case_reverse_discharge(request, pk):
         return redirect('cases:case_detail', pk=pk)
 
     case = get_object_or_404(OpcRegistration, pk=pk)
-    if case.status != 'Discharged':
-        messages.warning(request, 'This case is not discharged.')
+    if case.status not in ('Discharged', 'Defaulted', 'Death', 'Transfer'):
+        messages.warning(request, 'This case is not in a closed status.')
         return redirect('cases:case_detail', pk=pk)
 
     if request.method == 'POST':
@@ -1002,7 +1078,9 @@ def visit_form(request, registration_id):
             # Auto-deduct stock for commodities given during visit
             try:
                 with transaction.atomic():
-                    deduct_stock_for_visit(visit, user=request.user)
+                    stock_warnings = deduct_stock_for_visit(visit, user=request.user)
+                for w in stock_warnings:
+                    messages.warning(request, w)
             except Exception as e:
                 messages.warning(request, f'Visit saved, but stock deduction failed: {str(e)}')
             

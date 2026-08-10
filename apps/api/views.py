@@ -36,7 +36,7 @@ from .serializers import (
 def _check_case_access_api(request, case):
     """Return Response(403) if user lacks access to the case's facility, else None."""
     accessible = request.user.get_accessible_facilities()
-    if accessible is not None and case.facility_id not in [f.id for f in accessible]:
+    if accessible is not None and not accessible.filter(id=case.facility_id).exists():
         return Response({'success': False, 'message': 'You do not have access to this case.'}, status=status.HTTP_403_FORBIDDEN)
     return None
 
@@ -44,7 +44,7 @@ def _check_case_access_api(request, case):
 def _check_facility_access_api(request, facility):
     """Return Response(403) if user lacks access to the facility, else None."""
     accessible = request.user.get_accessible_facilities()
-    if accessible is not None and facility.id not in [f.id for f in accessible]:
+    if accessible is not None and not accessible.filter(id=facility.id).exists():
         return Response({'success': False, 'message': 'You do not have access to this facility.'}, status=status.HTTP_403_FORBIDDEN)
     return None
 
@@ -184,8 +184,8 @@ def _per_facility_stats(accessible, report_type, date_from, date_to, prev_period
         d_old=Count('pk', filter=new_cond & Q(admission_type__in=['Transfer In', 'Readmission'])),
         # Start of period
         start_of_period=Count('pk', filter=(
-            Q(registration_date__lte=prev_period_end) if prev_period_end else Q(status='Active')
-        ) & (Q(status='Active') | Q(discharge_date__gte=date_from)) if prev_period_end else Q()),
+            Q(registration_date__lte=prev_period_end) & (Q(status='Active') | Q(discharge_date__gte=date_from))
+        ) if prev_period_end else Q(status='Active')),
         # Discharges detailed
         f1a=Count('pk', filter=discharge_cond & Q(outcome='Cured', age_months__lt=6)),
         f1b=Count('pk', filter=discharge_cond & Q(outcome='Cured', age_months__gte=6, age_months__lte=59)),
@@ -669,6 +669,9 @@ def cases_list(request):
     status_filter = request.query_params.get('status')
     case_type = request.query_params.get('case_type')
     facility_id = request.query_params.get('facility_id')
+    region_id = request.query_params.get('region_id')
+    district_id = request.query_params.get('district_id')
+    sub_district_id = request.query_params.get('sub_district_id')
     search = request.query_params.get('search', '').strip()
     
     if status_filter and status_filter != 'all':
@@ -679,6 +682,12 @@ def cases_list(request):
         qs = qs.filter(malnutrition_type=case_type)
     if facility_id:
         qs = qs.filter(facility_id=facility_id)
+    if sub_district_id:
+        qs = qs.filter(facility__sub_district_id=sub_district_id)
+    elif district_id:
+        qs = qs.filter(facility__district_id=district_id)
+    elif region_id:
+        qs = qs.filter(facility__district__region_id=region_id)
     if search:
         qs = qs.filter(
             Q(child_name__icontains=search) |
@@ -767,6 +776,24 @@ def case_create_api(request):
     denied = _check_facility_access_api(request, facility)
     if denied:
         return denied
+    
+    # Duplicate check: prevent same child from being registered twice at the
+    # same facility with the same enrolment date and caregiver (accidental double-submit / re-tap).
+    admission_date = data.get('admission_date')
+    caregiver_name = (data.get('caregiver_name') or '').strip()
+    existing = OpcRegistration.objects.filter(
+        facility=facility,
+        child_name__iexact=data.get('child_name', '').strip(),
+        date_of_birth=data.get('date_of_birth'),
+        admission_date=admission_date,
+        caregiver_name__iexact=caregiver_name,
+    ).first()
+    if existing:
+        return Response({
+            'success': False,
+            'message': f'A case for "{existing.child_name}" was already registered at this facility on {admission_date}. Duplicate registration is not allowed.',
+            'duplicate_id': existing.id,
+        }, status=status.HTTP_409_CONFLICT)
     
     with transaction.atomic():
         reg_number = OpcRegistration.generate_registration_number(facility, data['malnutrition_type'])
@@ -911,14 +938,18 @@ def case_create_api(request):
             case.save(update_fields=['child_photo'])
     
     # Auto-deduct stock for commodities given at enrollment
+    stock_warnings = []
     try:
-        deduct_stock_for_registration(case, user=request.user)
+        with transaction.atomic():
+            stock_warnings = deduct_stock_for_registration(case, user=request.user)
     except Exception as e:
-        case.delete()
-        return Response({'success': False, 'message': f'Stock deduction failed: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+        stock_warnings.append(f'Stock deduction failed: {str(e)}')
     
     serializer = OpcRegistrationDetailSerializer(case, context={'request': request})
-    return Response({'success': True, 'message': 'Case created successfully', 'data': serializer.data},
+    message = 'Case created successfully'
+    if stock_warnings:
+        message += f' (Warnings: {"; ".join(stock_warnings)})'
+    return Response({'success': True, 'message': message, 'data': serializer.data, 'stock_warnings': stock_warnings},
                     status=status.HTTP_201_CREATED)
 
 
@@ -1041,17 +1072,17 @@ def record_visit_api(request, registration_id):
         return Response({'success': False, 'message': f'Failed to record visit: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
     
     # Auto-deduct stock for commodities given during visit
-    stock_warning = None
+    stock_warnings = []
     try:
-        deduct_stock_for_visit(visit, user=request.user)
+        stock_warnings = deduct_stock_for_visit(visit, user=request.user)
     except Exception as e:
-        stock_warning = f'Stock deduction failed: {str(e)}'
+        stock_warnings.append(f'Stock deduction failed: {str(e)}')
 
     serializer = OpcVisitSerializer(visit)
     message = 'Visit recorded successfully'
-    if stock_warning:
-        message += f' (Warning: {stock_warning})'
-    return Response({'success': True, 'message': message, 'data': serializer.data},
+    if stock_warnings:
+        message += f' (Warnings: {"; ".join(stock_warnings)})'
+    return Response({'success': True, 'message': message, 'data': serializer.data, 'stock_warnings': stock_warnings},
                     status=status.HTTP_201_CREATED)
 
 
@@ -1244,6 +1275,8 @@ def dashboard_stats(request):
     # Period filter
     month = request.query_params.get('month')
     year = request.query_params.get('year')
+    now = timezone.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     period_qs = qs  # period-specific queryset (for new admissions, discharges)
     if year:
         try:
@@ -1255,23 +1288,21 @@ def dashboard_stats(request):
             else:
                 period_start = date(y, 1, 1)
                 period_end = date(y + 1, 1, 1)
-            month_start = period_start
             period_qs = qs.filter(registration_date__gte=period_start, registration_date__lt=period_end)
         except (ValueError, TypeError):
             pass
-    else:
-        now = timezone.now()
-        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     
     total_sam = period_qs.filter(malnutrition_type='SAM').count()
     total_mam = period_qs.filter(malnutrition_type='MAM').count()
     active_sam = qs.filter(malnutrition_type='SAM', status='Active').count()
     active_mam = qs.filter(malnutrition_type='MAM', status='Active').count()
     discharged_month = qs.filter(status='Discharged', discharge_date__gte=month_start).count()
+    total_discharged = qs.filter(status='Discharged').count()
     defaulters = qs.filter(status='Defaulted').count()
-    
+    total_all = qs.count()
+
     facility_count = accessible.count() if accessible is not None else Facility.objects.count()
-    
+
     return Response({
         'success': True,
         'data': {
@@ -1280,9 +1311,11 @@ def dashboard_stats(request):
             'active_sam': active_sam,
             'active_mam': active_mam,
             'discharged_this_month': discharged_month,
+            'total_discharged': total_discharged,
             'defaulters': defaulters,
             'facilities_count': facility_count,
             'total_cases': total_sam + total_mam,
+            'total_all_cases': total_all,
             'active_cases': active_sam + active_mam,
         }
     })
@@ -1328,8 +1361,14 @@ def dashboard_analytics(request):
     now = timezone.now()
     months_data = []
     for i in range(5, -1, -1):
-        month_start = (now.replace(day=1) - timedelta(days=i*30)).replace(day=1)
-        month_end = (month_start + timedelta(days=32)).replace(day=1)
+        # Compute month start by subtracting i months with proper rollover
+        m = now.month - i
+        y = now.year
+        while m <= 0:
+            m += 12
+            y -= 1
+        month_start = date(y, m, 1)
+        month_end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
         month_label = month_start.strftime('%b %Y')
         
         sam_count = qs.filter(malnutrition_type='SAM', registration_date__gte=month_start, registration_date__lt=month_end).count()
@@ -1562,7 +1601,8 @@ def case_delete_api(request, pk):
         logging.getLogger(__name__).error(f"Stock reversal failed for case {case.id}: {e}")
 
     case.status = 'Discharged'
-    case.outcome = 'Non-Response'
+    if not case.outcome:
+        case.outcome = 'Non-Response'
     case.discharge_date = timezone.now().date()
     case.updated_by = request.user
     case.save()
@@ -1777,8 +1817,8 @@ def reverse_discharge_api(request, pk):
     if not request.user.is_superuser:
         return Response({'success': False, 'message': 'Only super administrators can reverse a discharge.'}, status=status.HTTP_403_FORBIDDEN)
 
-    if case.status != 'Discharged':
-        return Response({'success': False, 'message': 'This case is not discharged.'}, status=status.HTTP_400_BAD_REQUEST)
+    if case.status not in ('Discharged', 'Defaulted', 'Death', 'Transfer'):
+        return Response({'success': False, 'message': 'This case is not in a closed status.'}, status=status.HTTP_400_BAD_REQUEST)
 
     case.status = 'Active'
     case.discharge_date = None
@@ -1880,6 +1920,7 @@ def visit_edit_api(request, registration_id, visit_id):
     visit.save()
 
     # Adjust stock for changed commodity quantities
+    edit_stock_warnings = []
     try:
         from apps.inventory.stock_utils import _find_rutf_item, _find_item_by_category, _find_item_by_name, _deduct_stock, _reverse_stock
         facility = visit.registration.facility
@@ -1944,9 +1985,13 @@ def visit_edit_api(request, registration_id, visit_id):
     except Exception as e:
         import logging
         logging.getLogger(__name__).error(f"Stock adjustment on visit edit failed: {e}")
+        edit_stock_warnings.append(f"Stock adjustment failed: {str(e)}")
 
     serializer = OpcVisitSerializer(visit)
-    return Response({'success': True, 'message': 'Visit updated', 'data': serializer.data})
+    message = 'Visit updated'
+    if edit_stock_warnings:
+        message += f' (Warnings: {"; ".join(edit_stock_warnings)})'
+    return Response({'success': True, 'message': message, 'data': serializer.data, 'stock_warnings': edit_stock_warnings})
 
 
 @api_view(['DELETE'])
@@ -2185,6 +2230,16 @@ def user_edit_api(request, pk):
                 district_id = district_id if role.level >= 3 else None
                 sub_district_id = sub_district_id if role.level >= 4 else None
                 facility_id = facility_id if role.level >= 5 else None
+
+                # Validate required location based on role level
+                if role.level >= 2 and not region_id:
+                    return Response({'success': False, 'message': 'Region is required for this role'}, status=status.HTTP_400_BAD_REQUEST)
+                if role.level >= 3 and not district_id:
+                    return Response({'success': False, 'message': 'District is required for this role'}, status=status.HTTP_400_BAD_REQUEST)
+                if role.level >= 4 and not sub_district_id:
+                    return Response({'success': False, 'message': 'Sub-District is required for this role'}, status=status.HTTP_400_BAD_REQUEST)
+                if role.level >= 5 and not facility_id:
+                    return Response({'success': False, 'message': 'Facility is required for this role'}, status=status.HTTP_400_BAD_REQUEST)
 
                 UserRole.objects.create(
                     user=u, role=role,
