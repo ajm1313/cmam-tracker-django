@@ -1147,6 +1147,17 @@ def visit_edit(request, visit_id):
 
     if request.method == 'POST':
         try:
+            # Capture old commodity values for stock adjustment
+            old_rutf = visit.rutf_sachets_given or 0
+            old_csb = float(visit.csb_plus_given or 0)
+            old_oil = float(visit.oil_given or 0)
+            old_fp_qty = 0
+            if visit.food_product_quantity:
+                try:
+                    old_fp_qty = int(float(visit.food_product_quantity))
+                except (ValueError, TypeError):
+                    old_fp_qty = 0
+
             visit.visit_date = request.POST.get('visit_date') or visit.visit_date
             visit.visit_type = request.POST.get('visit_type') or visit.visit_type
             visit.weight_kg = request.POST.get('weight_kg') or None
@@ -1223,6 +1234,73 @@ def visit_edit(request, visit_id):
 
             visit.updated_by = request.user
             visit.save()
+
+            # Adjust stock for changed commodity quantities
+            try:
+                from apps.inventory.stock_utils import _find_rutf_item, _find_item_by_category, _find_item_by_name, _deduct_stock, _reverse_stock
+                from django.utils import timezone as _tz
+                facility = visit.registration.facility
+                visit_date = visit.visit_date or _tz.now().date()
+                reg_num = visit.registration.registration_number or str(visit.registration_id)
+                ref = f"VISIT-EDIT-{reg_num}-V{visit.visit_number}"
+
+                new_rutf = visit.rutf_sachets_given or 0
+                rutf_diff = new_rutf - old_rutf
+                if rutf_diff != 0:
+                    rutf_item = _find_rutf_item()
+                    if rutf_item:
+                        if rutf_diff > 0:
+                            _deduct_stock(rutf_item, facility, rutf_diff, request.user, visit_date, ref,
+                                          f"RUTF adjusted up on edit for {reg_num} V{visit.visit_number}")
+                        else:
+                            _reverse_stock(rutf_item, facility, abs(rutf_diff), request.user, visit_date, ref,
+                                           f"RUTF adjusted down on edit for {reg_num} V{visit.visit_number}")
+
+                new_csb = float(visit.csb_plus_given or 0)
+                csb_diff = new_csb - old_csb
+                if csb_diff != 0:
+                    csb_item = _find_item_by_category('CSB') or _find_item_by_name('CSB')
+                    if csb_item:
+                        if csb_diff > 0:
+                            _deduct_stock(csb_item, facility, int(csb_diff), request.user, visit_date, ref,
+                                          f"CSB+ adjusted up on edit for {reg_num} V{visit.visit_number}")
+                        else:
+                            _reverse_stock(csb_item, facility, int(abs(csb_diff)), request.user, visit_date, ref,
+                                           f"CSB+ adjusted down on edit for {reg_num} V{visit.visit_number}")
+
+                new_oil = float(visit.oil_given or 0)
+                oil_diff = new_oil - old_oil
+                if oil_diff != 0:
+                    oil_item = _find_item_by_category('Oil') or _find_item_by_name('Oil')
+                    if oil_item:
+                        if oil_diff > 0:
+                            _deduct_stock(oil_item, facility, int(oil_diff), request.user, visit_date, ref,
+                                          f"Oil adjusted up on edit for {reg_num} V{visit.visit_number}")
+                        else:
+                            _reverse_stock(oil_item, facility, int(abs(oil_diff)), request.user, visit_date, ref,
+                                           f"Oil adjusted down on edit for {reg_num} V{visit.visit_number}")
+
+                new_fp_qty = 0
+                if visit.food_product_quantity:
+                    try:
+                        new_fp_qty = int(float(visit.food_product_quantity))
+                    except (ValueError, TypeError):
+                        new_fp_qty = 0
+                fp_diff = new_fp_qty - old_fp_qty
+                if fp_diff != 0 and visit.food_product_type:
+                    fp_item = _find_item_by_category(visit.food_product_type) or _find_item_by_name(visit.food_product_type)
+                    if not fp_item:
+                        fp_item = _find_item_by_category('RUSF') or _find_item_by_name('RUSF')
+                    if fp_item:
+                        if fp_diff > 0:
+                            _deduct_stock(fp_item, facility, fp_diff, request.user, visit_date, ref,
+                                          f"Food product adjusted up on edit for {reg_num} V{visit.visit_number}")
+                        else:
+                            _reverse_stock(fp_item, facility, abs(fp_diff), request.user, visit_date, ref,
+                                           f"Food product adjusted down on edit for {reg_num} V{visit.visit_number}")
+            except Exception as e:
+                messages.warning(request, f'Visit saved, but stock adjustment failed: {str(e)}')
+
             messages.success(request, f'Visit #{visit.visit_number} updated successfully!')
             return redirect('cases:case_detail', pk=case.pk)
         except Exception as e:

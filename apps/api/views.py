@@ -196,7 +196,7 @@ def _per_facility_stats(accessible, report_type, date_from, date_to, prev_period
         f4a=Count('pk', filter=discharge_cond & Q(outcome='Non-Response', age_months__lt=6)),
         f4b=Count('pk', filter=discharge_cond & Q(outcome='Non-Response', age_months__gte=6, age_months__lte=59)),
         g_referrals=Count('pk', filter=discharge_cond & Q(status='Transfer')),
-        h_other_exits=Count('pk', filter=discharge_cond & Q(age_months__gte=60)),
+        h_other_exits=Count('pk', filter=discharge_cond & Q(age_months__gte=60) & ~Q(status='Transfer')),
         # Gender
         new_males_under6=Count('pk', filter=new_cond & Q(child_gender='Male', age_months__lt=6)),
         new_females_under6=Count('pk', filter=new_cond & Q(child_gender='Female', age_months__lt=6)),

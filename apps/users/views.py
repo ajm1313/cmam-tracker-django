@@ -733,8 +733,9 @@ def reports(request):
                 and sl.current_stock <= (sl.inventory_item.reorder_level or 0)
             )
             inventory_summary['out_of_stock'] = stock_levels.filter(current_stock=0).count()
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Dashboard inventory summary failed: {e}")
     
     # Get user level description
     level_descriptions = {
@@ -933,10 +934,9 @@ def _calculate_rutf_stock_data(facility_ids, week_ranges):
                 result['rutf_received'][w]
             )
         
-    except Exception:
-        pass
-    
-    return result
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Weekly SAM RUTF stock calculation failed: {e}")
 
 
 @login_required
@@ -1161,8 +1161,8 @@ def weekly_sam_report(request):
         referrals = sam_discharges.filter(status='Transfer').count()
         data['referrals'][week_idx] = referrals
         
-        # H: Other SAM exits - children >= 5 years (CMAM guide)
-        other_exits = sam_discharges.filter(age_months__gte=60).count()
+        # H: Other SAM exits - children >= 5 years, excluding transfers (CMAM guide)
+        other_exits = sam_discharges.filter(age_months__gte=60).exclude(status='Transfer').count()
         data['other_exits'][week_idx] = other_exits
         
         # I: Total SAM exits = F + G + H (CMAM guide)
@@ -1790,8 +1790,8 @@ def monthly_facility_report(request):
     # G: SAM referrals (CMAM guide)
     sam['referrals'] = sam_discharges.filter(status='Transfer').count()
     
-    # H: Other SAM exits (CMAM guide)
-    sam['other_exits'] = sam_discharges.filter(age_months__gte=60).count()
+    # H: Other SAM exits - children >= 5 years, excluding transfers (CMAM guide)
+    sam['other_exits'] = sam_discharges.filter(age_months__gte=60).exclude(status='Transfer').count()
     
     # I: Total SAM exits = F + G + H (CMAM guide)
     sam['total_exits'] = sam['total_discharges'] + sam['referrals'] + sam['other_exits']
@@ -1915,8 +1915,11 @@ def monthly_facility_report(request):
     mam['total_discharges_other'] = (mam['cured_other'] + mam['died_other'] + 
                                      mam['defaulted_other'] + mam['non_recovered_other'])
     
-    # V: End of month Other MAM
-    mam['other_end'] = mam['other_start'] + mam['new_other'] - mam['total_discharges_other']
+    # Other MAM referrals
+    mam['referrals_other'] = other_discharges.filter(status='Transfer').count()
+    
+    # V: End of month Other MAM (subtract discharges + referrals)
+    mam['other_end'] = mam['other_start'] + mam['new_other'] - mam['total_discharges_other'] - mam['referrals_other']
     
     # Additional info - gender breakdown for MAM
     mam['new_males_high_risk'] = new_high_risk.filter(child_gender='Male').count()
@@ -2026,10 +2029,9 @@ def monthly_facility_report(request):
         
         # Opening stock = current balance + issued - received
         commodity['rutf_start'] = commodity['rutf_balance'] + issued - commodity['rutf_received']
-    except Exception:
-        pass
-    
-    # Get RUTF issued from visits (apply conversion factor to match stock units)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Monthly RUTF commodity calculation failed: {e}")
     rutf_item = InventoryItem.objects.filter(category='RUTF', is_active=True).first()
     rutf_factor = float(rutf_item.conversion_factor or 1) if rutf_item else 1.0
     sam_visits = OpcVisit.objects.filter(
@@ -2104,10 +2106,9 @@ def monthly_facility_report(request):
         ).aggregate(total=Sum('quantity'))['total'] or 0
         
         commodity['others_start'] = commodity['others_balance'] + others_issued - commodity['others_received']
-    except Exception:
-        pass
-    
-    # ============== FACILITY INFO ==============
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Monthly others commodity calculation failed: {e}")
     facility_name = "All Facilities"
     district_name = ""
     sub_district_name = ""
