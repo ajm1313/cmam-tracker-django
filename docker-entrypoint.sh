@@ -57,6 +57,8 @@ exec gunicorn config.wsgi:application \
     --worker-class sync \
     --timeout 300 \
     --graceful-timeout 30 \
+    --proxy-headers \
+    --forwarded-allow-headers='*' \
     --access-logfile - \
     --error-logfile - \
     --log-level info
