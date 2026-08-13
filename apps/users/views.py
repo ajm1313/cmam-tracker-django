@@ -168,6 +168,9 @@ def dashboard(request):
             date_filter,
             facility_id__in=facility_ids,
         ).count(),
+        'total_all_cases': OpcRegistration.objects.filter(
+            facility_id__in=facility_ids,
+        ).count(),
         'total_active': OpcRegistration.objects.filter(
             facility_id__in=facility_ids,
             status='Active',

@@ -236,6 +236,21 @@
             <div class="mt-3 h-1 bg-gray-100 rounded-full"><div class="h-1 bg-gradient-to-r from-amber-400 to-orange-500 rounded-full w-3/5"></div></div>
         </div>
 
+        <!-- Total Cases (all time) -->
+        <div class="stat-card bg-white rounded-2xl shadow-sm border border-gray-100 p-5 fade-in">
+            <div class="flex items-center justify-between mb-3">
+                <div class="w-11 h-11 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center shadow-md">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                </div>
+                <span class="text-xs font-medium text-violet-600 bg-violet-50 px-2 py-1 rounded-full">All Cases</span>
+            </div>
+            <p class="text-3xl font-bold text-gray-900">{{ stats.total_all_cases }}</p>
+            <p class="text-sm text-gray-500 mt-1">Total cases (all time)</p>
+            <div class="mt-3 h-1 bg-gray-100 rounded-full"><div class="h-1 bg-gradient-to-r from-violet-400 to-purple-600 rounded-full w-4/5"></div></div>
+        </div>
+
         <!-- Total Cases (filtered) -->
         <div class="stat-card bg-white rounded-2xl shadow-sm border border-gray-100 p-5 fade-in">
             <div class="flex items-center justify-between mb-3">
@@ -305,6 +320,10 @@
                     Case Summary
                 </h3>
                 <div class="space-y-2">
+                    <div class="flex items-center justify-between p-2.5 bg-violet-50 rounded-lg">
+                        <span class="text-sm font-medium text-violet-700">Total Cases (all time)</span>
+                        <span class="text-lg font-bold text-violet-600">{{ stats.total_all_cases }}</span>
+                    </div>
                     <div class="flex items-center justify-between p-2.5 bg-red-50 rounded-lg">
                         <span class="text-sm font-medium text-red-700">Active SAM (all time)</span>
                         <span class="text-lg font-bold text-red-600">{{ stats.active_sam_cases }}</span>
