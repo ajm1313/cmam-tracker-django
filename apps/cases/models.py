@@ -197,6 +197,24 @@ class OpcRegistration(TimeStampedModel):
     bilateral_pitting_oedema = models.CharField(max_length=10, null=True, blank=True)
     time_to_travel_minutes = models.IntegerField(null=True, blank=True)
 
+    # Automation tracking fields (used by SamOpcAutomationService / MamOpcAutomationService)
+    missed_consecutive_visits = models.PositiveIntegerField(default=0)
+    clinically_well_consecutive_count = models.PositiveIntegerField(default=0)
+    no_oedema_consecutive_count = models.PositiveIntegerField(default=0)
+    muac_12_5_consecutive_count = models.PositiveIntegerField(default=0)
+    consecutive_recovery_visits = models.PositiveIntegerField(default=0)
+    consecutive_weight_loss_count = models.PositiveIntegerField(default=0)
+    consecutive_static_weight_count = models.PositiveIntegerField(default=0)
+    nutrition_education_completed = models.BooleanField(default=False)
+    immunization_updated = models.BooleanField(default=False)
+    linked_to_followup = models.BooleanField(default=False)
+    medical_investigation_done = models.BooleanField(default=False)
+    # MAM-specific tracking
+    mam_missed_consecutive_visits = models.PositiveIntegerField(default=0)
+    mam_muac_12_5_consecutive_count = models.PositiveIntegerField(default=0)
+    mam_weeks_in_treatment = models.PositiveIntegerField(default=0)
+    mam_treatment_period_weeks = models.PositiveIntegerField(default=12)
+
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Active')
     outcome = models.CharField(max_length=50, null=True, blank=True)
     discharge_date = models.DateField(null=True, blank=True)
@@ -309,7 +327,22 @@ class OpcRegistration(TimeStampedModel):
     
     def is_active(self):
         return self.status == 'Active'
-    
+
+    @property
+    def weeks_in_treatment(self):
+        """Weeks since admission date (used by automation services)."""
+        end = self.discharge_date or datetime.now().date()
+        return max(0, (end - self.admission_date).days // 7)
+
+    @property
+    def visit_count(self):
+        return self.visits.count()
+
+    @property
+    def last_visit_date(self):
+        latest = self.get_latest_visit()
+        return latest.visit_date if latest else None
+
     def get_latest_visit(self):
         return self.visits.order_by('-visit_date').first()
     

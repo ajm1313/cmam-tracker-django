@@ -23,6 +23,9 @@ from apps.inventory.models import (
 )
 from apps.inventory.stock_utils import deduct_stock_for_registration, deduct_stock_for_visit, reverse_stock_for_registration, reverse_stock_for_visit
 from apps.cases.models import OpcRegistration, OpcVisit, IpcCase, CaseTask
+from apps.cases.views import _update_automation_tracking
+from apps.cases.automation_service import SamOpcAutomationService
+from apps.cases.mam_automation_service import MamOpcAutomationService
 from apps.locations.models import Region, District, SubDistrict
 from django.db.models import Q, Count, Max, Sum, F, Case, When, IntegerField
 from .serializers import (
@@ -1068,6 +1071,48 @@ def record_visit_api(request, registration_id):
                 conducted_by=request.user,
                 created_by=request.user,
             )
+
+            # Update automation tracking fields (consecutive counts, auto-default)
+            _update_automation_tracking(case, visit)
+
+            # Update case status if outcome requires it
+            raw_outcome = data.get('visit_outcome', 'Continue')
+            outcome_map = {'Died': 'Death', 'Non-recovered': 'Non-Response', 'Transfer to IPC': 'Transfer-to-IPC'}
+            outcome = outcome_map.get(raw_outcome, raw_outcome)
+            discharge_outcomes = ['Cured', 'Defaulted', 'Death', 'Non-Response', 'Transfer-to-IPC', 'Referral']
+
+            if outcome in discharge_outcomes:
+                if outcome == 'Cured':
+                    case.status = 'Discharged'
+                    case.outcome = 'Cured'
+                elif outcome == 'Defaulted':
+                    case.status = 'Defaulted'
+                    case.outcome = 'Defaulted'
+                elif outcome == 'Death':
+                    case.status = 'Death'
+                    case.outcome = 'Death'
+                elif outcome == 'Non-Response':
+                    case.status = 'Discharged'
+                    case.outcome = 'Non-Response'
+                elif outcome == 'Transfer-to-IPC':
+                    case.status = 'Transfer'
+                    case.outcome = 'Transfer-to-IPC'
+                elif outcome == 'Referral':
+                    case.status = 'Transfer'
+                    case.outcome = 'Referral'
+                case.discharge_date = timezone.now().date()
+                case.save()
+
+            # Auto-discharge after max weeks if still active
+            max_weeks = 16 if case.malnutrition_type == 'SAM' else 10
+            weeks_since = case.weeks_in_treatment
+            if weeks_since >= max_weeks and case.status == 'Active':
+                case.status = 'Discharged'
+                case.outcome = f'Auto-discharged ({max_weeks} weeks)'
+                case.discharge_date = timezone.now().date()
+                case.outcome_notes = f'Automatically discharged after {weeks_since} weeks in program.'
+                case.save()
+
     except Exception as e:
         return Response({'success': False, 'message': f'Failed to record visit: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
     
@@ -1728,13 +1773,26 @@ def discharge_stats_api(request):
         visit_count=Count('visits'), last_visit_date=Max('visits__visit_date')
     )
 
-    ready_qs = active.filter(visit_count__gte=2)
-    ready = [{
-        'id': c.id, 'child_name': c.child_name, 'registration_number': c.registration_number,
-        'facility_name': c.facility.name, 'malnutrition_type': c.malnutrition_type,
-        'visit_count': c.visit_count,
-        'last_visit_date': c.last_visit_date.isoformat() if c.last_visit_date else None,
-    } for c in ready_qs]
+    # Use automation services to check real discharge criteria
+    ready = []
+    for c in active:
+        latest_visit = c.get_latest_visit()
+        if c.malnutrition_type == 'SAM':
+            result = SamOpcAutomationService.check_discharge_criteria(c, latest_visit)
+        else:
+            mam_type = c.mam_type or 'Other MAM'
+            result = MamOpcAutomationService.check_mam_discharge_criteria(c, latest_visit, mam_type)
+        if result.get('eligible') or result.get('discharge_eligible'):
+            category = result.get('category') or result.get('discharge_category')
+            if category and ('Cured' in str(category) or 'C:' in str(category) or 'O1' in str(category) or 'U1' in str(category)):
+                ready.append({
+                    'id': c.id, 'child_name': c.child_name, 'registration_number': c.registration_number,
+                    'facility_name': c.facility.name, 'malnutrition_type': c.malnutrition_type,
+                    'visit_count': c.visit_count,
+                    'last_visit_date': c.last_visit_date.isoformat() if c.last_visit_date else None,
+                    'discharge_category': str(category),
+                    'reasons': result.get('reasons', []),
+                })
 
     # Defaulters: last visit or registration date is older than 14 days
     defaulters_qs = active.filter(
@@ -1923,6 +1981,9 @@ def visit_edit_api(request, registration_id, visit_id):
     visit.updated_by = request.user
     visit.save()
 
+    # Recompute automation tracking fields after edit
+    _update_automation_tracking(case, visit)
+
     # Adjust stock for changed commodity quantities
     edit_stock_warnings = []
     try:
@@ -2022,6 +2083,10 @@ def visit_delete_api(request, registration_id, visit_id):
         logging.getLogger(__name__).error(f"Stock reversal failed for visit {visit.id}: {e}")
 
     visit.delete()
+
+    # Recompute automation tracking fields after deletion
+    _update_automation_tracking(case, None)
+
     return Response({'success': True, 'message': 'Visit deleted successfully'})
 
 

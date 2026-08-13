@@ -8,6 +8,8 @@ from django.utils import timezone
 from django.core.paginator import Paginator
 from datetime import timedelta, date
 from .models import OpcRegistration, OpcVisit, IpcCase, CaseTask
+from .automation_service import SamOpcAutomationService
+from .mam_automation_service import MamOpcAutomationService
 from apps.inventory.stock_utils import deduct_stock_for_registration, deduct_stock_for_visit, reverse_stock_for_registration, reverse_stock_for_visit
 from django.http import HttpResponseForbidden
 from apps.users.views import get_user_location_context, enrich_location_context
@@ -749,6 +751,8 @@ def visit_delete(request, visit_id):
         except Exception as e:
             messages.warning(request, f'Stock reversal failed: {str(e)}')
         visit.delete()
+        # Recompute automation tracking fields after deletion
+        _update_automation_tracking(case, None)
         messages.success(request, 'Visit deleted successfully')
         return redirect('cases:case_detail', pk=case.pk)
 
@@ -850,6 +854,88 @@ def due_visits(request):
         }
     }
     return render(request, 'cases/due_visits.html', context)
+
+
+def _update_automation_tracking(case, visit):
+    """Update automation tracking fields on the case after a visit is recorded.
+
+    Computes consecutive counts for absences, clinically-well, no-oedema,
+    MUAC >= 12.5, and recovery visits by scanning the visit history.
+    Also auto-escalates to Defaulted after 3 consecutive absences.
+    """
+    visits = list(case.visits.order_by('visit_number'))
+
+    # Reset counters
+    missed = 0
+    mam_missed = 0
+    clinically_well_count = 0
+    no_oedema_count = 0
+    muac_12_5_count = 0
+    mam_muac_12_5_count = 0
+    recovery_count = 0
+
+    for v in visits:
+        is_absent = v.visit_outcome == 'Absent'
+
+        # Consecutive missed visits (reset on any non-absent visit)
+        if is_absent:
+            missed += 1
+            mam_missed += 1
+        else:
+            missed = 0
+            mam_missed = 0
+
+        # Clinically well (no complications and general condition good)
+        is_clinically_well = (not v.has_complications and
+                              v.general_condition in (None, 'Good', 'Fair', 'Stable', 'Improved'))
+        if is_clinically_well:
+            clinically_well_count += 1
+        else:
+            clinically_well_count = 0
+
+        # No oedema
+        no_oed = not v.oedema or v.oedema == 'None'
+        if no_oed:
+            no_oedema_count += 1
+        else:
+            no_oedema_count = 0
+
+        # MUAC >= 12.5
+        if v.muac_cm and float(v.muac_cm) >= 12.5:
+            muac_12_5_count += 1
+            mam_muac_12_5_count += 1
+        else:
+            muac_12_5_count = 0
+            mam_muac_12_5_count = 0
+
+        # Recovery visit: clinically well + MUAC adequate + no oedema
+        if is_clinically_well and no_oed and v.muac_cm and float(v.muac_cm) >= 12.5:
+            recovery_count += 1
+        else:
+            recovery_count = 0
+
+    case.missed_consecutive_visits = missed
+    case.mam_missed_consecutive_visits = mam_missed
+    case.clinically_well_consecutive_count = clinically_well_count
+    case.no_oedema_consecutive_count = no_oedema_count
+    case.muac_12_5_consecutive_count = muac_12_5_count
+    case.mam_muac_12_5_consecutive_count = mam_muac_12_5_count
+    case.consecutive_recovery_visits = recovery_count
+
+    # Update MAM weeks in treatment
+    if case.admission_date:
+        from datetime import date as _date
+        end = case.discharge_date or _date.today()
+        case.mam_weeks_in_treatment = max(0, (end - case.admission_date).days // 7)
+
+    # Auto-escalate to Defaulted after 3 consecutive absences
+    if missed >= 3 and case.status == 'Active':
+        case.status = 'Defaulted'
+        case.outcome = 'Defaulted'
+        case.discharge_date = timezone.now().date()
+        case.outcome_notes = f'Auto-defaulted after {missed} consecutive missed visits.'
+
+    case.save()
 
 
 @login_required
@@ -1037,7 +1123,10 @@ def visit_form(request, registration_id):
                         conducted_by=request.user,
                         created_by=request.user,
                     )
-                
+
+                # Update automation tracking fields (consecutive counts, auto-default)
+                _update_automation_tracking(case, visit)
+
                 # Update case status if outcome requires it
                 raw_outcome = request.POST.get('visit_outcome')
                 outcome_map = {'Died': 'Death', 'Non-recovered': 'Non-Response', 'Transfer to IPC': 'Transfer-to-IPC'}
@@ -1235,6 +1324,9 @@ def visit_edit(request, visit_id):
             visit.updated_by = request.user
             visit.save()
 
+            # Recompute automation tracking fields after edit
+            _update_automation_tracking(case, visit)
+
             # Adjust stock for changed commodity quantities
             try:
                 from apps.inventory.stock_utils import _find_rutf_item, _find_item_by_category, _find_item_by_name, _deduct_stock, _reverse_stock
@@ -1384,13 +1476,25 @@ def discharge_management(request):
     
     ready_for_discharge = []
     for case in active_cases:
-        # A case is "ready for discharge" if they've had enough visits and show improvement
-        if case.visit_count >= 2:
-            ready_for_discharge.append({
-                'case': case,
-                'visit_count': case.visit_count,
-                'last_visit_date': case.last_visit_date,
-            })
+        latest_visit = case.get_latest_visit()
+        # Use automation service to check real discharge criteria
+        if case.malnutrition_type == 'SAM':
+            result = SamOpcAutomationService.check_discharge_criteria(case, latest_visit)
+        else:
+            mam_type = case.mam_type or 'Other MAM'
+            result = MamOpcAutomationService.check_mam_discharge_criteria(case, latest_visit, mam_type)
+        # Only show cases that are eligible for cure discharge (not death/default/non-response)
+        if result.get('eligible') or result.get('discharge_eligible'):
+            category = result.get('category') or result.get('discharge_category')
+            # Skip negative outcomes — those go to defaulters/history
+            if category and ('Cured' in str(category) or 'C:' in str(category) or 'O1' in str(category) or 'U1' in str(category)):
+                ready_for_discharge.append({
+                    'case': case,
+                    'visit_count': case.visit_count,
+                    'last_visit_date': case.last_visit_date,
+                    'discharge_category': category,
+                    'reasons': result.get('reasons', []),
+                })
     
     # Get defaulters (cases that missed visits for more than 14 days)
     defaulters = []

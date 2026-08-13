@@ -110,6 +110,7 @@
                     <tr class="border-b border-gray-50">
                         <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Child</th>
                         <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
+                        <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Criteria</th>
                         <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Visits</th>
                         <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Last Visit</th>
                         <th class="px-6 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Facility</th>
@@ -127,6 +128,16 @@
                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border {% if item.case.malnutrition_type == 'SAM' %}bg-red-50 text-red-700 border-red-100{% else %}bg-amber-50 text-amber-700 border-amber-100{% endif %}">
                                 {{ item.case.malnutrition_type }}
                             </span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border bg-emerald-50 text-emerald-700 border-emerald-100">{{ item.discharge_category }}</span>
+                            {% if item.reasons %}
+                            <ul class="mt-1 space-y-0.5">
+                                {% for reason in item.reasons %}
+                                <li class="text-xs text-gray-500">{{ reason }}</li>
+                                {% endfor %}
+                            </ul>
+                            {% endif %}
                         </td>
                         <td class="px-6 py-4 text-sm font-semibold text-gray-900">{{ item.visit_count }}</td>
                         <td class="px-6 py-4 text-sm text-gray-600">{% if item.last_visit_date %}{{ item.last_visit_date|date:"M j, Y" }}{% else %}—{% endif %}</td>
