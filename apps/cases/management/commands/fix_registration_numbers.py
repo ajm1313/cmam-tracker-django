@@ -26,17 +26,18 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         dry_run = options['dry_run']
         total_renumbered = 0
-        counters_reset = 0
+        combos_fixed = 0
 
-        # Group cases by (facility_id, malnutrition_type)
-        combos = (
+        # Group cases by (facility_id, malnutrition_type) — use set to deduplicate
+        combos_raw = (
             OpcRegistration.objects
             .values_list('facility_id', 'malnutrition_type')
             .distinct()
         )
+        combos = set(combos_raw)
 
         for facility_id, mal_type in combos:
-            cases = (
+            cases = list(
                 OpcRegistration.objects
                 .filter(facility_id=facility_id, malnutrition_type=mal_type)
                 .exclude(registration_number__isnull=True)
@@ -44,11 +45,10 @@ class Command(BaseCommand):
                 .order_by('registration_date', 'id')
             )
 
-            if not cases.exists():
+            if not cases:
                 continue
 
-            facility = cases.first().facility
-            prefix = f"{facility.code}/"
+            facility = cases[0].facility
             new_seq = 0
             changes = []
 
@@ -66,15 +66,20 @@ class Command(BaseCommand):
                 f"\n{facility.code}/{mal_type}: {len(changes)} case(s) to renumber"
             )
 
-            if dry_run:
-                for case, old_num, new_num in changes:
-                    self.stdout.write(f"  {old_num} -> {new_num}  ({case.child_name})")
-            else:
+            for case, old_num, new_num in changes:
+                self.stdout.write(f"  {old_num} -> {new_num}  ({case.child_name})")
+
+            if not dry_run:
                 with transaction.atomic():
+                    # Phase 1: Move all affected cases to temporary numbers
+                    for case, old_num, new_num in changes:
+                        case.registration_number = f"TEMP-{case.id}"
+                        case.save(update_fields=['registration_number'])
+
+                    # Phase 2: Assign final sequential numbers
                     for case, old_num, new_num in changes:
                         case.registration_number = new_num
                         case.save(update_fields=['registration_number'])
-                        self.stdout.write(f"  {old_num} -> {new_num}  ({case.child_name})")
 
                     # Reset the FacilitySequence counter
                     seq_obj, _ = FacilitySequence.objects.select_for_update().get_or_create(
@@ -84,7 +89,7 @@ class Command(BaseCommand):
                     )
                     seq_obj.last_sequence = new_seq
                     seq_obj.save(update_fields=['last_sequence'])
-                    counters_reset += 1
+                    combos_fixed += 1
 
             total_renumbered += len(changes)
 
@@ -92,13 +97,13 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.WARNING(
                     f"\nDRY RUN: Would renumber {total_renumbered} case(s) "
-                    f"across {counters_reset} facility/type combination(s)."
+                    f"across {len(combos)} facility/type combination(s)."
                 )
             )
         else:
             self.stdout.write(
                 self.style.SUCCESS(
                     f"\nRenumbered {total_renumbered} case(s) "
-                    f"across {counters_reset} facility/type combination(s)."
+                    f"across {combos_fixed} facility/type combination(s)."
                 )
             )
