@@ -1300,6 +1300,8 @@ def dashboard_stats(request):
     total_discharged = qs.filter(status='Discharged').count()
     defaulters = qs.filter(status='Defaulted').count()
     total_all = qs.count()
+    other_mam = qs.filter(malnutrition_type='MAM', mam_type='Other MAM').count()
+    high_risk_mam = qs.filter(malnutrition_type='MAM', mam_type='High-risk MAM').count()
 
     facility_count = accessible.count() if accessible is not None else Facility.objects.count()
 
@@ -1317,6 +1319,8 @@ def dashboard_stats(request):
             'total_cases': total_sam + total_mam,
             'total_all_cases': total_all,
             'active_cases': active_sam + active_mam,
+            'other_mam': other_mam,
+            'high_risk_mam': high_risk_mam,
         }
     })
 

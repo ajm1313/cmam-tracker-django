@@ -171,6 +171,16 @@ def dashboard(request):
         'total_all_cases': OpcRegistration.objects.filter(
             facility_id__in=facility_ids,
         ).count(),
+        'other_mam_cases': OpcRegistration.objects.filter(
+            facility_id__in=facility_ids,
+            malnutrition_type='MAM',
+            mam_type='Other MAM',
+        ).count(),
+        'high_risk_mam_cases': OpcRegistration.objects.filter(
+            facility_id__in=facility_ids,
+            malnutrition_type='MAM',
+            mam_type='High-risk MAM',
+        ).count(),
         'total_active': OpcRegistration.objects.filter(
             facility_id__in=facility_ids,
             status='Active',
