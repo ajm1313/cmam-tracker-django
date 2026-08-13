@@ -103,7 +103,7 @@
                         </div>
                     </td>
                     <td class="px-6 py-4">
-                        <p class="text-sm text-gray-700 font-mono">#{{ item.case.id }}</p>
+                        <p class="text-sm text-gray-700 font-mono">{{ item.case.registration_number|default:"—" }}</p>
                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border mt-0.5
                             {% if item.case.malnutrition_type == 'SAM' %}bg-red-50 text-red-700 border-red-100{% else %}bg-amber-50 text-amber-700 border-amber-100{% endif %}">
                             {{ item.case.malnutrition_type }}
