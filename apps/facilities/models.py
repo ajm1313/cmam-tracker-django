@@ -40,6 +40,10 @@ class Facility(TimeStampedModel):
     longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)
     capacity = models.IntegerField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
+    dhis2_org_unit_id = models.CharField(
+        max_length=60, null=True, blank=True,
+        help_text='DHIS2 organization unit UID for this facility'
+    )
 
     # UNICEF constants for SAM burden estimation
     UNDER5_PROPORTION = 0.17  # 17% of total population

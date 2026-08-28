@@ -36,6 +36,7 @@ urlpatterns = [
     path('', include('apps.inventory.urls')),
     path('', include('apps.cases.urls')),
     path('', include('apps.locations.urls')),
+    path('manage/dhis2/', include(('apps.dhis2.urls', 'dhis2'), namespace='dhis2')),
     path('', include(('apps.ai.web_urls', 'ai'), namespace='ai')),
 
     # API URLs

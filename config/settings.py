@@ -95,6 +95,7 @@ INSTALLED_APPS = [
     'apps.cases',
     'apps.api',
     'apps.ai',
+    'apps.dhis2',
 ]
 
 MIDDLEWARE = [
@@ -345,3 +346,14 @@ LOGGING = {
 OPENAI_API_KEY = config('OPENAI_API_KEY', default='')
 OPENAI_API_URL = config('OPENAI_API_URL', default='https://api.openai.com/v1/chat/completions')
 OPENAI_MODEL = config('OPENAI_MODEL', default='gpt-4o-mini')
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DHIS2 Integration Configuration
+# ═══════════════════════════════════════════════════════════════════════════
+# These are fallback env defaults; the primary config is stored in the
+# Dhis2Config model (editable via the web UI).
+DHIS2_SERVER_URL = config('DHIS2_SERVER_URL', default='')
+DHIS2_USERNAME = config('DHIS2_USERNAME', default='')
+DHIS2_PASSWORD = config('DHIS2_PASSWORD', default='')
+DHIS2_API_TOKEN = config('DHIS2_API_TOKEN', default='')
+DHIS2_DATASET_ID = config('DHIS2_DATASET_ID', default='')
