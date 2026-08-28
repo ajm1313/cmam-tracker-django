@@ -126,6 +126,60 @@ class Dhis2Client:
         except requests.exceptions.RequestException as e:
             raise Dhis2PushError(f'Failed to fetch org units: {e}')
 
+    def get_data_elements(self, query: str = '', page_size: int = 50) -> Dict:
+        """Search for data elements by name or ID.
+
+        Returns:
+            dict with 'dataElements' list and 'pager' info.
+        """
+        url = self._url('dataElements')
+        params = {
+            'fields': 'id,name,code,valueType,categoryCombo[id,name]',
+            'pageSize': page_size,
+            'order': 'name:asc',
+        }
+        if query:
+            params['filter'] = f'name:ilike:{query}'
+        try:
+            resp = requests.get(url, headers=self._headers(), params=params, timeout=self.timeout)
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.RequestException as e:
+            raise Dhis2PushError(f'Failed to fetch data elements: {e}')
+
+    def get_data_set_detail(self, data_set_id: str) -> Dict:
+        """Fetch a data set with its data elements and sections.
+
+        Returns:
+            Full data set JSON including dataSetElements and sections.
+        """
+        url = self._url(f'dataSets/{data_set_id}')
+        params = {
+            'fields': 'id,name,periodType,categoryCombo[id,name],'
+                      'dataSetElements[dataElement[id,name,code,valueType,categoryCombo[id,name]]],'
+                      'sections[id,name]'
+        }
+        try:
+            resp = requests.get(url, headers=self._headers(), params=params, timeout=self.timeout)
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.RequestException as e:
+            raise Dhis2PushError(f'Failed to fetch data set detail: {e}')
+
+    def get_category_option_combos(self, category_combo_id: str = '') -> List[Dict]:
+        """Fetch category option combos, optionally filtered by category combo."""
+        url = self._url('categoryOptionCombos')
+        params = {'fields': 'id,name,categoryCombo[id,name]', 'paging': 'false'}
+        if category_combo_id:
+            params['filter'] = f'categoryCombo.id:eq:{category_combo_id}'
+        try:
+            resp = requests.get(url, headers=self._headers(), params=params, timeout=self.timeout)
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get('categoryOptionCombos', [])
+        except requests.exceptions.RequestException as e:
+            raise Dhis2PushError(f'Failed to fetch category option combos: {e}')
+
 
 class Dhis2PushError(Exception):
     """Raised when a DHIS2 API call fails."""

@@ -193,3 +193,70 @@ def dhis2_push_report(request):
         messages.error(request, f'Push failed: {str(e)}')
 
     return redirect('dhis2:dashboard')
+
+
+@login_required
+def dhis2_search_data_elements(request):
+    """AJAX: search data elements on the DHIS2 server."""
+    config = Dhis2Config.get_active()
+    if not config:
+        return JsonResponse({'success': False, 'message': 'No DHIS2 config found.'})
+
+    query = request.GET.get('q', '').strip()
+    try:
+        client = Dhis2Client.from_config(config)
+        result = client.get_data_elements(query=query, page_size=50)
+        return JsonResponse({'success': True, 'data': result.get('dataElements', [])})
+    except Dhis2PushError as e:
+        return JsonResponse({'success': False, 'message': str(e)})
+
+
+@login_required
+def dhis2_search_data_sets(request):
+    """AJAX: search data sets on the DHIS2 server."""
+    config = Dhis2Config.get_active()
+    if not config:
+        return JsonResponse({'success': False, 'message': 'No DHIS2 config found.'})
+
+    query = request.GET.get('q', '').strip()
+    try:
+        client = Dhis2Client.from_config(config)
+        result = client.get_data_sets(query=query)
+        return JsonResponse({'success': True, 'data': result})
+    except Dhis2PushError as e:
+        return JsonResponse({'success': False, 'message': str(e)})
+
+
+@login_required
+def dhis2_search_org_units(request):
+    """AJAX: search organisation units on the DHIS2 server."""
+    config = Dhis2Config.get_active()
+    if not config:
+        return JsonResponse({'success': False, 'message': 'No DHIS2 config found.'})
+
+    query = request.GET.get('q', '').strip()
+    try:
+        client = Dhis2Client.from_config(config)
+        result = client.get_org_units(query=query)
+        return JsonResponse({'success': True, 'data': result})
+    except Dhis2PushError as e:
+        return JsonResponse({'success': False, 'message': str(e)})
+
+
+@login_required
+def dhis2_data_set_detail(request):
+    """AJAX: get data set detail with its data elements."""
+    config = Dhis2Config.get_active()
+    if not config:
+        return JsonResponse({'success': False, 'message': 'No DHIS2 config found.'})
+
+    data_set_id = request.GET.get('id', '').strip()
+    if not data_set_id:
+        return JsonResponse({'success': False, 'message': 'Data set ID is required.'})
+
+    try:
+        client = Dhis2Client.from_config(config)
+        result = client.get_data_set_detail(data_set_id)
+        return JsonResponse({'success': True, 'data': result})
+    except Dhis2PushError as e:
+        return JsonResponse({'success': False, 'message': str(e)})
