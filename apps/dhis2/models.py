@@ -1,6 +1,7 @@
 from django.db import models
 from apps.core.models import TimeStampedModel
 from apps.facilities.models import Facility
+from apps.dhis2.report_spec import generate_metric_choices
 
 
 class Dhis2Config(TimeStampedModel):
@@ -29,40 +30,15 @@ class Dhis2Config(TimeStampedModel):
 
 
 class Dhis2DataElementMapping(TimeStampedModel):
-    """Maps a CMAM metric key to a DHIS2 data element UID."""
+    """Maps a CMAM metric key to a DHIS2 data element UID.
 
-    METRIC_CHOICES = [
-        # SAM admissions
-        ('sam_new_admissions', 'SAM – New admissions (6-59m)'),
-        ('sam_readmissions', 'SAM – Readmissions'),
-        ('sam_transfers_in', 'SAM – Transfers in'),
-        # SAM discharges
-        ('sam_cured', 'SAM – Cured discharges'),
-        ('sam_defaulted', 'SAM – Defaulted'),
-        ('sam_deaths', 'SAM – Deaths'),
-        ('sam_non_response', 'SAM – Non-response'),
-        ('sam_transfers_out', 'SAM – Transfers out (to IPC)'),
-        # SAM end-of-month
-        ('sam_total_active', 'SAM – Total active at end of month'),
-        # MAM admissions
-        ('mam_new_admissions', 'MAM – New admissions (6-59m)'),
-        ('mam_readmissions', 'MAM – Readmissions'),
-        # MAM discharges
-        ('mam_cured', 'MAM – Cured discharges'),
-        ('mam_defaulted', 'MAM – Defaulted'),
-        ('mam_deaths', 'MAM – Deaths'),
-        ('mam_non_response', 'MAM – Non-response'),
-        # MAM end-of-month
-        ('mam_total_active', 'MAM – Total active at end of month'),
-        # IPC
-        ('ipc_admissions', 'IPC – Admissions'),
-        ('ipc_discharges', 'IPC – Discharges (cured)'),
-        ('ipc_deaths', 'IPC – Deaths'),
-        # General
-        ('total_visits', 'Total OTP visits in period'),
-    ]
+    Metric keys follow the pattern: {program}_{age_group}_{column}
+    e.g. sam_opc_under6_new_male, mam_opc_high_risk_male_cured
+    """
 
-    metric_key = models.CharField(max_length=50, choices=METRIC_CHOICES, unique=True)
+    METRIC_CHOICES = generate_metric_choices()
+
+    metric_key = models.CharField(max_length=60, choices=METRIC_CHOICES, unique=True)
     data_element_uid = models.CharField(max_length=60, help_text='DHIS2 data element UID')
     category_option_combo_uid = models.CharField(
         max_length=60, null=True, blank=True,

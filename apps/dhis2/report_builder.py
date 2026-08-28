@@ -1,22 +1,32 @@
 """
-CMAM Report Builder — aggregates OpcRegistration / OpcVisit data into
-monthly DHIS2-compatible indicators.
+CMAM Report Builder — aggregates OpcRegistration / IpcCase data into
+monthly DHIS2-compatible indicators matching the Ghana CMAM report structure.
 """
 
 import logging
 from datetime import date
 from typing import Dict, List
-from django.db.models import Q, Count
+
+from django.db.models import Q
 
 from apps.cases.models import OpcRegistration, OpcVisit
 from apps.facilities.models import Facility
+
+from apps.dhis2.report_spec import (
+    SAM_OPC_AGE_GROUPS, SAM_OPC_COLUMNS,
+    SAM_IPC_AGE_GROUPS, SAM_IPC_COLUMNS,
+    MAM_OPC_CATEGORIES, MAM_OPC_COLUMNS,
+    classify_sam_opc_age_group, classify_sam_ipc_age_group,
+    classify_mam_opc_category,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class CmamReportBuilder:
     """Builds a dictionary of CMAM metric → integer value for a given
-    facility and reporting period (month)."""
+    facility and reporting period (month), matching the exact structure
+    of the Ghana CMAM monthly report."""
 
     @staticmethod
     def _period_range(period: str):
@@ -28,8 +38,8 @@ class CmamReportBuilder:
         if month == 12:
             last = date(year, 12, 31)
         else:
-            last = date(year, month + 1, 1) - date(year, month, 1)
-            last = date(year, month, last.days)
+            from calendar import monthrange
+            last = date(year, month, monthrange(year, month)[1])
         return first, last
 
     @staticmethod
@@ -44,118 +54,207 @@ class CmamReportBuilder:
             dict mapping metric_key → integer count.
         """
         first_day, last_day = CmamReportBuilder._period_range(period)
+        metrics = {}
 
-        # All registrations for this facility
-        base_qs = OpcRegistration.objects.filter(facility=facility)
+        # ── SAM OPC ────────────────────────────────────────────────
+        CmamReportBuilder._build_sam_opc(facility, first_day, last_day, metrics)
 
-        # ── Admissions in this period ──────────────────────────────
-        admissions_in_period = base_qs.filter(
+        # ── SAM IPC ────────────────────────────────────────────────
+        CmamReportBuilder._build_sam_ipc(facility, first_day, last_day, metrics)
+
+        # ── MAM OPC ────────────────────────────────────────────────
+        CmamReportBuilder._build_mam_opc(facility, first_day, last_day, metrics)
+
+        return metrics
+
+    @staticmethod
+    def _build_sam_opc(facility, first_day, last_day, metrics):
+        """Build SAM Outpatient Care metrics."""
+        admissions = OpcRegistration.objects.filter(
+            facility=facility,
+            malnutrition_type='SAM',
             admission_date__gte=first_day,
             admission_date__lte=last_day,
         )
 
-        sam_admissions = admissions_in_period.filter(malnutrition_type='SAM')
-        mam_admissions = admissions_in_period.filter(malnutrition_type='MAM')
-
-        sam_new = sam_admissions.filter(admission_type='New Admission').count()
-        sam_readmissions = sam_admissions.filter(admission_type='Readmission').count()
-        sam_transfers_in = sam_admissions.filter(admission_type='Transfer In').count()
-
-        mam_new = mam_admissions.filter(admission_type='New Admission').count()
-        mam_readmissions = mam_admissions.filter(admission_type='Readmission').count()
-
-        # ── Discharges in this period ──────────────────────────────
-        discharges_in_period = base_qs.filter(
+        exits = OpcRegistration.objects.filter(
+            facility=facility,
+            malnutrition_type='SAM',
             discharge_date__gte=first_day,
             discharge_date__lte=last_day,
         ).exclude(status='Active')
 
-        sam_discharges = discharges_in_period.filter(malnutrition_type='SAM')
-        mam_discharges = discharges_in_period.filter(malnutrition_type='MAM')
+        # Initialize all metrics to 0
+        for ag_key, _ in SAM_OPC_AGE_GROUPS:
+            for col_key, _, _, _, _, _ in SAM_OPC_COLUMNS:
+                metrics[f'sam_opc_{ag_key}_{col_key}'] = 0
 
-        sam_cured = sam_discharges.filter(outcome='Cured').count()
-        sam_defaulted = sam_discharges.filter(outcome='Defaulted').count()
-        sam_deaths = sam_discharges.filter(outcome='Death').count()
-        sam_non_response = sam_discharges.filter(outcome='Non-Response').count()
-        sam_transfers_out = sam_discharges.filter(
-            Q(outcome='Transfer-to-IPC') | Q(outcome='Referral')
-        ).count()
+        # Count enrollments
+        for reg in admissions:
+            ag = classify_sam_opc_age_group(reg)
+            if ag is None:
+                # >= 60 months → "other" column (>=5 years)
+                metrics['sam_opc_6_59_muac_other'] += 1
+                continue
 
-        mam_cured = mam_discharges.filter(outcome='Cured').count()
-        mam_defaulted = mam_discharges.filter(outcome='Defaulted').count()
-        mam_deaths = mam_discharges.filter(outcome='Death').count()
-        mam_non_response = mam_discharges.filter(outcome='Non-Response').count()
+            for col_key, _, col_type, gender, _, adm_types in SAM_OPC_COLUMNS:
+                if col_type != 'enroll':
+                    continue
+                if col_key == 'other':
+                    continue
 
-        # ── Active cases at end of period ──────────────────────────
-        sam_total_active = base_qs.filter(
-            malnutrition_type='SAM',
-            status='Active',
-            admission_date__lte=last_day,
-        ).count()
+                if gender and reg.child_gender != gender:
+                    continue
 
-        mam_total_active = base_qs.filter(
-            malnutrition_type='MAM',
-            status='Active',
-            admission_date__lte=last_day,
-        ).count()
+                if adm_types and reg.admission_type not in adm_types:
+                    continue
 
-        # ── IPC (from IpcCase model if available) ──────────────────
-        ipc_admissions = 0
-        ipc_discharges = 0
-        ipc_deaths = 0
-        try:
-            from apps.cases.models import IpcCase
-            ipc_qs = IpcCase.objects.filter(facility=facility)
-            ipc_admissions = ipc_qs.filter(
-                admission_date__gte=first_day,
-                admission_date__lte=last_day,
-            ).count()
-            ipc_discharges = ipc_qs.filter(
-                discharge_date__gte=first_day,
-                discharge_date__lte=last_day,
-                outcome='Cured',
-            ).count()
-            ipc_deaths = ipc_qs.filter(
-                discharge_date__gte=first_day,
-                discharge_date__lte=last_day,
-                outcome='Death',
-            ).count()
-        except Exception:
-            pass
+                metrics[f'sam_opc_{ag}_{col_key}'] += 1
+                break
 
-        # ── Total visits in period ─────────────────────────────────
-        total_visits = OpcVisit.objects.filter(
-            registration__facility=facility,
-            visit_date__gte=first_day,
-            visit_date__lte=last_day,
-        ).count()
+        # Count exits
+        for reg in exits:
+            ag = classify_sam_opc_age_group(reg)
+            if ag is None:
+                metrics['sam_opc_6_59_muac_exit_5plus'] += 1
+                continue
 
-        return {
-            'sam_new_admissions': sam_new,
-            'sam_readmissions': sam_readmissions,
-            'sam_transfers_in': sam_transfers_in,
-            'sam_cured': sam_cured,
-            'sam_defaulted': sam_defaulted,
-            'sam_deaths': sam_deaths,
-            'sam_non_response': sam_non_response,
-            'sam_transfers_out': sam_transfers_out,
-            'sam_total_active': sam_total_active,
-            'mam_new_admissions': mam_new,
-            'mam_readmissions': mam_readmissions,
-            'mam_cured': mam_cured,
-            'mam_defaulted': mam_defaulted,
-            'mam_deaths': mam_deaths,
-            'mam_non_response': mam_non_response,
-            'mam_total_active': mam_total_active,
-            'ipc_admissions': ipc_admissions,
-            'ipc_discharges': ipc_discharges,
-            'ipc_deaths': ipc_deaths,
-            'total_visits': total_visits,
-        }
+            for col_key, _, col_type, gender, outcome, _ in SAM_OPC_COLUMNS:
+                if col_type != 'exit':
+                    continue
+                if col_key == 'exit_5plus':
+                    continue
+
+                if gender and reg.child_gender != gender:
+                    continue
+
+                if col_key == 'referred_out':
+                    if reg.outcome in ('Transfer-to-IPC', 'Referral', 'Transfer'):
+                        metrics[f'sam_opc_{ag}_{col_key}'] += 1
+                        break
+                    continue
+
+                if outcome and reg.outcome != outcome:
+                    continue
+
+                metrics[f'sam_opc_{ag}_{col_key}'] += 1
+                break
 
     @staticmethod
-    def build_data_values(metrics: Dict[str, int],
-                          mappings) -> List[Dict]:
+    def _build_sam_ipc(facility, first_day, last_day, metrics):
+        """Build SAM Inpatient Care (Stabilization Centre) metrics."""
+        # Initialize all metrics to 0
+        for ag_key, _ in SAM_IPC_AGE_GROUPS:
+            for col_key, _, _, _, _, _ in SAM_IPC_COLUMNS:
+                metrics[f'sam_ipc_{ag_key}_{col_key}'] = 0
+
+        try:
+            from apps.cases.models import IpcCase
+        except ImportError:
+            return
+
+        admissions = IpcCase.objects.filter(
+            facility=facility,
+            admission_date__gte=first_day,
+            admission_date__lte=last_day,
+        )
+
+        # Count admissions
+        # IpcCase has limited fields: patient_age, gender, status
+        # No admission_type, no discharge_date, no outcome
+        for case in admissions:
+            ag = classify_sam_ipc_age_group(case)
+            if ag is None:
+                metrics['sam_ipc_6_59_muac_other'] += 1
+                continue
+
+            for col_key, _, col_type, gender, _, _ in SAM_IPC_COLUMNS:
+                if col_type != 'enroll':
+                    continue
+                if col_key == 'other':
+                    continue
+
+                if gender and case.gender != gender:
+                    continue
+
+                # IpcCase has no admission_type; count all as "new"
+                if col_key in ('new_male', 'new_female'):
+                    metrics[f'sam_ipc_{ag}_{col_key}'] += 1
+                    break
+
+        # Note: IPC exits cannot be reliably computed because IpcCase
+        # lacks discharge_date and outcome fields. This is a known
+        # limitation — exit metrics will remain 0 until the model is
+        # extended.
+
+    @staticmethod
+    def _build_mam_opc(facility, first_day, last_day, metrics):
+        """Build MAM Outpatient Care (Supplementary Feeding) metrics."""
+        admissions = OpcRegistration.objects.filter(
+            facility=facility,
+            malnutrition_type='MAM',
+            admission_date__gte=first_day,
+            admission_date__lte=last_day,
+        )
+
+        exits = OpcRegistration.objects.filter(
+            facility=facility,
+            malnutrition_type='MAM',
+            discharge_date__gte=first_day,
+            discharge_date__lte=last_day,
+        ).exclude(status='Active')
+
+        # Initialize all metrics to 0
+        for cat_key, _ in MAM_OPC_CATEGORIES:
+            for col_key, _, _, _, _, _ in MAM_OPC_COLUMNS:
+                metrics[f'mam_opc_{cat_key}_{col_key}'] = 0
+
+        # Count enrollments
+        for reg in admissions:
+            cat = classify_mam_opc_category(reg)
+            if cat is None:
+                continue
+
+            for col_key, _, col_type, gender, _, adm_types in MAM_OPC_COLUMNS:
+                if col_type != 'enroll':
+                    continue
+
+                if gender and reg.child_gender != gender:
+                    continue
+
+                if adm_types and reg.admission_type not in adm_types:
+                    continue
+
+                metrics[f'mam_opc_{cat}_{col_key}'] += 1
+                break
+
+        # Count exits
+        for reg in exits:
+            cat = classify_mam_opc_category(reg)
+            if cat is None:
+                continue
+
+            for col_key, _, col_type, gender, outcome, _ in MAM_OPC_COLUMNS:
+                if col_type != 'exit':
+                    continue
+
+                if gender and reg.child_gender != gender:
+                    continue
+
+                if col_key == 'referred_out':
+                    if reg.outcome in ('Transfer-to-IPC', 'Referral', 'Transfer'):
+                        metrics[f'mam_opc_{cat}_{col_key}'] += 1
+                        break
+                    continue
+
+                if outcome and reg.outcome != outcome:
+                    continue
+
+                metrics[f'mam_opc_{cat}_{col_key}'] += 1
+                break
+
+    @staticmethod
+    def build_data_values(metrics: Dict[str, int], mappings) -> List[Dict]:
         """Convert metrics dict + Dhis2DataElementMapping queryset into
         DHIS2 data value dicts ready for POST /api/dataValueSets.
 
