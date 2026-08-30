@@ -10,6 +10,7 @@ from apps.dhis2.models import Dhis2Config, Dhis2DataElementMapping, Dhis2PushLog
 from apps.dhis2.client import Dhis2Client, Dhis2PushError
 from apps.dhis2.push_service import push_facility_report
 from apps.dhis2.report_builder import CmamReportBuilder
+from django.conf import settings
 from datetime import date
 
 
@@ -30,6 +31,15 @@ def dhis2_dashboard(request):
         default_period = f'{today.year - 1}12'
     else:
         default_period = f'{today.year}{today.month - 1:02d}'
+
+    # Fall back to settings env vars when no DB config exists
+    if not config:
+        config = type('DummyConfig', (), {
+            'server_url': settings.DHIS2_SERVER_URL,
+            'username': settings.DHIS2_USERNAME,
+            'api_token': settings.DHIS2_API_TOKEN,
+            'dataset_id': settings.DHIS2_DATASET_ID,
+        })()
 
     context = {
         'config': config,

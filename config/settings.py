@@ -352,8 +352,8 @@ OPENAI_MODEL = config('OPENAI_MODEL', default='gpt-4o-mini')
 # ═══════════════════════════════════════════════════════════════════════════
 # These are fallback env defaults; the primary config is stored in the
 # Dhis2Config model (editable via the web UI).
-DHIS2_SERVER_URL = config('DHIS2_SERVER_URL', default='')
-DHIS2_USERNAME = config('DHIS2_USERNAME', default='')
+DHIS2_SERVER_URL = config('DHIS2_SERVER_URL', default='https://dhims.chimgh.org/dhims')
+DHIS2_USERNAME = config('DHIS2_USERNAME', default='Ajaleel')
 DHIS2_PASSWORD = config('DHIS2_PASSWORD', default='')
 DHIS2_API_TOKEN = config('DHIS2_API_TOKEN', default='')
-DHIS2_DATASET_ID = config('DHIS2_DATASET_ID', default='')
+DHIS2_DATASET_ID = config('DHIS2_DATASET_ID', default='AGj1roihPkH')
