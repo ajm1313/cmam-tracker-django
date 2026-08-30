@@ -52,6 +52,10 @@ python manage.py collectstatic --noinput
 echo "Mapping DHIMS2 org units..."
 python manage.py map_dhis2_org_units --apply || true
 
+# Seed default DHIMS2 data element mappings
+echo "Seeding DHIMS2 data element mappings..."
+python manage.py seed_dhis2_mappings --apply || true
+
 # Start Gunicorn (Railway assigns the port dynamically via \$PORT)
 echo "Starting Gunicorn server..."
 exec gunicorn config.wsgi:application \

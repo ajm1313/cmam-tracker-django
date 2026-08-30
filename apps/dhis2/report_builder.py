@@ -258,6 +258,9 @@ class CmamReportBuilder:
         """Convert metrics dict + Dhis2DataElementMapping queryset into
         DHIS2 data value dicts ready for POST /api/dataValueSets.
 
+        Multiple metric keys can map to the same data element + category
+        option combo; their values are summed (aggregated).
+
         Args:
             metrics: output of build_report().
             mappings: queryset of Dhis2DataElementMapping (active only).
@@ -265,7 +268,8 @@ class CmamReportBuilder:
         Returns:
             list of {'dataElement': ..., 'value': ..., 'categoryOptionCombo': ...}
         """
-        data_values = []
+        # Aggregate values by (data_element_uid, category_option_combo_uid)
+        aggregated = {}  # key: (de_uid, coc_uid) -> summed value
         mapping_map = {m.metric_key: m for m in mappings if m.is_active}
 
         for metric_key, value in metrics.items():
@@ -274,12 +278,17 @@ class CmamReportBuilder:
                 logger.debug('No DHIS2 mapping for metric %s, skipping', metric_key)
                 continue
 
+            agg_key = (mapping.data_element_uid, mapping.category_option_combo_uid or '')
+            aggregated[agg_key] = aggregated.get(agg_key, 0) + value
+
+        data_values = []
+        for (de_uid, coc_uid), value in aggregated.items():
             dv = {
-                'dataElement': mapping.data_element_uid,
+                'dataElement': de_uid,
                 'value': str(value),
             }
-            if mapping.category_option_combo_uid:
-                dv['categoryOptionCombo'] = mapping.category_option_combo_uid
+            if coc_uid:
+                dv['categoryOptionCombo'] = coc_uid
             data_values.append(dv)
 
         return data_values
