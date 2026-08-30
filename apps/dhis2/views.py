@@ -84,7 +84,7 @@ def dhis2_save_config(request):
             is_active=True,
         )
 
-    messages.success(request, 'DHIS2 configuration saved.')
+    messages.success(request, 'DHIMS2 configuration saved.')
     return redirect('dhis2:dashboard')
 
 
@@ -94,7 +94,7 @@ def dhis2_test_connection(request):
     """AJAX endpoint to test DHIS2 connection."""
     config = Dhis2Config.get_active()
     if not config:
-        return JsonResponse({'success': False, 'message': 'No DHIS2 config found.'})
+        return JsonResponse({'success': False, 'message': 'No DHIMS2 config found.'})
 
     try:
         client = Dhis2Client.from_config(config)
@@ -193,7 +193,7 @@ def dhis2_push_report(request):
     try:
         result = push_facility_report(facility, period, user=request.user)
         if result.status == 'success':
-            messages.success(request, f'Report pushed to DHIS2 for {facility.name} ({period}).')
+            messages.success(request, f'Report pushed to DHIMS2 for {facility.name} ({period}).')
         elif result.status == 'partial':
             messages.warning(request, f'Partial push: {result.error_message}')
         else:
@@ -210,7 +210,7 @@ def dhis2_search_data_elements(request):
     """AJAX: search data elements on the DHIS2 server."""
     config = Dhis2Config.get_active()
     if not config:
-        return JsonResponse({'success': False, 'message': 'No DHIS2 config found.'})
+        return JsonResponse({'success': False, 'message': 'No DHIMS2 config found.'})
 
     query = request.GET.get('q', '').strip()
     try:
@@ -227,7 +227,7 @@ def dhis2_search_data_sets(request):
     """AJAX: search data sets on the DHIS2 server."""
     config = Dhis2Config.get_active()
     if not config:
-        return JsonResponse({'success': False, 'message': 'No DHIS2 config found.'})
+        return JsonResponse({'success': False, 'message': 'No DHIMS2 config found.'})
 
     query = request.GET.get('q', '').strip()
     try:
@@ -244,7 +244,7 @@ def dhis2_search_org_units(request):
     """AJAX: search organisation units on the DHIS2 server."""
     config = Dhis2Config.get_active()
     if not config:
-        return JsonResponse({'success': False, 'message': 'No DHIS2 config found.'})
+        return JsonResponse({'success': False, 'message': 'No DHIMS2 config found.'})
 
     query = request.GET.get('q', '').strip()
     try:
@@ -261,7 +261,7 @@ def dhis2_data_set_detail(request):
     """AJAX: get data set detail with its data elements."""
     config = Dhis2Config.get_active()
     if not config:
-        return JsonResponse({'success': False, 'message': 'No DHIS2 config found.'})
+        return JsonResponse({'success': False, 'message': 'No DHIMS2 config found.'})
 
     data_set_id = request.GET.get('id', '').strip()
     if not data_set_id:
@@ -293,7 +293,7 @@ def dhis2_push_all(request):
     ).exclude(dhis2_org_unit_id='')
 
     if not facilities:
-        messages.error(request, 'No facilities with DHIS2 org unit IDs configured.')
+        messages.error(request, 'No facilities with DHIMS2 org unit IDs configured.')
         return redirect('dhis2:dashboard')
 
     success_count = 0

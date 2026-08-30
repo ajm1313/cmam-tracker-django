@@ -1,5 +1,5 @@
 """
-Management command to push CMAM monthly reports to DHIS2.
+Management command to push CMAM monthly reports to DHIMS2.
 
 Usage:
     python manage.py push_dhis2_report --facility <facility_id> --period 202608
@@ -14,7 +14,7 @@ from apps.dhis2.push_service import push_facility_report
 
 
 class Command(BaseCommand):
-    help = 'Push CMAM monthly aggregate report to DHIS2'
+    help = 'Push CMAM monthly aggregate report to DHIMS2'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -23,11 +23,11 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             '--all', action='store_true',
-            help='Push reports for all facilities with DHIS2 org unit IDs',
+            help='Push reports for all facilities with DHIMS2 org unit IDs',
         )
         parser.add_argument(
             '--period', type=str, default=None,
-            help='DHIS2 monthly period code (e.g. 202608). Defaults to last month.',
+            help='DHIMS2 monthly period code (e.g. 202608). Defaults to last month.',
         )
 
     def handle(self, *args, **options):
@@ -49,7 +49,7 @@ class Command(BaseCommand):
                 dhis2_org_unit_id__isnull=False,
             ).exclude(dhis2_org_unit_id='')
             if not facilities:
-                raise CommandError('No facilities with DHIS2 org unit IDs configured.')
+                raise CommandError('No facilities with DHIMS2 org unit IDs configured.')
         elif options['facility']:
             try:
                 facilities = [Facility.objects.get(pk=options['facility'])]

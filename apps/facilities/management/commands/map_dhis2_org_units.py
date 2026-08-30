@@ -1,5 +1,5 @@
 """
-Map facility names to DHIS2 organisation unit UIDs.
+Map facility names to DHIMS2 organisation unit UIDs.
 
 Usage:
     python manage.py map_dhis2_org_units          # dry-run, show what would change
@@ -36,7 +36,7 @@ DHIS2_ORG_UNIT_MAP = {
 
 
 class Command(BaseCommand):
-    help = 'Map facility names to DHIS2 organisation unit UIDs'
+    help = 'Map facility names to DHIMS2 organisation unit UIDs'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -53,7 +53,7 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.MIGRATE_HEADING(
             f'{"APPLYING" if apply else "DRY RUN — use --apply to save"} '
-            f'DHIS2 org unit mappings for {facilities.count()} facilities'
+            f'DHIMS2 org unit mappings for {facilities.count()} facilities'
         ))
 
         for f in facilities:
@@ -66,7 +66,7 @@ class Command(BaseCommand):
                 uid = DHIS2_ORG_UNIT_MAP.get(key2)
 
             if not uid:
-                self.stdout.write(f'  ✗ {f.name} ({f.code}) — no DHIS2 match found')
+                self.stdout.write(f'  ✗ {f.name} ({f.code}) — no DHIMS2 match found')
                 skipped += 1
                 continue
 
