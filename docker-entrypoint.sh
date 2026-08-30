@@ -48,6 +48,10 @@ else:
 echo "Collecting static files..."
 python manage.py collectstatic --noinput
 
+# Map DHIS2 org unit UIDs to facilities
+echo "Mapping DHIS2 org units..."
+python manage.py map_dhis2_org_units --apply || true
+
 # Start Gunicorn (Railway assigns the port dynamically via \$PORT)
 echo "Starting Gunicorn server..."
 exec gunicorn config.wsgi:application \
