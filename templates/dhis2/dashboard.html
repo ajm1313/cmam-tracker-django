@@ -87,6 +87,14 @@
                 <button type="submit" class="px-5 py-2 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors">Push to DHIS2</button>
             </form>
         </div>
+        <div class="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-100 flex items-center gap-3">
+            <form method="post" action="{% url 'dhis2:push_all' %}" onsubmit="return validatePushAll()" class="flex items-center gap-3">
+                {% csrf_token %}
+                <input type="hidden" name="period" id="push_all_period" value="{{ default_period }}">
+                <button type="submit" class="px-4 py-2 text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors">Push All Facilities</button>
+                <span class="text-xs text-amber-700">Push reports for all facilities with DHIS2 org unit IDs for the specified period</span>
+            </form>
+        </div>
         <div id="preview_result" class="mt-4 hidden">
             <h3 class="text-sm font-bold text-gray-700 mb-2">Report Preview</h3>
             <div id="preview_table" class="overflow-x-auto"></div>
@@ -234,6 +242,13 @@ function validatePush() {
     document.getElementById('push_facility_id').value = facilityId;
     document.getElementById('push_period_hidden').value = period;
     return confirm(`Push report for ${sel.options[sel.selectedIndex].text} to DHIS2 for period ${period}?`);
+}
+
+function validatePushAll() {
+    const period = document.getElementById('push_period').value;
+    if (!period) { alert('Enter a period (YYYYMM)'); return false; }
+    document.getElementById('push_all_period').value = period;
+    return confirm(`Push reports for ALL facilities to DHIS2 for period ${period}?`);
 }
 
 // ── DHIS2 Search Functions ──────────────────────────────────────

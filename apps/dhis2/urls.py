@@ -11,6 +11,7 @@ urlpatterns = [
     path('mapping/<int:mapping_id>/delete/', views.dhis2_delete_mapping, name='delete_mapping'),
     path('report/preview/', views.dhis2_preview_report, name='preview_report'),
     path('report/push/', views.dhis2_push_report, name='push_report'),
+    path('report/push-all/', views.dhis2_push_all, name='push_all'),
     path('search/data-elements/', views.dhis2_search_data_elements, name='search_data_elements'),
     path('search/data-sets/', views.dhis2_search_data_sets, name='search_data_sets'),
     path('search/org-units/', views.dhis2_search_org_units, name='search_org_units'),

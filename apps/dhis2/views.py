@@ -1,7 +1,9 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
 from django.http import JsonResponse
+
+superuser_required = user_passes_test(lambda u: u.is_superuser)
 
 from apps.facilities.models import Facility
 from apps.dhis2.models import Dhis2Config, Dhis2DataElementMapping, Dhis2PushLog
@@ -12,6 +14,7 @@ from datetime import date
 
 
 @login_required
+@superuser_required
 def dhis2_dashboard(request):
     """DHIS2 integration dashboard — config, mappings, push history."""
     config = Dhis2Config.get_active()
@@ -40,6 +43,7 @@ def dhis2_dashboard(request):
 
 
 @login_required
+@superuser_required
 def dhis2_save_config(request):
     """Save DHIS2 connection configuration."""
     if request.method != 'POST':
@@ -85,6 +89,7 @@ def dhis2_save_config(request):
 
 
 @login_required
+@superuser_required
 def dhis2_test_connection(request):
     """AJAX endpoint to test DHIS2 connection."""
     config = Dhis2Config.get_active()
@@ -104,6 +109,7 @@ def dhis2_test_connection(request):
 
 
 @login_required
+@superuser_required
 def dhis2_save_mapping(request):
     """Create or update a data element mapping."""
     if request.method != 'POST':
@@ -134,6 +140,7 @@ def dhis2_save_mapping(request):
 
 
 @login_required
+@superuser_required
 def dhis2_delete_mapping(request, mapping_id):
     """Delete a data element mapping."""
     if request.method != 'POST':
@@ -145,6 +152,7 @@ def dhis2_delete_mapping(request, mapping_id):
 
 
 @login_required
+@superuser_required
 def dhis2_preview_report(request):
     """AJAX endpoint to preview a CMAM report before pushing."""
     facility_id = request.GET.get('facility_id')
@@ -163,6 +171,7 @@ def dhis2_preview_report(request):
 
 
 @login_required
+@superuser_required
 def dhis2_push_report(request):
     """Push a facility report to DHIS2."""
     if request.method != 'POST':
@@ -196,6 +205,7 @@ def dhis2_push_report(request):
 
 
 @login_required
+@superuser_required
 def dhis2_search_data_elements(request):
     """AJAX: search data elements on the DHIS2 server."""
     config = Dhis2Config.get_active()
@@ -212,6 +222,7 @@ def dhis2_search_data_elements(request):
 
 
 @login_required
+@superuser_required
 def dhis2_search_data_sets(request):
     """AJAX: search data sets on the DHIS2 server."""
     config = Dhis2Config.get_active()
@@ -228,6 +239,7 @@ def dhis2_search_data_sets(request):
 
 
 @login_required
+@superuser_required
 def dhis2_search_org_units(request):
     """AJAX: search organisation units on the DHIS2 server."""
     config = Dhis2Config.get_active()
@@ -244,6 +256,7 @@ def dhis2_search_org_units(request):
 
 
 @login_required
+@superuser_required
 def dhis2_data_set_detail(request):
     """AJAX: get data set detail with its data elements."""
     config = Dhis2Config.get_active()
@@ -260,3 +273,51 @@ def dhis2_data_set_detail(request):
         return JsonResponse({'success': True, 'data': result})
     except Dhis2PushError as e:
         return JsonResponse({'success': False, 'message': str(e)})
+
+
+@login_required
+@superuser_required
+def dhis2_push_all(request):
+    """Push reports for all facilities with DHIS2 org unit IDs."""
+    if request.method != 'POST':
+        return redirect('dhis2:dashboard')
+
+    period = request.POST.get('period')
+    if not period:
+        messages.error(request, 'Period is required.')
+        return redirect('dhis2:dashboard')
+
+    facilities = Facility.objects.filter(
+        is_active=True,
+        dhis2_org_unit_id__isnull=False,
+    ).exclude(dhis2_org_unit_id='')
+
+    if not facilities:
+        messages.error(request, 'No facilities with DHIS2 org unit IDs configured.')
+        return redirect('dhis2:dashboard')
+
+    success_count = 0
+    fail_count = 0
+    partial_count = 0
+
+    for facility in facilities:
+        try:
+            result = push_facility_report(facility, period, user=request.user)
+            if result.status == 'success':
+                success_count += 1
+            elif result.status == 'partial':
+                partial_count += 1
+            else:
+                fail_count += 1
+        except Exception:
+            fail_count += 1
+
+    msg = f'Push complete: {success_count} succeeded, {partial_count} partial, {fail_count} failed.'
+    if fail_count == 0 and partial_count == 0:
+        messages.success(request, msg)
+    elif fail_count > 0 and success_count > 0:
+        messages.warning(request, msg)
+    else:
+        messages.error(request, msg)
+
+    return redirect('dhis2:dashboard')
