@@ -311,13 +311,14 @@
                         <table class="w-full text-left border-collapse">
                             <thead><tr class="border-b border-blue-300"><th class="py-1">Weight (kg)</th><th class="py-1">Packets/Week</th><th class="py-1">Packets/Day</th></tr></thead>
                             <tbody class="text-gray-700">
-                                <tr><td>4.0 – 4.9</td><td>11</td><td>1½</td></tr>
-                                <tr><td>5.0 – 6.9</td><td>14</td><td>2</td></tr>
-                                <tr><td>7.0 – 8.4</td><td>18</td><td>2½</td></tr>
-                                <tr><td>8.5 – 9.4</td><td>21</td><td>3</td></tr>
-                                <tr><td>9.5 – 10.4</td><td>25</td><td>3½</td></tr>
-                                <tr><td>10.5 – 11.9</td><td>28</td><td>4</td></tr>
-                                <tr><td>12+</td><td>32</td><td>4½</td></tr>
+                                <tr><td>3.5 – 3.9</td><td>11</td><td>1½</td></tr>
+                                <tr><td>4.0 – 5.4</td><td>14</td><td>2</td></tr>
+                                <tr><td>5.5 – 6.9</td><td>18</td><td>2½</td></tr>
+                                <tr><td>7.0 – 8.4</td><td>21</td><td>3</td></tr>
+                                <tr><td>8.5 – 9.4</td><td>25</td><td>3½</td></tr>
+                                <tr><td>9.5 – 10.4</td><td>28</td><td>4</td></tr>
+                                <tr><td>10.5 – 11.9</td><td>32</td><td>4½</td></tr>
+                                <tr><td>12+</td><td>35</td><td>5</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -485,16 +486,17 @@
 </div>
 
 <script>
-// ponytail: RUTF calculator - minimal lookup table, auto-updates on weight change
+// RUTF calculator - correct weight bands per Ghana CMAM guidelines
 function calcRutf(w) {
-    if (w < 4) return null;
-    if (w < 5) return 11;
-    if (w < 7) return 14;
-    if (w < 8.5) return 18;
-    if (w < 9.5) return 21;
-    if (w < 10.5) return 25;
-    if (w < 12) return 28;
-    return 32;
+    if (w < 3.5) return null;
+    if (w < 4.0) return 11;
+    if (w < 5.5) return 14;
+    if (w < 7.0) return 18;
+    if (w < 8.5) return 21;
+    if (w < 9.5) return 25;
+    if (w < 10.5) return 28;
+    if (w < 12.0) return 32;
+    return 35;
 }
 
 function toggleRutfGuide() {

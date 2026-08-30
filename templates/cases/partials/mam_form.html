@@ -27,7 +27,7 @@
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Date of Enrolment *</label>
-                <input type="date" name="admission_date" required value="{% if case %}{{ case.admission_date|date:'Y-m-d' }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500">
+                <input type="date" name="admission_date" id="mam_admission_date" required value="{% if case %}{{ case.admission_date|date:'Y-m-d' }}{% endif %}" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500" onchange="mamDobToAge()">
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Type of MAM Treatment</label>
@@ -406,14 +406,32 @@
 </form>
 
 <script>
+// Age must be measured from the enrolment date, not today, so that
+// back-dated registrations record the age the child was when enrolled.
+function mamReferenceDate() {
+    const el = document.getElementById('mam_admission_date');
+    const raw = el && el.value ? el.value : '';
+    if (!raw) return new Date();
+    const parts = raw.split('-').map(Number);
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+    return isNaN(d.getTime()) ? new Date() : d;
+}
+
+function mamToIsoDate(d) {
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return d.getFullYear() + '-' + m + '-' + day;
+}
+
 function mamDobToAge() {
     const dob = document.getElementById('mam_dob').value;
     const ageField = document.getElementById('mam_age_months');
     if (!dob) return;
-    const birthDate = new Date(dob);
-    const today = new Date();
-    let months = (today.getFullYear() - birthDate.getFullYear()) * 12 + (today.getMonth() - birthDate.getMonth());
-    if (today.getDate() < birthDate.getDate()) months--;
+    const parts = dob.split('-').map(Number);
+    const birthDate = new Date(parts[0], parts[1] - 1, parts[2]);
+    const ref = mamReferenceDate();
+    let months = (ref.getFullYear() - birthDate.getFullYear()) * 12 + (ref.getMonth() - birthDate.getMonth());
+    if (ref.getDate() < birthDate.getDate()) months--;
     if (months < 0) months = 0;
     ageField.value = months;
 }
@@ -422,9 +440,9 @@ function mamAgeToDob() {
     const months = parseInt(document.getElementById('mam_age_months').value);
     const dobField = document.getElementById('mam_dob');
     if (isNaN(months) || months < 0) return;
-    const today = new Date();
-    const dob = new Date(today.getFullYear(), today.getMonth() - months, today.getDate());
-    dobField.value = dob.toISOString().split('T')[0];
+    const ref = mamReferenceDate();
+    const dob = new Date(ref.getFullYear(), ref.getMonth() - months, ref.getDate());
+    dobField.value = mamToIsoDate(dob);
 }
 
 function fetchMamRegNumber() {
