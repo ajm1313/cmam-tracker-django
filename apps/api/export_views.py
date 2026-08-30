@@ -64,6 +64,9 @@ def export_cases_excel(request):
     
     if case_type != 'all':
         qs = qs.filter(malnutrition_type=case_type.upper())
+    mam_type = request.query_params.get('mam_type')
+    if mam_type:
+        qs = qs.filter(mam_type=mam_type)
     if status != 'all':
         qs = qs.filter(status=status)
     

@@ -683,6 +683,9 @@ def cases_list(request):
         qs = qs.filter(status=mapped)
     if case_type and case_type != 'ALL':
         qs = qs.filter(malnutrition_type=case_type)
+    mam_type = request.query_params.get('mam_type')
+    if mam_type:
+        qs = qs.filter(mam_type=mam_type)
     if facility_id:
         qs = qs.filter(facility_id=facility_id)
     if sub_district_id:
