@@ -1,11 +1,20 @@
 from django.db import models
+from django.conf import settings
 from apps.core.models import TimeStampedModel
 from apps.facilities.models import Facility
 from apps.dhis2.report_spec import generate_metric_choices
 
 
 class Dhis2Config(TimeStampedModel):
-    """Global DHIS2 connection configuration (singleton)."""
+    """DHIS2 connection configuration for a user or legacy global setup."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='dhis2_config',
+    )
 
     server_url = models.URLField(
         help_text='Base URL of the DHIS2 instance, e.g. https://dhis2.example.org'
@@ -25,8 +34,14 @@ class Dhis2Config(TimeStampedModel):
         return f'DHIS2 @ {self.server_url}'
 
     @classmethod
-    def get_active(cls):
-        return cls.objects.filter(is_active=True).first()
+    def get_active(cls, user=None):
+        if user is not None:
+            config = cls.objects.filter(user=user, is_active=True).first()
+            if config:
+                return config
+            if not user.is_superuser:
+                return None
+        return cls.objects.filter(user__isnull=True, is_active=True).first()
 
 
 class Dhis2DataElementMapping(TimeStampedModel):

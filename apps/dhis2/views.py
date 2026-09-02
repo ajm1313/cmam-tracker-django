@@ -5,6 +5,18 @@ from django.http import JsonResponse
 
 superuser_required = user_passes_test(lambda u: u.is_superuser)
 
+
+def _can_use_dhis2(user):
+    return (
+        user.is_authenticated and
+        (user.is_superuser or user.is_staff or user.get_active_roles().filter(
+            role__level__lte=4
+        ).exists())
+    )
+
+
+dhis2_user_required = user_passes_test(_can_use_dhis2)
+
 from apps.facilities.models import Facility
 from apps.dhis2.models import Dhis2Config, Dhis2DataElementMapping, Dhis2PushLog
 from apps.dhis2.client import Dhis2Client, Dhis2PushError
@@ -14,16 +26,20 @@ from django.conf import settings
 from datetime import date
 
 
+def _accessible_facilities(user):
+    return user.get_accessible_facilities().filter(is_active=True)
+
+
 @login_required
-@superuser_required
+@dhis2_user_required
 def dhis2_dashboard(request):
     """DHIS2 integration dashboard — config, mappings, push history."""
-    config = Dhis2Config.get_active()
+    config = Dhis2Config.get_active(request.user)
     mappings = Dhis2DataElementMapping.objects.all().order_by('metric_key')
-    recent_pushes = Dhis2PushLog.objects.select_related('facility').all()[:20]
-
-    # Facilities with DHIS2 org unit IDs
-    facilities = Facility.objects.filter(is_active=True).order_by('name')
+    facilities = _accessible_facilities(request.user).order_by('name')
+    recent_pushes = Dhis2PushLog.objects.select_related('facility').filter(
+        facility__in=facilities
+    )[:20]
 
     # Default period = last month
     today = date.today()
@@ -36,8 +52,8 @@ def dhis2_dashboard(request):
     if not config:
         config = type('DummyConfig', (), {
             'server_url': settings.DHIS2_SERVER_URL,
-            'username': settings.DHIS2_USERNAME,
-            'api_token': settings.DHIS2_API_TOKEN,
+            'username': settings.DHIS2_USERNAME if request.user.is_superuser else '',
+            'api_token': settings.DHIS2_API_TOKEN if request.user.is_superuser else '',
             'dataset_id': settings.DHIS2_DATASET_ID,
         })()
 
@@ -48,12 +64,16 @@ def dhis2_dashboard(request):
         'facilities': facilities,
         'default_period': default_period,
         'metric_choices': Dhis2DataElementMapping.METRIC_CHOICES,
+        'linked_count': facilities.exclude(
+            dhis2_org_unit_id__isnull=True
+        ).exclude(dhis2_org_unit_id='').count(),
+        'can_manage_mappings': request.user.is_superuser,
     }
     return render(request, 'dhis2/dashboard.html', context)
 
 
 @login_required
-@superuser_required
+@dhis2_user_required
 def dhis2_save_config(request):
     """Save DHIS2 connection configuration."""
     if request.method != 'POST':
@@ -69,23 +89,26 @@ def dhis2_save_config(request):
         messages.error(request, 'Server URL and Data Set ID are required.')
         return redirect('dhis2:dashboard')
 
-    if not (username and password) and not api_token:
+    owner = None if request.user.is_superuser else request.user
+    config = Dhis2Config.objects.filter(user=owner).first()
+    saved_password = config.password if config else ''
+
+    if not (username and (password or saved_password)) and not api_token:
         messages.error(request, 'Either username/password or API token is required.')
         return redirect('dhis2:dashboard')
 
-    config = Dhis2Config.get_active()
     if config:
         config.server_url = server_url
         config.username = username
         config.dataset_id = dataset_id
         if password:
             config.password = password
-        if api_token:
-            config.api_token = api_token
+        config.api_token = api_token or None
         config.is_active = True
         config.save()
     else:
         Dhis2Config.objects.create(
+            user=owner,
             server_url=server_url,
             username=username,
             password=password,
@@ -99,10 +122,10 @@ def dhis2_save_config(request):
 
 
 @login_required
-@superuser_required
+@dhis2_user_required
 def dhis2_test_connection(request):
     """AJAX endpoint to test DHIS2 connection."""
-    config = Dhis2Config.get_active()
+    config = Dhis2Config.get_active(request.user)
     if not config:
         return JsonResponse({'success': False, 'message': 'No DHIMS2 config found.'})
 
@@ -162,7 +185,41 @@ def dhis2_delete_mapping(request, mapping_id):
 
 
 @login_required
-@superuser_required
+@dhis2_user_required
+def dhis2_save_org_unit(request):
+    """Link one accessible CMAM facility to a DHIMS2 organisation unit."""
+    if request.method != 'POST':
+        return redirect('dhis2:dashboard')
+
+    facility_id = request.POST.get('facility_id')
+    if not facility_id:
+        messages.error(request, 'Select a facility to link.')
+        return redirect('dhis2:dashboard')
+
+    facility = get_object_or_404(
+        _accessible_facilities(request.user),
+        pk=facility_id,
+    )
+    org_unit_id = request.POST.get('org_unit_id', '').strip()
+    if len(org_unit_id) != 11 or not org_unit_id.isalnum():
+        messages.error(request, 'Enter a valid 11-character DHIMS2 organisation unit UID.')
+        return redirect('dhis2:dashboard')
+
+    duplicate = Facility.objects.filter(
+        dhis2_org_unit_id=org_unit_id
+    ).exclude(pk=facility.pk).first()
+    if duplicate:
+        messages.error(request, f'That DHIMS2 organisation unit is already linked to {duplicate.name}.')
+        return redirect('dhis2:dashboard')
+
+    facility.dhis2_org_unit_id = org_unit_id
+    facility.save(update_fields=['dhis2_org_unit_id', 'updated_at'])
+    messages.success(request, f'{facility.name} linked to DHIMS2 organisation unit {org_unit_id}.')
+    return redirect('dhis2:dashboard')
+
+
+@login_required
+@dhis2_user_required
 def dhis2_preview_report(request):
     """AJAX endpoint to preview a CMAM report before pushing."""
     facility_id = request.GET.get('facility_id')
@@ -171,17 +228,21 @@ def dhis2_preview_report(request):
     if not facility_id or not period:
         return JsonResponse({'success': False, 'message': 'facility_id and period are required.'})
 
+    facility = get_object_or_404(
+        _accessible_facilities(request.user), pk=facility_id
+    )
     try:
-        facility = Facility.objects.get(pk=facility_id)
-    except Facility.DoesNotExist:
-        return JsonResponse({'success': False, 'message': 'Facility not found.'})
-
-    metrics = CmamReportBuilder.build_report(facility, period)
+        metrics = CmamReportBuilder.build_report(facility, period)
+    except (TypeError, ValueError):
+        return JsonResponse({
+            'success': False,
+            'message': 'Period must use YYYYMM format.',
+        }, status=400)
     return JsonResponse({'success': True, 'data': metrics})
 
 
 @login_required
-@superuser_required
+@dhis2_user_required
 def dhis2_push_report(request):
     """Push a facility report to DHIS2."""
     if request.method != 'POST':
@@ -194,11 +255,9 @@ def dhis2_push_report(request):
         messages.error(request, 'Facility and period are required.')
         return redirect('dhis2:dashboard')
 
-    try:
-        facility = Facility.objects.get(pk=facility_id)
-    except Facility.DoesNotExist:
-        messages.error(request, 'Facility not found.')
-        return redirect('dhis2:dashboard')
+    facility = get_object_or_404(
+        _accessible_facilities(request.user), pk=facility_id
+    )
 
     try:
         result = push_facility_report(facility, period, user=request.user)
@@ -215,10 +274,10 @@ def dhis2_push_report(request):
 
 
 @login_required
-@superuser_required
+@dhis2_user_required
 def dhis2_search_data_elements(request):
     """AJAX: search data elements on the DHIS2 server."""
-    config = Dhis2Config.get_active()
+    config = Dhis2Config.get_active(request.user)
     if not config:
         return JsonResponse({'success': False, 'message': 'No DHIMS2 config found.'})
 
@@ -232,10 +291,10 @@ def dhis2_search_data_elements(request):
 
 
 @login_required
-@superuser_required
+@dhis2_user_required
 def dhis2_search_data_sets(request):
     """AJAX: search data sets on the DHIS2 server."""
-    config = Dhis2Config.get_active()
+    config = Dhis2Config.get_active(request.user)
     if not config:
         return JsonResponse({'success': False, 'message': 'No DHIMS2 config found.'})
 
@@ -249,10 +308,10 @@ def dhis2_search_data_sets(request):
 
 
 @login_required
-@superuser_required
+@dhis2_user_required
 def dhis2_search_org_units(request):
     """AJAX: search organisation units on the DHIS2 server."""
-    config = Dhis2Config.get_active()
+    config = Dhis2Config.get_active(request.user)
     if not config:
         return JsonResponse({'success': False, 'message': 'No DHIMS2 config found.'})
 
@@ -266,10 +325,10 @@ def dhis2_search_org_units(request):
 
 
 @login_required
-@superuser_required
+@dhis2_user_required
 def dhis2_data_set_detail(request):
     """AJAX: get data set detail with its data elements."""
-    config = Dhis2Config.get_active()
+    config = Dhis2Config.get_active(request.user)
     if not config:
         return JsonResponse({'success': False, 'message': 'No DHIMS2 config found.'})
 
@@ -286,7 +345,7 @@ def dhis2_data_set_detail(request):
 
 
 @login_required
-@superuser_required
+@dhis2_user_required
 def dhis2_push_all(request):
     """Push reports for all facilities with DHIS2 org unit IDs."""
     if request.method != 'POST':
@@ -297,8 +356,7 @@ def dhis2_push_all(request):
         messages.error(request, 'Period is required.')
         return redirect('dhis2:dashboard')
 
-    facilities = Facility.objects.filter(
-        is_active=True,
+    facilities = _accessible_facilities(request.user).filter(
         dhis2_org_unit_id__isnull=False,
     ).exclude(dhis2_org_unit_id='')
 

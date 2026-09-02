@@ -115,7 +115,10 @@ class Dhis2Client:
     def get_org_units(self, query: str = '') -> List[Dict]:
         """Search for organization units by name."""
         url = self._url('organisationUnits')
-        params = {'fields': 'id,name,level,path', 'paging': 'false'}
+        params = {
+            'fields': 'id,name,level,path,ancestors[id,name]',
+            'paging': 'false',
+        }
         if query:
             params['filter'] = f'name:ilike:{query}'
         try:

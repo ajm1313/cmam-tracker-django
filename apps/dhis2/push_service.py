@@ -25,7 +25,7 @@ def push_facility_report(facility: Facility, period: str,
     Returns:
         Dhis2PushLog instance recording the attempt.
     """
-    config = Dhis2Config.get_active()
+    config = Dhis2Config.get_active(user)
     if not config:
         raise ValueError('No active DHIS2 configuration found.')
 

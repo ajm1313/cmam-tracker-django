@@ -26,6 +26,24 @@ MAM_OPC_CATEGORIES = [
     ('other', 'Other MAM cases 6-59 months'),
 ]
 
+# Aggregate values used by the Ghana DHIMS2 monthly nutrition data set.
+DHIS2_SUMMARY_METRICS = [
+    ('sam_opc_beginning', 'SAM OPC – Cases at beginning of period'),
+    ('sam_opc_admissions', 'SAM OPC – Admissions'),
+    ('sam_opc_cured', 'SAM OPC – Cured'),
+    ('sam_opc_defaulted', 'SAM OPC – Defaulted'),
+    ('sam_opc_died', 'SAM OPC – Died'),
+    ('sam_opc_non_recovered', 'SAM OPC – Non-recovered'),
+    ('sam_opc_discharges', 'SAM OPC – Total discharges'),
+    ('sam_ipc_beginning', 'SAM IPC – Cases at beginning of period'),
+    ('sam_ipc_admissions', 'SAM IPC – Admissions'),
+    ('sam_ipc_cured', 'SAM IPC – Cured'),
+    ('sam_ipc_defaulted', 'SAM IPC – Defaulted'),
+    ('sam_ipc_died', 'SAM IPC – Died'),
+    ('sam_ipc_non_recovered', 'SAM IPC – Non-recovered'),
+    ('sam_ipc_discharges', 'SAM IPC – Total discharges'),
+]
+
 # Column definitions for each section
 # (key, label, column_type, gender_filter, outcome_filter, admission_type_filter)
 # column_type: 'enroll' or 'exit'
@@ -74,7 +92,7 @@ MAM_OPC_COLUMNS = [
 
 def generate_metric_choices():
     """Generate the full list of (metric_key, label) tuples for the model choices."""
-    choices = []
+    choices = list(DHIS2_SUMMARY_METRICS)
 
     # SAM OPC
     for ag_key, ag_label in SAM_OPC_AGE_GROUPS:

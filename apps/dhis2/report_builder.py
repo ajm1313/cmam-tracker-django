@@ -32,6 +32,8 @@ class CmamReportBuilder:
     def _period_range(period: str):
         """Convert a DHIS2 monthly period code like '202608' to
         (first_day, last_day) date objects."""
+        if len(period) != 6 or not period.isdigit():
+            raise ValueError('Period must use YYYYMM format.')
         year = int(period[:4])
         month = int(period[4:6])
         first = date(year, month, 1)
@@ -54,7 +56,9 @@ class CmamReportBuilder:
             dict mapping metric_key → integer count.
         """
         first_day, last_day = CmamReportBuilder._period_range(period)
-        metrics = {}
+        metrics = CmamReportBuilder._build_dhis2_summary(
+            facility, first_day, last_day
+        )
 
         # ── SAM OPC ────────────────────────────────────────────────
         CmamReportBuilder._build_sam_opc(facility, first_day, last_day, metrics)
@@ -68,13 +72,67 @@ class CmamReportBuilder:
         return metrics
 
     @staticmethod
+    def _build_dhis2_summary(facility, first_day, last_day):
+        """Build the aggregate values used by the configured DHIMS2 data set."""
+        registrations = OpcRegistration.objects.filter(
+            facility=facility,
+            malnutrition_type='SAM',
+        )
+        admissions = registrations.filter(
+            registration_date__range=(first_day, last_day)
+        )
+        exits = registrations.filter(
+            discharge_date__range=(first_day, last_day)
+        ).exclude(status='Active')
+
+        beginning = registrations.filter(
+            registration_date__lt=first_day,
+        ).filter(
+            Q(status='Active') | Q(discharge_date__gte=first_day)
+        ).count()
+        cured = exits.filter(outcome='Cured').count()
+        defaulted = exits.filter(
+            Q(status='Defaulted') | Q(outcome='Defaulted')
+        ).count()
+        died = exits.filter(Q(status='Death') | Q(outcome='Death')).count()
+        non_recovered = exits.filter(outcome__icontains='Non-R').count()
+
+        from apps.cases.models import IpcCase
+        ipc_cases = IpcCase.objects.filter(facility=facility)
+        ipc_beginning = ipc_cases.filter(
+            admission_date__lt=first_day,
+            status='Admitted',
+        ).count()
+        ipc_admissions = ipc_cases.filter(
+            admission_date__range=(first_day, last_day)
+        ).count()
+
+        return {
+            'sam_opc_beginning': beginning,
+            'sam_opc_admissions': admissions.count(),
+            'sam_opc_cured': cured,
+            'sam_opc_defaulted': defaulted,
+            'sam_opc_died': died,
+            'sam_opc_non_recovered': non_recovered,
+            'sam_opc_discharges': cured + defaulted + died + non_recovered,
+            'sam_ipc_beginning': ipc_beginning,
+            'sam_ipc_admissions': ipc_admissions,
+            # IpcCase does not yet store discharge dates/outcomes.
+            'sam_ipc_cured': 0,
+            'sam_ipc_defaulted': 0,
+            'sam_ipc_died': 0,
+            'sam_ipc_non_recovered': 0,
+            'sam_ipc_discharges': 0,
+        }
+
+    @staticmethod
     def _build_sam_opc(facility, first_day, last_day, metrics):
         """Build SAM Outpatient Care metrics."""
         admissions = OpcRegistration.objects.filter(
             facility=facility,
             malnutrition_type='SAM',
-            admission_date__gte=first_day,
-            admission_date__lte=last_day,
+            registration_date__gte=first_day,
+            registration_date__lte=last_day,
         )
 
         exits = OpcRegistration.objects.filter(
@@ -193,8 +251,8 @@ class CmamReportBuilder:
         admissions = OpcRegistration.objects.filter(
             facility=facility,
             malnutrition_type='MAM',
-            admission_date__gte=first_day,
-            admission_date__lte=last_day,
+            registration_date__gte=first_day,
+            registration_date__lte=last_day,
         )
 
         exits = OpcRegistration.objects.filter(

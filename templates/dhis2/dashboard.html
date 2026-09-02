@@ -24,7 +24,8 @@
 
     <!-- Configuration -->
     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <h2 class="text-lg font-bold text-gray-900 mb-4">DHIMS2 Server Configuration</h2>
+        <h2 class="text-lg font-bold text-gray-900">Your DHIMS2 Connection</h2>
+        <p class="text-xs text-gray-500 mt-1 mb-4">These credentials are used only for pushes made from your account.</p>
         <form method="post" action="{% url 'dhis2:save_config' %}" class="grid grid-cols-1 md:grid-cols-2 gap-4">
             {% csrf_token %}
             <div>
@@ -53,12 +54,36 @@
             </div>
             <div class="md:col-span-2">
                 <label class="block text-sm font-medium text-gray-700 mb-1">API Token (optional, overrides username/password)</label>
-                <input type="text" name="api_token" value="{{ config.api_token|default:'' }}" placeholder="DHIMS2 API token"
+                <input type="password" name="api_token" value="{{ config.api_token|default:'' }}" placeholder="DHIMS2 API token"
                        class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
             </div>
             <div class="md:col-span-2">
                 <button type="submit" class="px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">Save Configuration</button>
             </div>
+        </form>
+    </div>
+
+    <!-- Facility organisation unit links -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div class="flex items-center justify-between gap-4 mb-4">
+            <div>
+                <h2 class="text-lg font-bold text-gray-900">Facility Organisation Unit Links</h2>
+                <p class="text-xs text-gray-500 mt-1">{{ linked_count }} of {{ facilities|length }} facilities in your scope are linked.</p>
+            </div>
+        </div>
+        <form method="post" action="{% url 'dhis2:save_org_unit' %}" class="flex flex-col sm:flex-row gap-3 items-start">
+            {% csrf_token %}
+            <select name="facility_id" id="org_unit_facility" onchange="updateOrgUnit()" class="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg">
+                {% for f in facilities %}
+                <option value="{{ f.id }}" data-name="{{ f.name }}" data-org-unit="{{ f.dhis2_org_unit_id|default:'' }}">{{ f.name }} ({{ f.code }}){% if f.dhis2_org_unit_id %} ✓{% else %} — not linked{% endif %}</option>
+                {% endfor %}
+            </select>
+            <div class="flex-1 w-full relative">
+                <input type="text" name="org_unit_id" id="org_unit_id" maxlength="11" placeholder="DHIMS2 organisation unit UID" class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500">
+                <div id="org_unit_results" class="absolute z-10 mt-1 w-full max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg hidden"></div>
+            </div>
+            <button type="button" onclick="searchOrgUnits()" class="px-4 py-2 text-sm font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg">Search DHIMS2</button>
+            <button type="submit" class="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg">Save Link</button>
         </form>
     </div>
 
@@ -92,7 +117,7 @@
                 {% csrf_token %}
                 <input type="hidden" name="period" id="push_all_period" value="{{ default_period }}">
                 <button type="submit" class="px-4 py-2 text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors">Push All Facilities</button>
-                <span class="text-xs text-amber-700">Push reports for all facilities with DHIMS2 org unit IDs for the specified period</span>
+                <span class="text-xs text-amber-700">Push reports for all linked facilities in your scope for the specified period</span>
             </form>
         </div>
         <div id="preview_result" class="mt-4 hidden">
@@ -101,6 +126,7 @@
         </div>
     </div>
 
+    {% if can_manage_mappings %}
     <!-- Data Element Mappings -->
     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
         <h2 class="text-lg font-bold text-gray-900 mb-4">Data Element Mappings</h2>
@@ -161,6 +187,7 @@
         <p class="text-sm text-gray-400 py-4 text-center">No mappings configured yet. Add mappings to link CMAM metrics to DHIMS2 data elements.</p>
         {% endif %}
     </div>
+    {% endif %}
 
     <!-- Push History -->
     {% if recent_pushes %}
@@ -211,6 +238,37 @@ function testConnection() {
         .catch(() => alert('✗ Request failed'));
 }
 
+function updateOrgUnit() {
+    const select = document.getElementById('org_unit_facility');
+    const option = select.options[select.selectedIndex];
+    document.getElementById('org_unit_id').value = option ? option.dataset.orgUnit : '';
+}
+
+function searchOrgUnits() {
+    const select = document.getElementById('org_unit_facility');
+    const option = select.options[select.selectedIndex];
+    if (!option) { alert('Select a facility'); return; }
+    const url = `{% url 'dhis2:search_org_units' %}?q=${encodeURIComponent(option.dataset.name)}`;
+    fetch(url).then(r => r.json()).then(data => {
+        if (!data.success) { alert(data.message); return; }
+        const container = document.getElementById('org_unit_results');
+        if (!data.data || data.data.length === 0) {
+            container.innerHTML = '<p class="px-3 py-2 text-xs text-gray-400">No matching organisation units found. Try searching a shorter name below.</p>';
+        } else {
+            container.innerHTML = data.data.map(unit => {
+                const location = (unit.ancestors || []).slice(-2).map(a => a.name).join(' › ');
+                return `<button type="button" class="block w-full text-left px-3 py-2 text-xs hover:bg-blue-50 border-b border-gray-50" onclick="selectOrgUnit('${unit.id}')"><span class="font-semibold text-gray-800">${unit.name}</span><span class="font-mono text-blue-700 ml-2">${unit.id}</span>${location ? `<span class="block text-gray-400 mt-0.5">${location}</span>` : ''}</button>`;
+            }).join('');
+        }
+        container.classList.remove('hidden');
+    }).catch(() => alert('Organisation unit search failed'));
+}
+
+function selectOrgUnit(id) {
+    document.getElementById('org_unit_id').value = id;
+    document.getElementById('org_unit_results').classList.add('hidden');
+}
+
 function previewReport() {
     const facilityId = document.getElementById('push_facility').value;
     const period = document.getElementById('push_period').value;
@@ -248,7 +306,7 @@ function validatePushAll() {
     const period = document.getElementById('push_period').value;
     if (!period) { alert('Enter a period (YYYYMM)'); return false; }
     document.getElementById('push_all_period').value = period;
-    return confirm(`Push reports for ALL facilities to DHIMS2 for period ${period}?`);
+    return confirm(`Push reports for all linked facilities in your scope to DHIMS2 for period ${period}?`);
 }
 
 // ── DHIS2 Search Functions ──────────────────────────────────────
@@ -337,5 +395,7 @@ function loadDataSetElements() {
         container.classList.remove('hidden');
     }).catch(() => alert('Failed to load data set'));
 }
+
+updateOrgUnit();
 </script>
 {% endblock %}
