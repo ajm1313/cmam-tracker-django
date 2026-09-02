@@ -7,11 +7,14 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.core.paginator import Paginator
 from datetime import timedelta, date
-from .models import OpcRegistration, OpcVisit, IpcCase, CaseTask
+from .models import (
+    OpcRegistration, OpcVisit, IpcCase, CaseTask,
+    registration_deduplication_key, ipc_deduplication_key,
+)
 from .automation_service import SamOpcAutomationService
 from .mam_automation_service import MamOpcAutomationService
 from apps.inventory.stock_utils import deduct_stock_for_registration, deduct_stock_for_visit, reverse_stock_for_registration, reverse_stock_for_visit
-from django.http import HttpResponseForbidden
+from django.http import HttpResponseForbidden, JsonResponse
 from apps.users.views import get_user_location_context, enrich_location_context
 
 
@@ -21,6 +24,16 @@ def _check_case_access(request, case):
     if accessible is None:
         return True
     return case.facility_id in [f.id for f in accessible]
+
+
+def _is_offline_sync(request):
+    return request.headers.get('X-Offline-Sync') == '1'
+
+
+def _offline_json(request, success, message, status=200, **extra):
+    if not _is_offline_sync(request):
+        return None
+    return JsonResponse({'success': success, 'message': message, **extra}, status=status)
 
 
 @login_required
@@ -263,6 +276,9 @@ def case_create(request):
         facility_id = request.POST.get('facility_id')
         
         if not facility_id or not malnutrition_type:
+            offline_response = _offline_json(request, False, 'Facility and malnutrition type are required.', 400)
+            if offline_response:
+                return offline_response
             messages.error(request, 'Facility and malnutrition type are required')
         else:
             from apps.facilities.models import Facility
@@ -271,8 +287,87 @@ def case_create(request):
             # RBAC: verify user has access to this facility
             accessible = request.user.get_accessible_facilities()
             if accessible is not None and not accessible.filter(id=facility.id).exists():
+                offline_response = _offline_json(request, False, 'You do not have access to this facility.', 403)
+                if offline_response:
+                    return offline_response
                 messages.error(request, 'You do not have access to this facility.')
                 return redirect('cases:case_list')
+
+            client_uid = request.POST.get('client_uid') or None
+
+            if malnutrition_type == 'IPC':
+                existing_client_case = IpcCase.objects.filter(client_uid=client_uid, facility=facility).first() if client_uid else None
+                if existing_client_case:
+                    offline_response = _offline_json(request, True, 'IPC case was already synchronized.', 200, data={'id': existing_client_case.id, 'client_uid': str(existing_client_case.client_uid)}, duplicate=True)
+                    if offline_response:
+                        return offline_response
+                    messages.info(request, 'IPC case was already registered.')
+                    return redirect('cases:ipc_list')
+                required = ['child_name', 'child_gender', 'admission_date', 'weight_kg', 'height_cm']
+                missing = [field for field in required if not request.POST.get(field)]
+                if missing:
+                    offline_response = _offline_json(request, False, f'Missing required fields: {", ".join(missing)}', 400)
+                    if offline_response:
+                        return offline_response
+                    messages.error(request, f'Missing required fields: {", ".join(missing)}')
+                else:
+                    key = ipc_deduplication_key(
+                        facility.id, request.POST.get('child_name'),
+                        request.POST.get('admission_date'), request.POST.get('child_gender'),
+                    )
+                    try:
+                        with transaction.atomic():
+                            facility.__class__.objects.select_for_update().get(pk=facility.pk)
+                            ipc_case = IpcCase.objects.filter(deduplication_key=key).first()
+                            duplicate = bool(ipc_case)
+                            if not ipc_case:
+                                ipc_case = IpcCase.objects.create(
+                                    facility=facility,
+                                    client_uid=client_uid,
+                                    deduplication_key=key,
+                                    patient_name=request.POST.get('child_name').strip(),
+                                    patient_age=int(request.POST.get('age_months') or 0),
+                                    gender=request.POST.get('child_gender'),
+                                    admission_date=request.POST.get('admission_date'),
+                                    weight=request.POST.get('weight_kg'),
+                                    height=request.POST.get('height_cm'),
+                                    muac=request.POST.get('muac_cm') or None,
+                                    status='Admitted',
+                                )
+                            elif client_uid and not ipc_case.client_uid:
+                                ipc_case.client_uid = client_uid
+                                ipc_case.save(update_fields=['client_uid'])
+                        message = 'Matching IPC registration already exists; the existing case was used.' if duplicate else 'IPC case registered successfully.'
+                        offline_response = _offline_json(request, True, message, 200 if duplicate else 201, data={'id': ipc_case.id, 'client_uid': str(ipc_case.client_uid or '')}, duplicate=duplicate)
+                        if offline_response:
+                            return offline_response
+                        messages.success(request, message)
+                        return redirect('cases:ipc_list')
+                    except Exception as e:
+                        offline_response = _offline_json(request, False, f'Error creating IPC case: {str(e)}', 400)
+                        if offline_response:
+                            return offline_response
+                        messages.error(request, f'Error creating IPC case: {str(e)}')
+                accessible = request.user.get_accessible_facilities()
+                return render(request, 'cases/case_create.html', {
+                    'opc_facilities': accessible.filter(type='OPC'),
+                    'ipc_facilities': accessible.filter(type='IPC'),
+                })
+
+            if malnutrition_type not in ('SAM', 'MAM'):
+                offline_response = _offline_json(request, False, 'Invalid case type.', 400)
+                if offline_response:
+                    return offline_response
+                messages.error(request, 'Invalid case type.')
+                return redirect('cases:case_create')
+
+            existing_client_case = OpcRegistration.objects.filter(client_uid=client_uid, facility=facility).first() if client_uid else None
+            if existing_client_case:
+                offline_response = _offline_json(request, True, 'Case was already synchronized.', 200, data={'id': existing_client_case.id, 'client_uid': str(existing_client_case.client_uid)}, duplicate=True)
+                if offline_response:
+                    return offline_response
+                messages.info(request, 'Case was already registered.')
+                return redirect('cases:case_detail', pk=existing_client_case.pk)
             
             # Duplicate check: prevent same child from being registered twice
             # at the same facility with the same enrolment date and caregiver.
@@ -280,23 +375,40 @@ def case_create(request):
             child_name = request.POST.get('child_name', '').strip()
             dob = request.POST.get('date_of_birth')
             caregiver_name = (request.POST.get('caregiver_name') or '').strip()
-            existing = OpcRegistration.objects.filter(
-                facility=facility,
-                child_name__iexact=child_name,
-                date_of_birth=dob,
-                admission_date=admission_date,
-                caregiver_name__iexact=caregiver_name,
-            ).first()
+            deduplication_key = registration_deduplication_key(
+                facility.id, child_name, dob, admission_date, caregiver_name,
+            )
+            existing = OpcRegistration.objects.filter(deduplication_key=deduplication_key).first()
             if existing:
-                messages.error(request, f'A case for "{existing.child_name}" was already registered at this facility on {admission_date}. Duplicate registration is not allowed.')
-                return redirect('cases:case_create')
+                if client_uid and not existing.client_uid:
+                    OpcRegistration.objects.filter(pk=existing.pk, client_uid__isnull=True).update(client_uid=client_uid)
+                    existing.refresh_from_db()
+                message = 'Matching registration already exists; the existing case was used.'
+                offline_response = _offline_json(request, True, message, 200, data={'id': existing.id, 'client_uid': str(existing.client_uid or '')}, duplicate=True)
+                if offline_response:
+                    return offline_response
+                messages.warning(request, message)
+                return redirect('cases:case_detail', pk=existing.pk)
             
             try:
                 with transaction.atomic():
+                    facility.__class__.objects.select_for_update().get(pk=facility.pk)
+                    existing = OpcRegistration.objects.filter(deduplication_key=deduplication_key).first()
+                    if existing:
+                        if client_uid and not existing.client_uid:
+                            existing.client_uid = client_uid
+                            existing.save(update_fields=['client_uid'])
+                        offline_response = _offline_json(request, True, 'Matching registration already exists; the existing case was used.', 200, data={'id': existing.id, 'client_uid': str(existing.client_uid or '')}, duplicate=True)
+                        if offline_response:
+                            return offline_response
+                        messages.warning(request, 'Matching registration already exists; the existing case was used.')
+                        return redirect('cases:case_detail', pk=existing.pk)
                     reg_number = OpcRegistration.generate_registration_number(facility, malnutrition_type)
                     
                     registration = OpcRegistration.objects.create(
                         facility=facility,
+                        client_uid=client_uid,
+                        deduplication_key=deduplication_key,
                         registration_number=reg_number,
                         malnutrition_type=malnutrition_type,
                         mam_type=request.POST.get('mam_type') or None,
@@ -445,8 +557,14 @@ def case_create(request):
                     messages.warning(request, f'Case saved, but stock deduction failed: {str(e)}')
                 
                 messages.success(request, f'Case registered successfully — {reg_number}')
+                offline_response = _offline_json(request, True, 'Case registered successfully.', 201, data={'id': registration.id, 'client_uid': str(registration.client_uid or '')})
+                if offline_response:
+                    return offline_response
                 return redirect('cases:case_detail', pk=registration.pk)
             except Exception as e:
+                offline_response = _offline_json(request, False, f'Error creating case: {str(e)}', 400)
+                if offline_response:
+                    return offline_response
                 messages.error(request, f'Error creating case: {str(e)}')
     
     accessible = request.user.get_accessible_facilities()
@@ -939,9 +1057,13 @@ def _update_automation_tracking(case, visit):
 
 
 @login_required
-def visit_form(request, registration_id):
+def visit_form(request, registration_id=None, client_uid=None):
     """Visit form for recording a visit"""
-    case = get_object_or_404(OpcRegistration, pk=registration_id)
+    if client_uid:
+        case = get_object_or_404(OpcRegistration, client_uid=client_uid)
+        registration_id = case.pk
+    else:
+        case = get_object_or_404(OpcRegistration, pk=registration_id)
     if not _check_case_access(request, case):
         return HttpResponseForbidden('You do not have access to this case.')
     visit_type = case.malnutrition_type
@@ -963,9 +1085,26 @@ def visit_form(request, registration_id):
     if request.method == 'POST':
         # Handle visit submission
         try:
+            visit_client_uid = request.POST.get('client_uid') or None
+            if visit_client_uid:
+                existing_client_visit = OpcVisit.objects.filter(client_uid=visit_client_uid).first()
+                if existing_client_visit:
+                    offline_response = _offline_json(request, True, 'Visit was already synchronized.', 200, data={'id': existing_client_visit.id}, duplicate=True)
+                    if offline_response:
+                        return offline_response
+                    messages.info(request, 'Visit was already recorded.')
+                    return redirect('cases:case_detail', pk=case.pk)
             with transaction.atomic():
                 # Lock the registration row to serialize concurrent visit creations
                 case = OpcRegistration.objects.select_for_update().get(pk=registration_id)
+                if visit_client_uid:
+                    existing_client_visit = OpcVisit.objects.filter(client_uid=visit_client_uid).first()
+                    if existing_client_visit:
+                        offline_response = _offline_json(request, True, 'Visit was already synchronized.', 200, data={'id': existing_client_visit.id}, duplicate=True)
+                        if offline_response:
+                            return offline_response
+                        messages.info(request, 'Visit was already recorded.')
+                        return redirect('cases:case_detail', pk=case.pk)
                 
                 # Get last visit number from remaining (undeleted) visits
                 last_visit = case.visits.order_by('-visit_number').first()
@@ -974,6 +1113,9 @@ def visit_form(request, registration_id):
                 # Duplicate check: prevent multiple visits on the same date
                 visit_date = request.POST.get('visit_date')
                 if visit_date and case.visits.filter(visit_date=visit_date).exists():
+                    offline_response = _offline_json(request, False, 'A visit for this case has already been recorded on this date.', 409)
+                    if offline_response:
+                        return offline_response
                     raise ValueError('A visit for this case has already been recorded on this date.')
 
                 if visit_type == 'SAM':
@@ -1007,6 +1149,7 @@ def visit_form(request, registration_id):
 
                     visit = OpcVisit.objects.create(
                         registration=case,
+                        client_uid=visit_client_uid,
                         visit_number=next_visit_number,
                         visit_date=request.POST.get('visit_date'),
                         visit_type=request.POST.get('visit_type', 'Follow-up'),
@@ -1079,13 +1222,14 @@ def visit_form(request, registration_id):
                             raise ValueError('Weight is required.')
                         if not request.POST.get('muac_cm'):
                             raise ValueError('MUAC is required.')
-                        if not request.POST.get('appetite_test'):
+                        if not (request.POST.get('appetite_test') or request.POST.get('appetite')):
                             raise ValueError('Appetite Test is required.')
                         if next_visit_number in (4, 8, 12, 16) and (not request.POST.get('height_cm') or not request.POST.get('z_score_wfh')):
                             raise ValueError('Height and W/H Z-Score are required for anthropometry visits.')
 
                     visit = OpcVisit.objects.create(
                         registration=case,
+                        client_uid=visit_client_uid,
                         visit_number=next_visit_number,
                         visit_date=request.POST.get('visit_date'),
                         visit_type=request.POST.get('visit_type', 'Follow-up'),
@@ -1097,7 +1241,7 @@ def visit_form(request, registration_id):
                         z_score_wfa=request.POST.get('z_score_wfa') or None,
                         z_score_hfa=request.POST.get('z_score_hfa') or None,
                         # Appetite Test
-                        appetite=request.POST.get('appetite_test') or None,
+                        appetite=request.POST.get('appetite_test') or request.POST.get('appetite') or None,
                         # Food Product
                         food_product_type=request.POST.get('food_product_type') or None,
                         food_product_quantity=request.POST.get('food_product_quantity') or None,
@@ -1173,9 +1317,15 @@ def visit_form(request, registration_id):
             except Exception as e:
                 messages.warning(request, f'Visit saved, but stock deduction failed: {str(e)}')
             
+            offline_response = _offline_json(request, True, f'Visit #{next_visit_number} recorded successfully.', 201, data={'id': visit.id, 'visit_number': visit.visit_number})
+            if offline_response:
+                return offline_response
             messages.success(request, f'Visit #{next_visit_number} recorded successfully!')
             return redirect('cases:case_detail', pk=case.pk)
         except Exception as e:
+            offline_response = _offline_json(request, False, f'Error recording visit: {str(e)}', 400)
+            if offline_response:
+                return offline_response
             messages.error(request, f'Error recording visit: {str(e)}')
     
     previous_visits = case.visits.filter(

@@ -1,354 +1,342 @@
-/* CMAM Tracker Service Worker v2
- * Strategy:
- *  - Navigation requests: Stale-while-revalidate (serve cached immediately, update in background)
- *  - Pre-fetch key app pages on activate so they're available offline
- *  - Static assets (CSS/JS/img): Stale-while-revalidate
- *  - API GET requests: Network-first with cache fallback
- *  - Form POSTs: When network fails, queue to IndexedDB for later sync
- */
-
-const CACHE_VERSION = 'cmam-v2.4.5';
-const STATIC_CACHE = `${CACHE_VERSION}-static`;
-const PAGE_CACHE = `${CACHE_VERSION}-pages`;
+/* CMAM Tracker service worker v3: private page cache + durable form outbox. */
+const VERSION = 'cmam-v3.0.0';
+const STATIC_CACHE = `${VERSION}-static`;
+const PAGE_CACHE = `${VERSION}-pages`;
 const OFFLINE_URL = '/offline/';
-
-// Assets to precache on install
-const PRECACHE_URLS = [
-  '/offline/',
+const OFFLINE_VISIT_URL = '/offline/visit/';
+const DB_NAME = 'cmam_offline';
+const DB_VERSION = 2;
+const QUEUE = 'pendingSubmissions';
+const META = 'metadata';
+const AUTH_PATHS = ['/login/', '/logout/', '/password-reset/'];
+const PRECACHE = [
+  OFFLINE_URL,
+  OFFLINE_VISIT_URL,
   '/static/js/offline_forms.js',
   '/static/js/sam_opc_automation.js',
   '/static/manifest.json',
 ];
+let syncPromise = null;
 
-// Authenticated app pages — NOT pre-fetched because they require a session.
-// Pre-fetching them when the session is expired caches the login page HTML
-// under the app page URL, causing ERR_FAILED on navigation.
-
-// ── INSTALL: precache key assets ──────────────────────────────────────────
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(STATIC_CACHE)
-      .then((cache) => cache.addAll(PRECACHE_URLS).catch(() => {}))
-      .then(() => self.skipWaiting())
-  );
-});
-
-// Listen for SKIP_WAITING message from the page
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-});
-
-// ── ACTIVATE: clean old caches + pre-fetch app pages ───────────────────────
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(
-        keys
-          .filter((k) => k.startsWith('cmam-') && k !== STATIC_CACHE && k !== PAGE_CACHE)
-          .map((k) => caches.delete(k))
-      ))
-      .then(() => self.clients.claim())
-  );
-});
-
-// ── FETCH: routing strategy ────────────────────────────────────────────────
-self.addEventListener('fetch', (event) => {
-  const { request } = event;
-
-  // Only handle GET and POST
-  if (request.method !== 'GET' && request.method !== 'POST') return;
-
-  // Skip cross-origin requests
-  const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
-
-  // Skip Chrome extension requests
-  if (url.pathname.startsWith('/chrome-extension/')) return;
-
-  // Skip Django admin
-  if (url.pathname.startsWith('/admin/')) return;
-
-  // ── POST requests (form submissions) ──
-  if (request.method === 'POST') {
-    event.respondWith(handlePost(event));
-    return;
-  }
-
-  // ── GET requests ──
-  // Navigation requests (HTML pages)
-  if (request.mode === 'navigate') {
-    event.respondWith(handleNavigation(request));
-    return;
-  }
-
-  // Static assets
-  if (url.pathname.startsWith('/static/') || /\.(?:css|js|png|jpg|jpeg|gif|svg|ico|woff2?)$/i.test(url.pathname)) {
-    event.respondWith(staleWhileRevalidate(request, STATIC_CACHE));
-    return;
-  }
-
-  // API GET requests
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(networkFirst(request, STATIC_CACHE));
-    return;
-  }
-
-  // Default: try network, fallback to cache
-  event.respondWith(networkFirst(request, PAGE_CACHE));
-});
-
-// Pages that must never be served from cache (contain CSRF tokens or session state)
-const NO_CACHE_PAGES = ['/login/', '/logout/', '/password-reset/', '/password-reset/done/'];
-
-// ── Navigation: stale-while-revalidate ─────────────────────────────────────
-// Serve cached page immediately if available, fetch updated version in background.
-// If not cached, try network. If network fails too, show offline page.
-// Auth pages are always fetched from network — cached CSRF tokens cause 403 errors.
-async function handleNavigation(request) {
-  const url = new URL(request.url);
-
-  // Auth pages must always come from network
-  if (NO_CACHE_PAGES.some((p) => url.pathname === p || url.pathname.startsWith(p))) {
-    try {
-      return await fetch(request, { credentials: 'same-origin' });
-    } catch (err) {
-      const staticCache = await caches.open(STATIC_CACHE);
-      const offlinePage = await staticCache.match(OFFLINE_URL);
-      if (offlinePage) return offlinePage;
-      return new Response(
-        '<html><body style="font-family:sans-serif;text-align:center;padding:40px"><h2>You are offline</h2><p>Please connect to the internet to log in.</p></body></html>',
-        { headers: { 'Content-Type': 'text/html' } }
-      );
-    }
-  }
-
-  const cache = await caches.open(PAGE_CACHE);
-  const cached = await cache.match(request);
-
-  // If we have a cached version, serve it immediately and revalidate in background
-  if (cached) {
-    // Fire-and-forget background update
-    fetch(request, { credentials: 'same-origin' })
-      .then((response) => {
-        // Only cache genuine OK responses — not redirects (which would be the login page)
-        if (response && response.ok && !response.redirected) {
-          cache.put(request, response.clone());
-        }
-      })
-      .catch(() => {});
-    return cached;
-  }
-
-  // No cached version — try network
-  try {
-    const networkResponse = await fetch(request, { credentials: 'same-origin' });
-    // Only cache genuine OK responses — not redirects (which would be the login page)
-    if (networkResponse && networkResponse.ok && !networkResponse.redirected) {
-      cache.put(request, networkResponse.clone());
-    }
-    return networkResponse;
-  } catch (err) {
-    // Try matching with ignoreSearch (in case of query params)
-    const cachedFallback = await cache.match(request, { ignoreSearch: true });
-    if (cachedFallback) return cachedFallback;
-
-    // Try any cached page
-    const keys = await cache.keys();
-    if (keys.length > 0) {
-      const cachedPage = await cache.match(keys[keys.length - 1]);
-      if (cachedPage) return cachedPage;
-    }
-
-    // Offline fallback page
-    const staticCache = await caches.open(STATIC_CACHE);
-    const offlinePage = await staticCache.match(OFFLINE_URL);
-    if (offlinePage) return offlinePage;
-
-    return new Response(
-      '<html><body style="font-family:sans-serif;text-align:center;padding:40px"><h2>You are offline</h2><p>The page will load automatically when you reconnect.</p></body></html>',
-      { headers: { 'Content-Type': 'text/html' } }
-    );
-  }
+function clientUuid() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (character) => {
+    const random = Math.random() * 16 | 0;
+    return (character === 'x' ? random : (random & 3) | 8).toString(16);
+  });
 }
 
-// ── Stale-while-revalidate for static assets ───────────────────────────────
-async function staleWhileRevalidate(request, cacheName) {
-  const cache = await caches.open(cacheName);
-  const cached = await cache.match(request);
+self.addEventListener('install', (event) => {
+  event.waitUntil(caches.open(STATIC_CACHE)
+    .then((cache) => cache.addAll(PRECACHE))
+    .then(() => self.skipWaiting()));
+});
 
-  const networkFetch = fetch(request)
-    .then((response) => {
-      if (response && response.ok) {
-        cache.put(request, response.clone());
+self.addEventListener('activate', (event) => {
+  event.waitUntil(caches.keys()
+    .then((keys) => Promise.all(keys
+      .filter((key) => key.startsWith('cmam-') && key !== STATIC_CACHE && key !== PAGE_CACHE)
+      .map((key) => caches.delete(key))))
+    .then(() => self.clients.claim()));
+});
+
+self.addEventListener('fetch', (event) => {
+  const request = event.request;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin || url.pathname.startsWith('/admin/')) return;
+
+  if (request.method === 'POST') {
+    if (isOfflineFormPath(url.pathname)) event.respondWith(handlePost(request));
+    return;
+  }
+  if (request.method !== 'GET') return;
+
+  if (request.mode === 'navigate') {
+    event.respondWith(navigate(request));
+  } else if (url.pathname.startsWith('/static/') || url.pathname === '/sw.js') {
+    event.respondWith(staleStatic(request));
+  } else if (url.pathname.startsWith('/api/')) {
+    event.respondWith(networkFirst(request));
+  }
+});
+
+function isOfflineFormPath(path) {
+  return path === '/manage/cases/create/' ||
+    /^\/manage\/visits\/(?:\d+\/record|client\/[0-9a-f-]+\/record)\/$/i.test(path);
+}
+
+async function navigate(request) {
+  const url = new URL(request.url);
+  if (AUTH_PATHS.some((path) => url.pathname.startsWith(path))) {
+    try {
+      const response = await fetch(request);
+      if (url.pathname.startsWith('/logout/')) {
+        await caches.delete(PAGE_CACHE);
+        await setMeta('activeOwner', '');
       }
       return response;
-    })
-    .catch(() => cached);
+    } catch (_) { return offlineResponse(); }
+  }
 
-  return cached || networkFetch;
+  const pageCache = await caches.open(PAGE_CACHE);
+  try {
+    const response = await fetch(request);
+    if (response.ok && !response.redirected) await pageCache.put(request, response.clone());
+    return response;
+  } catch (_) {
+    const exact = await pageCache.match(request);
+    if (exact) return exact;
+    if (/^\/manage\/visits\/(?:\d+|client\/[0-9a-f-]+)\/record\/$/i.test(url.pathname)) {
+      const visitForm = await caches.match(OFFLINE_VISIT_URL);
+      if (visitForm) return visitForm;
+    }
+    return offlineResponse();
+  }
 }
 
-// ── Network-first with cache fallback ──────────────────────────────────────
-async function networkFirst(request, cacheName) {
+async function offlineResponse() {
+  return await caches.match(OFFLINE_URL) || new Response(
+    '<!doctype html><html><body><h1>You are offline</h1><p>This page has not been saved on this device yet.</p></body></html>',
+    { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+  );
+}
+
+async function staleStatic(request) {
+  const cache = await caches.open(STATIC_CACHE);
+  const cached = await cache.match(request);
+  const update = fetch(request).then((response) => {
+    if (response.ok) cache.put(request, response.clone());
+    return response;
+  }).catch(() => cached);
+  return cached || update;
+}
+
+async function networkFirst(request) {
   try {
-    const networkResponse = await fetch(request);
-    // Don't cache redirected responses (e.g. login page HTML for expired sessions)
-    if (networkResponse && networkResponse.ok && !networkResponse.redirected) {
-      const cache = await caches.open(cacheName);
-      cache.put(request, networkResponse.clone());
+    const response = await fetch(request);
+    if (response.ok && !response.redirected) {
+      const cache = await caches.open(PAGE_CACHE);
+      await cache.put(request, response.clone());
     }
-    return networkResponse;
-  } catch (err) {
+    return response;
+  } catch (error) {
     const cached = await caches.match(request);
     if (cached) return cached;
-    throw err;
+    throw error;
   }
 }
 
-// ── POST handler: try network, queue if offline ────────────────────────────
-async function handlePost(event) {
-  const { request } = event;
-  const url = new URL(request.url);
-
-  // Skip API POSTs (handled by fetch API from mobile app, not forms)
-  if (url.pathname.startsWith('/api/')) {
-    return fetch(request);
-  }
-
+async function handlePost(request) {
+  const backup = request.clone();
   try {
-    // Try to send the request normally
-    const response = await fetch(request);
-    return response;
-  } catch (err) {
-    // Network failed — clone the request body and queue it
+    return await fetch(request);
+  } catch (_) {
     try {
-      const formData = await request.clone().formData();
-      const csrfToken = formData.get('csrfmiddlewaretoken') || '';
-
-      // Convert FormData to a plain object
-      const data = {};
+      const formData = await backup.formData();
+      const fields = [];
       const files = [];
       for (const [key, value] of formData.entries()) {
         if (value instanceof File) {
-          // Store file metadata (can't serialize File to IndexedDB easily)
-          files.push({ key, name: value.name, type: value.type, size: value.size });
+          if (value.name || value.size) files.push({ key, file: value, name: value.name });
         } else {
-          data[key] = value;
+          fields.push([key, value]);
         }
       }
-
-      const queueItem = {
-        url: request.url,
-        method: request.method,
-        data: data,
-        files: files,
-        csrfToken: csrfToken,
+      const clientUid = String(formData.get('client_uid') || clientUuid());
+      const item = {
+        url: backup.url,
+        method: 'POST',
+        fields,
+        files,
+        ownerId: String(formData.get('_offline_owner_id') || await metaValue('activeOwner') || ''),
+        clientUid,
+        kind: new URL(backup.url).pathname === '/manage/cases/create/' ? 'case' : 'visit',
         timestamp: Date.now(),
         retries: 0,
+        state: 'queued',
+        lastError: '',
       };
-
-      // Save to IndexedDB
-      const db = await openDB();
-      await db.put('pendingSubmissions', queueItem);
-
-      // Return a synthetic "queued" response
+      await addQueueItem(item);
+      await requestBackgroundSync();
       return new Response(
-        JSON.stringify({ queued: true, message: 'Saved offline. Will sync when online.' }),
-        {
-          status: 202,
-          headers: { 'Content-Type': 'application/json' },
-        }
+        '<!doctype html><html><body style="font-family:sans-serif;padding:40px;text-align:center"><h2>Saved offline</h2><p>This submission is safely stored on this device and will sync automatically.</p><p><a href="/dashboard/">Return to dashboard</a></p></body></html>',
+        { status: 202, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
       );
-    } catch (queueErr) {
-      // Can't even queue — return error
-      return new Response(
-        '<html><body style="font-family:sans-serif;text-align:center;padding:40px"><h2>Offline</h2><p>Your submission could not be saved. Please try again when online.</p></body></html>',
-        { status: 503, headers: { 'Content-Type': 'text/html' } }
-      );
+    } catch (queueError) {
+      return new Response('The submission could not be saved offline.', { status: 503 });
     }
   }
 }
 
-// ── IndexedDB helper ───────────────────────────────────────────────────────
 function openDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('cmam_offline', 1);
-    req.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains('pendingSubmissions')) {
-        const store = db.createObjectStore('pendingSubmissions', { keyPath: 'id', autoIncrement: true });
-        store.createIndex('timestamp', 'timestamp', { unique: false });
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      let queue;
+      if (!db.objectStoreNames.contains(QUEUE)) {
+        queue = db.createObjectStore(QUEUE, { keyPath: 'id', autoIncrement: true });
+      } else {
+        queue = request.transaction.objectStore(QUEUE);
       }
+      if (!queue.indexNames.contains('timestamp')) queue.createIndex('timestamp', 'timestamp');
+      if (!queue.indexNames.contains('ownerId')) queue.createIndex('ownerId', 'ownerId');
+      if (!queue.indexNames.contains('state')) queue.createIndex('state', 'state');
+      if (!db.objectStoreNames.contains(META)) db.createObjectStore(META, { keyPath: 'key' });
     };
-    req.onsuccess = (e) => resolve(e.target.result);
-    req.onerror = (e) => reject(e.target.error);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
   });
 }
 
-// ── Message handler: trigger sync from page ────────────────────────────────
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'TRIGGER_SYNC') {
-    event.waitUntil(syncPendingSubmissions());
-  }
-});
-
-// ── Background Sync API (if supported) ─────────────────────────────────────
-self.addEventListener('sync', (event) => {
-  if (event.tag === 'cmam-sync') {
-    event.waitUntil(syncPendingSubmissions());
-  }
-});
-
-// ── Sync pending submissions ───────────────────────────────────────────────
-async function syncPendingSubmissions() {
+async function dbRequest(storeName, mode, operation) {
   const db = await openDB();
-  const tx = db.transaction('pendingSubmissions', 'readwrite');
-  const store = tx.objectStore('pendingSubmissions');
-  const allReq = store.getAll();
-  const allItems = await new Promise((resolve, reject) => {
-    allReq.onsuccess = () => resolve(allReq.result);
-    allReq.onerror = () => reject(allReq.error);
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, mode);
+    const request = operation(tx.objectStore(storeName));
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
   });
+}
 
-  let synced = 0;
-  let failed = 0;
+const addQueueItem = (item) => dbRequest(QUEUE, 'readwrite', (store) => store.add(item));
+const putQueueItem = (item) => dbRequest(QUEUE, 'readwrite', (store) => store.put(item));
+const deleteQueueItem = (id) => dbRequest(QUEUE, 'readwrite', (store) => store.delete(id));
+const allQueueItems = () => dbRequest(QUEUE, 'readonly', (store) => store.getAll());
+const metaValue = async (key) => (await dbRequest(META, 'readonly', (store) => store.get(key)).catch(() => null))?.value;
+const setMeta = (key, value) => dbRequest(META, 'readwrite', (store) => store.put({ key, value }));
 
-  for (const item of allItems) {
-    try {
-      // Build FormData from stored data
-      const formData = new FormData();
-      for (const [key, value] of Object.entries(item.data)) {
-        formData.append(key, value);
-      }
+async function requestBackgroundSync() {
+  try {
+    if (self.registration.sync) await self.registration.sync.register('cmam-sync');
+  } catch (_) { /* Online and manual triggers remain available. */ }
+}
 
-      const response = await fetch(item.url, {
-        method: item.method,
-        body: formData,
-        credentials: 'same-origin',
-      });
-
-      if (response.ok || response.status === 302 || response.type === 'opaqueredirect') {
-        // Success — remove from queue
-        const delTx = db.transaction('pendingSubmissions', 'readwrite');
-        await delTx.objectStore('pendingSubmissions').delete(item.id);
-        synced++;
-      } else if (response.status >= 400 && response.status < 500) {
-        // Client error — don't retry, but keep for user review
-        failed++;
-      } else {
-        // Server error — will retry on next sync
-        failed++;
-      }
-    } catch (err) {
-      failed++;
+function buildFormData(item, csrfToken) {
+  const data = new FormData();
+  const fields = item.fields || Object.entries(item.data || {});
+  for (const [key, value] of fields) {
+    if (key === 'csrfmiddlewaretoken' && csrfToken) data.append(key, csrfToken);
+    else data.append(key, value);
+  }
+  if (csrfToken && !fields.some(([key]) => key === 'csrfmiddlewaretoken')) data.append('csrfmiddlewaretoken', csrfToken);
+  for (const stored of item.files || []) {
+    if (stored.file instanceof Blob) {
+      data.append(stored.key, stored.file, stored.name || stored.file.name || 'upload');
+    } else if (stored.base64) {
+      const [header, encoded] = stored.base64.split(',');
+      const mime = (header.match(/:(.*?);/) || [])[1] || stored.type || 'application/octet-stream';
+      const binary = atob(encoded);
+      const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+      data.append(stored.key, new Blob([bytes], { type: mime }), stored.name || 'upload');
     }
   }
+  return data;
+}
 
-  // Notify clients about sync results
-  const clients = await self.clients.matchAll();
-  for (const client of clients) {
-    client.postMessage({ type: 'SYNC_COMPLETE', synced, failed });
+async function replayResult(response) {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    return { success: false, error: response.redirected ? 'Please sign in again before syncing.' : 'The server returned an unexpected response.' };
+  }
+  const payload = await response.json().catch(() => ({}));
+  return {
+    success: response.ok && payload.success === true,
+    error: payload.error || payload.message || `Server error (${response.status})`,
+    payload,
+  };
+}
+
+async function rewriteDependentVisits(clientUid, serverId) {
+  if (!clientUid || !serverId) return;
+  const pendingPath = `/manage/visits/client/${clientUid}/record/`;
+  for (const item of await allQueueItems()) {
+    if (new URL(item.url, self.location.origin).pathname === pendingPath) {
+      item.url = new URL(`/manage/visits/${serverId}/record/`, self.location.origin).href;
+      await putQueueItem(item);
+    }
   }
 }
+
+async function syncPendingSubmissions(ownerOverride) {
+  if (syncPromise) return syncPromise;
+  syncPromise = (async () => {
+    const owner = ownerOverride || await metaValue('activeOwner') || '';
+    const csrf = await metaValue('csrfToken') || '';
+    let synced = 0;
+    let failed = 0;
+    for (const snapshot of await allQueueItems()) {
+      const item = (await allQueueItems()).find((candidate) => candidate.id === snapshot.id) || snapshot;
+      if (owner && item.ownerId && item.ownerId !== owner) continue;
+      if (item.state === 'failed') { failed += 1; continue; }
+      try {
+        const response = await fetch(item.url, {
+          method: item.method || 'POST',
+          body: buildFormData(item, csrf),
+          credentials: 'same-origin',
+          headers: { 'X-Offline-Sync': '1' },
+        });
+        const result = await replayResult(response);
+        if (result.success) {
+          if (item.kind === 'case') await rewriteDependentVisits(item.clientUid, result.payload?.data?.id);
+          await deleteQueueItem(item.id);
+          synced += 1;
+        } else if (response.status >= 500 || response.status === 401 || response.status === 403 || response.redirected) {
+          item.state = 'queued';
+          item.retries = (item.retries || 0) + 1;
+          item.lastError = result.error;
+          await putQueueItem(item);
+          failed += 1;
+        } else {
+          item.state = 'failed';
+          item.lastError = result.error;
+          await putQueueItem(item);
+          failed += 1;
+        }
+      } catch (error) {
+        item.state = 'queued';
+        item.retries = (item.retries || 0) + 1;
+        item.lastError = error.message || 'No internet connection.';
+        await putQueueItem(item);
+        failed += 1;
+      }
+    }
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    clients.forEach((client) => client.postMessage({ type: 'SYNC_COMPLETE', synced, failed }));
+    return { synced, failed };
+  })().finally(() => { syncPromise = null; });
+  return syncPromise;
+}
+
+async function setActiveUser(data) {
+  const previous = await metaValue('activeOwner') || '';
+  const owner = String(data.ownerId || '');
+  if (previous !== owner) await caches.delete(PAGE_CACHE);
+  await setMeta('activeOwner', owner);
+  if (data.csrfToken) await setMeta('csrfToken', data.csrfToken);
+  if (!owner) return;
+
+  // Assign pre-upgrade submissions once, then every new record is explicitly scoped.
+  for (const item of await allQueueItems()) {
+    if (!item.ownerId) { item.ownerId = owner; await putQueueItem(item); }
+  }
+  const cache = await caches.open(PAGE_CACHE);
+  await Promise.all((data.urls || []).map(async (url) => {
+    try {
+      const response = await fetch(url, { credentials: 'same-origin' });
+      if (response.ok && !response.redirected) await cache.put(url, response);
+    } catch (_) { /* The exact page will be cached on a later successful visit. */ }
+  }));
+}
+
+self.addEventListener('message', (event) => {
+  const data = event.data || {};
+  if (data.type === 'SKIP_WAITING') event.waitUntil(self.skipWaiting());
+  if (data.type === 'TRIGGER_SYNC') event.waitUntil(syncPendingSubmissions(data.ownerId));
+  if (data.type === 'SET_ACTIVE_USER') event.waitUntil(setActiveUser(data));
+  if (data.type === 'CLEAR_PRIVATE_CACHE') event.waitUntil(caches.delete(PAGE_CACHE));
+});
+
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'cmam-sync') event.waitUntil(syncPendingSubmissions());
+});

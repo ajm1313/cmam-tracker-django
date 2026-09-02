@@ -16,6 +16,7 @@ urlpatterns = [
     # Visit Management
     path('manage/visits/', views.due_visits, name='due_visits'),
     path('manage/visits/<int:registration_id>/record/', views.visit_form, name='visit_form'),
+    path('manage/visits/client/<uuid:client_uid>/record/', views.visit_form, name='visit_form_by_client'),
     path('manage/visits/<int:registration_id>/history/', views.view_visits, name='view_visits'),
     path('manage/visits/<int:visit_id>/edit/', views.visit_edit, name='visit_edit'),
     path('manage/visits/<int:visit_id>/delete/', views.visit_delete, name='visit_delete'),

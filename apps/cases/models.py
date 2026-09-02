@@ -2,6 +2,28 @@ from django.db import models, transaction
 from apps.core.models import TimeStampedModel
 from django.conf import settings
 from datetime import datetime, timedelta
+import hashlib
+import unicodedata
+
+
+def _normalise_identity(value):
+    return ' '.join(unicodedata.normalize('NFKC', str(value or '')).casefold().split())
+
+
+def registration_deduplication_key(facility_id, child_name, date_of_birth, admission_date, caregiver_name):
+    identity = '|'.join([
+        str(facility_id or ''), _normalise_identity(child_name), str(date_of_birth or ''),
+        str(admission_date or ''), _normalise_identity(caregiver_name),
+    ])
+    return hashlib.sha256(identity.encode('utf-8')).hexdigest()
+
+
+def ipc_deduplication_key(facility_id, patient_name, admission_date, gender):
+    identity = '|'.join([
+        str(facility_id or ''), _normalise_identity(patient_name),
+        str(admission_date or ''), _normalise_identity(gender),
+    ])
+    return hashlib.sha256(identity.encode('utf-8')).hexdigest()
 
 
 class FacilitySequence(models.Model):
@@ -61,6 +83,8 @@ class OpcRegistration(TimeStampedModel):
     ]
     
     facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE, related_name='opc_registrations')
+    client_uid = models.UUIDField(null=True, blank=True, unique=True, editable=False)
+    deduplication_key = models.CharField(max_length=64, null=True, blank=True, unique=True, editable=False)
     registration_number = models.CharField(max_length=30, unique=True, null=True, blank=True, help_text='Auto-generated: CODE/NNN/SAM/OPC')
     child_name = models.CharField(max_length=255)
     child_gender = models.CharField(max_length=10, choices=GENDER_CHOICES)
@@ -233,13 +257,22 @@ class OpcRegistration(TimeStampedModel):
         return f"{self.child_name} - {reg}"
     
     def save(self, *args, **kwargs):
-        """Override save to auto-generate registration number if not set"""
+        """Generate the registration number and duplicate-protection key."""
         if not self.registration_number and self.facility and self.malnutrition_type:
             self.registration_number = self.generate_registration_number(
                 self.facility, 
                 self.malnutrition_type
             )
-        super().save(*args, **kwargs)
+        self.deduplication_key = registration_deduplication_key(
+            self.facility_id, self.child_name, self.date_of_birth,
+            self.admission_date, self.caregiver_name,
+        )
+        update_fields = kwargs.get('update_fields')
+        if update_fields and set(update_fields).intersection({
+            'facility', 'facility_id', 'child_name', 'date_of_birth', 'admission_date', 'caregiver_name'
+        }):
+            kwargs['update_fields'] = set(update_fields) | {'deduplication_key'}
+        return super().save(*args, **kwargs)
 
     @classmethod
     def _compute_next_sequence(cls, facility, malnutrition_type):
@@ -415,6 +448,7 @@ class OpcVisit(TimeStampedModel):
     ]
     
     registration = models.ForeignKey(OpcRegistration, on_delete=models.CASCADE, related_name='visits')
+    client_uid = models.UUIDField(null=True, blank=True, unique=True, editable=False)
     visit_number = models.IntegerField()
     visit_date = models.DateField()
     visit_type = models.CharField(max_length=20, choices=VISIT_TYPES)
@@ -533,6 +567,8 @@ class IpcCase(TimeStampedModel):
     ]
     
     facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE, related_name='ipc_cases')
+    client_uid = models.UUIDField(null=True, blank=True, unique=True, editable=False)
+    deduplication_key = models.CharField(max_length=64, null=True, blank=True, unique=True, editable=False)
     patient_name = models.CharField(max_length=255)
     patient_age = models.IntegerField()
     gender = models.CharField(max_length=10)
@@ -550,6 +586,17 @@ class IpcCase(TimeStampedModel):
     
     def __str__(self):
         return f"{self.patient_name} - IPC"
+
+    def save(self, *args, **kwargs):
+        self.deduplication_key = ipc_deduplication_key(
+            self.facility_id, self.patient_name, self.admission_date, self.gender,
+        )
+        update_fields = kwargs.get('update_fields')
+        if update_fields and set(update_fields).intersection({
+            'facility', 'facility_id', 'patient_name', 'admission_date', 'gender'
+        }):
+            kwargs['update_fields'] = set(update_fields) | {'deduplication_key'}
+        return super().save(*args, **kwargs)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

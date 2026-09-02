@@ -1,0 +1,92 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline Visit — CMAM Tracker</title>
+    <style>
+        *{box-sizing:border-box}body{margin:0;background:#f8fafc;color:#0f172a;font-family:system-ui,sans-serif}.wrap{max-width:850px;margin:auto;padding:20px}.card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:20px;margin-bottom:14px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}label{font-size:13px;font-weight:650;display:block}input,select,textarea{width:100%;margin-top:5px;padding:11px;border:1px solid #cbd5e1;border-radius:9px;background:#fff;font:inherit}button{width:100%;padding:14px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:750;font-size:15px}.note{padding:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;color:#92400e}.hidden{display:none}.back{color:#2563eb;text-decoration:none;font-weight:650}
+    </style>
+</head>
+<body>
+<main class="wrap">
+    <a class="back" href="/manage/visits/">← Back to visits</a>
+    <h1>Record Visit Offline</h1>
+    <p class="note">This visit will remain safely on this device and synchronize after you reconnect.</p>
+    <form method="post" data-offline-capable="true" data-offline-kind="visit" id="offlineVisitForm">
+        <input type="hidden" name="client_uid" id="visitClientUid">
+        <section class="card">
+            <h2>Visit details</h2>
+            <div class="grid">
+                <label>Case type<select id="caseType" required><option value="SAM">SAM</option><option value="MAM">MAM</option></select></label>
+                <label>Visit date<input type="date" name="visit_date" required></label>
+                <label>Visit type<select name="visit_type"><option>Routine</option><option>Follow-up</option><option>Unscheduled</option></select></label>
+                <label>Visit outcome<select name="visit_outcome" required><option>Continue</option><option>Absent</option><option>Defaulted</option><option>Cured</option><option>Referral</option><option>Non-Response</option><option>Death</option><option value="Transfer-to-IPC">Transfer to IPC</option></select></label>
+            </div>
+        </section>
+        <section class="card">
+            <h2>Measurements</h2>
+            <div class="grid">
+                <label>Weight (kg)<input type="number" step="0.01" name="weight_kg" data-clinical-required></label>
+                <label>MUAC (cm)<input type="number" step="0.1" name="muac_cm" data-clinical-required></label>
+                <label>Height (cm)<input type="number" step="0.1" name="height_cm"></label>
+                <label>W/H Z-score<select name="z_score_wfh"><option value="">Select</option><option>&lt; -3 SD</option><option>-3 to &lt; -2 SD</option><option>-2 to +1 SD</option><option>&gt; +1 to +2 SD</option><option>&gt; +2 SD</option></select></label>
+                <label>Oedema<select name="oedema"><option value="">Select</option><option>None</option><option>+</option><option>++</option><option>+++</option></select></label>
+                <label>Appetite test<select name="appetite" data-clinical-required><option value="">Select</option><option>Pass</option><option>Fail</option></select></label>
+            </div>
+        </section>
+        <section class="card">
+            <h2>Clinical assessment</h2>
+            <div class="grid">
+                <label>General condition<input name="general_condition"></label>
+                <label>Temperature °C<input type="number" step="0.1" name="temperature"></label>
+                <label>Respiratory rate<input type="number" name="respiratory_rate"></label>
+                <label>Diarrhoea days<input type="number" min="0" name="diarrhoea_days"></label>
+                <label>Vomiting days<input type="number" min="0" name="vomiting_days"></label>
+                <label>Fever days<input type="number" min="0" name="fever_days"></label>
+                <label>Complications<select name="has_complications"><option value="N">No</option><option value="Y">Yes</option></select></label>
+                <label>Dehydrated<select name="dehydrated"><option value="N">No</option><option value="Y">Yes</option></select></label>
+                <label>Severe pallor<select name="very_pale_or_severe_palmar_pallor"><option value="N">No</option><option value="Y">Yes</option></select></label>
+                <label>Chest indrawing<select name="chest_indrawing"><option value="N">No</option><option value="Y">Yes</option></select></label>
+                <label>Convulsions<select name="convulsions"><option value="N">No</option><option value="Y">Yes</option></select></label>
+                <label>Unconscious<select name="unconscious"><option value="N">No</option><option value="Y">Yes</option></select></label>
+            </div>
+            <label>Complication notes<textarea name="complications_notes" rows="2"></textarea></label>
+        </section>
+        <section class="card">
+            <h2>Treatment and follow-up</h2>
+            <div class="grid">
+                <label>RUTF sachets<input type="number" min="0" name="rutf_sachets_given"></label>
+                <label>Food product<input name="food_product_type"></label>
+                <label>Food quantity<input name="food_product_quantity"></label>
+                <label>CSB+ given<input type="number" step="0.01" name="csb_plus_given"></label>
+                <label>Oil given<input type="number" step="0.01" name="oil_given"></label>
+                <label>Next visit date<input type="date" name="next_visit_date"></label>
+                <label>Staff name<input name="staff_name"></label>
+            </div>
+            <label>Medical notes<textarea name="medical_notes" rows="3"></textarea></label>
+            <label>Outcome notes<textarea name="outcome_notes" rows="2"></textarea></label>
+        </section>
+        <button type="submit">Save Visit Offline</button>
+    </form>
+</main>
+<script src="{% static 'js/offline_forms.js' %}"></script>
+<script>
+(function(){
+  const params=new URLSearchParams(location.search), form=document.getElementById('offlineVisitForm');
+  const clientMatch=location.pathname.match(/\/visits\/client\/([0-9a-f-]+)\/record/i);
+  const idMatch=location.pathname.match(/\/visits\/(\d+)\/record/i);
+  form.action=clientMatch?`/manage/visits/client/${clientMatch[1]}/record/`:idMatch?`/manage/visits/${idMatch[1]}/record/`:'';
+  document.getElementById('caseType').value=params.get('type')||'SAM';
+  document.querySelector('[name="visit_date"]').value=new Date().toISOString().slice(0,10);
+  const uid=globalThis.crypto?.randomUUID?.()||'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==='x'?r:(r&3|8)).toString(16)});
+  document.getElementById('visitClientUid').value=uid;
+  form.addEventListener('submit',function(e){
+    const outcome=form.elements.visit_outcome.value, needsClinical=!['Absent','Defaulted'].includes(outcome);
+    form.querySelectorAll('[data-clinical-required]').forEach(el=>el.required=needsClinical);
+    if(needsClinical&&!form.reportValidity()){e.preventDefault();e.stopImmediatePropagation()}
+  },true);
+})();
+</script>
+</body>
+</html>

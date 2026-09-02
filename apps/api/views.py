@@ -15,6 +15,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.db import transaction
 from datetime import datetime, timedelta, date
+from uuid import UUID
 
 from apps.users.models import User, UserRole, Role, RoleFeaturePermission, SystemFeature
 from apps.facilities.models import Facility
@@ -22,7 +23,10 @@ from apps.inventory.models import (
     InventoryItem, StockLevel, StockMovement, StockRequest, StockRequestItem, ItemBatch
 )
 from apps.inventory.stock_utils import deduct_stock_for_registration, deduct_stock_for_visit, reverse_stock_for_registration, reverse_stock_for_visit
-from apps.cases.models import OpcRegistration, OpcVisit, IpcCase, CaseTask
+from apps.cases.models import (
+    OpcRegistration, OpcVisit, IpcCase, CaseTask,
+    registration_deduplication_key, ipc_deduplication_key,
+)
 from apps.cases.views import _update_automation_tracking
 from apps.cases.automation_service import SamOpcAutomationService
 from apps.cases.mam_automation_service import MamOpcAutomationService
@@ -61,6 +65,16 @@ def _to_bool(val):
     if isinstance(val, (int, float)):
         return bool(val)
     return str(val).strip().lower() in ('yes', 'true', '1', 'on')
+
+
+def _client_uuid(value):
+    """Return a canonical UUID string, or None for a missing/invalid value."""
+    if not value:
+        return None
+    try:
+        return str(UUID(str(value)))
+    except (TypeError, ValueError, AttributeError):
+        return None
 
 
 def _detailed_case_stats(cases_qs, date_from, date_to, prev_period_end=None):
@@ -764,6 +778,19 @@ def next_reg_number_api(request):
 def case_create_api(request):
     """Create a new case registration from mobile"""
     data = request.data
+    raw_client_uid = data.get('client_uid')
+    client_uid = _client_uuid(raw_client_uid)
+    if raw_client_uid and not client_uid:
+        return Response({'success': False, 'message': 'client_uid must be a valid UUID.'}, status=status.HTTP_400_BAD_REQUEST)
+    if client_uid:
+        existing_client_case = OpcRegistration.objects.filter(client_uid=client_uid).first()
+        if existing_client_case:
+            denied = _check_case_access_api(request, existing_client_case)
+            if denied:
+                return denied
+            serializer = OpcRegistrationDetailSerializer(existing_client_case, context={'request': request})
+            return Response({'success': True, 'message': 'Case was already synchronized.', 'data': serializer.data, 'duplicate': True})
+
     required = ['child_name', 'child_gender', 'date_of_birth', 'age_months',
                 'malnutrition_type', 'admission_date', 'weight_kg', 'height_cm', 'facility_id']
     missing = [f for f in required if not data.get(f)]
@@ -771,6 +798,12 @@ def case_create_api(request):
         return Response({
             'success': False,
             'message': f'Missing required fields: {", ".join(missing)}'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    if data.get('malnutrition_type') not in ('SAM', 'MAM'):
+        return Response({
+            'success': False,
+            'message': 'OPC registrations must be SAM or MAM. Use the IPC registration endpoint for IPC cases.',
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
@@ -787,25 +820,44 @@ def case_create_api(request):
     # same facility with the same enrolment date and caregiver (accidental double-submit / re-tap).
     admission_date = data.get('admission_date')
     caregiver_name = (data.get('caregiver_name') or '').strip()
-    existing = OpcRegistration.objects.filter(
-        facility=facility,
-        child_name__iexact=data.get('child_name', '').strip(),
-        date_of_birth=data.get('date_of_birth'),
-        admission_date=admission_date,
-        caregiver_name__iexact=caregiver_name,
-    ).first()
+    deduplication_key = registration_deduplication_key(
+        facility.id, data.get('child_name'), data.get('date_of_birth'),
+        admission_date, caregiver_name,
+    )
+    existing = OpcRegistration.objects.filter(deduplication_key=deduplication_key).first()
     if existing:
+        if client_uid and not existing.client_uid:
+            OpcRegistration.objects.filter(pk=existing.pk, client_uid__isnull=True).update(client_uid=client_uid)
+            existing.refresh_from_db()
+        serializer = OpcRegistrationDetailSerializer(existing, context={'request': request})
         return Response({
-            'success': False,
-            'message': f'A case for "{existing.child_name}" was already registered at this facility on {admission_date}. Duplicate registration is not allowed.',
-            'duplicate_id': existing.id,
-        }, status=status.HTTP_409_CONFLICT)
+            'success': True,
+            'message': 'Matching registration already exists; the existing case was used.',
+            'data': serializer.data,
+            'duplicate': True,
+        })
     
     with transaction.atomic():
+        # Serialize registrations per facility, then re-check inside the lock.
+        Facility.objects.select_for_update().get(pk=facility.pk)
+        existing = OpcRegistration.objects.filter(deduplication_key=deduplication_key).first()
+        if existing:
+            if client_uid and not existing.client_uid:
+                existing.client_uid = client_uid
+                existing.save(update_fields=['client_uid'])
+            serializer = OpcRegistrationDetailSerializer(existing, context={'request': request})
+            return Response({
+                'success': True,
+                'message': 'Matching registration already exists; the existing case was used.',
+                'data': serializer.data,
+                'duplicate': True,
+            })
         reg_number = OpcRegistration.generate_registration_number(facility, data['malnutrition_type'])
     
         case = OpcRegistration.objects.create(
             facility=facility,
+            client_uid=client_uid,
+            deduplication_key=deduplication_key,
             registration_number=reg_number,
             child_name=data['child_name'],
             child_gender=data['child_gender'],
@@ -942,6 +994,9 @@ def case_create_api(request):
         if 'child_photo' in request.FILES:
             case.child_photo = request.FILES['child_photo']
             case.save(update_fields=['child_photo'])
+    # Values supplied by JSON start as strings; reload typed date/decimal values
+    # before computed serializer fields such as next_visit_date are evaluated.
+    case.refresh_from_db()
     
     # Auto-deduct stock for commodities given at enrollment
     stock_warnings = []
@@ -982,10 +1037,14 @@ def case_visits(request, registration_id):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def record_visit_api(request, registration_id):
+def record_visit_api(request, registration_id=None, client_uid=None):
     """Record a new visit for a case"""
     try:
-        case = OpcRegistration.objects.get(pk=registration_id)
+        if client_uid:
+            case = OpcRegistration.objects.get(client_uid=client_uid)
+            registration_id = case.id
+        else:
+            case = OpcRegistration.objects.get(pk=registration_id)
     except OpcRegistration.DoesNotExist:
         return Response({'success': False, 'message': 'Case not found'}, status=status.HTTP_404_NOT_FOUND)
     
@@ -996,6 +1055,22 @@ def record_visit_api(request, registration_id):
 
     # Convert empty strings to None so blank numeric fields become NULL
     data = {k: v for k, v in request.data.items() if v != ''}
+    raw_visit_client_uid = data.get('client_uid')
+    visit_client_uid = _client_uuid(raw_visit_client_uid)
+    if raw_visit_client_uid and not visit_client_uid:
+        return Response({'success': False, 'message': 'client_uid must be a valid UUID.'}, status=status.HTTP_400_BAD_REQUEST)
+    if visit_client_uid:
+        existing_client_visit = OpcVisit.objects.filter(client_uid=visit_client_uid).first()
+        if existing_client_visit:
+            denied = _check_case_access_api(request, existing_client_visit.registration)
+            if denied:
+                return denied
+            return Response({
+                'success': True,
+                'message': 'Visit was already synchronized.',
+                'data': OpcVisitSerializer(existing_client_visit).data,
+                'duplicate': True,
+            })
 
     # Duplicate check: prevent multiple visits on the same date for the same case
     visit_date = data.get('visit_date') or timezone.now().date().isoformat()
@@ -1007,6 +1082,18 @@ def record_visit_api(request, registration_id):
         with transaction.atomic():
             # Lock the registration row to serialize concurrent visit creations
             case = OpcRegistration.objects.select_for_update().get(pk=registration_id)
+            if visit_client_uid:
+                existing_client_visit = OpcVisit.objects.filter(client_uid=visit_client_uid).first()
+                if existing_client_visit:
+                    return Response({
+                        'success': True,
+                        'message': 'Visit was already synchronized.',
+                        'data': OpcVisitSerializer(existing_client_visit).data,
+                        'duplicate': True,
+                    })
+
+            if case.visits.filter(visit_date=visit_date).exists():
+                return Response({'success': False, 'message': 'A visit for this case has already been recorded on this date.'}, status=status.HTTP_409_CONFLICT)
             
             # Get last visit number from remaining (undeleted) visits
             last_visit = case.visits.order_by('-visit_number').first()
@@ -1025,6 +1112,7 @@ def record_visit_api(request, registration_id):
 
             visit = OpcVisit.objects.create(
                 registration=case,
+                client_uid=visit_client_uid,
                 visit_number=next_number,
                 visit_date=data.get('visit_date', timezone.now().date()),
                 visit_type=data.get('visit_type', 'Routine'),
@@ -3910,40 +3998,73 @@ def ipc_cases_api(request):
 
     # POST - create
     data = request.data
+    raw_client_uid = data.get('client_uid')
+    client_uid = _client_uuid(raw_client_uid)
+    if raw_client_uid and not client_uid:
+        return Response({'success': False, 'message': 'client_uid must be a valid UUID.'}, status=status.HTTP_400_BAD_REQUEST)
+    if client_uid:
+        existing_client_case = IpcCase.objects.filter(client_uid=client_uid).first()
+        if existing_client_case:
+            denied = _check_facility_access_api(request, existing_client_case.facility)
+            if denied:
+                return denied
+            return Response({
+                'success': True,
+                'message': 'IPC case was already synchronized.',
+                'data': IpcCaseSerializer(existing_client_case).data,
+                'duplicate': True,
+            })
     required = ['patient_name', 'gender', 'admission_date', 'weight', 'height', 'facility_id']
     missing = [f for f in required if not data.get(f)]
     if missing:
         return Response({'success': False, 'message': f'Missing fields: {", ".join(missing)}'},
                         status=status.HTTP_400_BAD_REQUEST)
 
-    # RBAC: verify user has access to the facility
-    accessible = request.user.get_accessible_facilities()
-    if accessible is not None and int(data['facility_id']) not in [f.id for f in accessible]:
-        return Response({'success': False, 'message': 'You do not have access to this facility.'}, status=status.HTTP_403_FORBIDDEN)
+    try:
+        facility = Facility.objects.get(pk=int(data['facility_id']))
+    except (Facility.DoesNotExist, TypeError, ValueError):
+        return Response({'success': False, 'message': 'Facility not found.'}, status=status.HTTP_404_NOT_FOUND)
+    denied = _check_facility_access_api(request, facility)
+    if denied:
+        return denied
 
     case_status = data.get('status', 'Admitted')
     valid_statuses = [c[0] for c in IpcCase.STATUS_CHOICES]
     if case_status not in valid_statuses:
         return Response({'success': False, 'message': f'Invalid status. Valid: {", ".join(valid_statuses)}'}, status=status.HTTP_400_BAD_REQUEST)
 
-    case = IpcCase.objects.create(
-        facility_id=int(data['facility_id']),
-        patient_name=data['patient_name'],
-        patient_age=int(data.get('patient_age', 0)),
-        gender=data['gender'],
-        admission_date=data['admission_date'],
-        weight=data['weight'],
-        height=data['height'],
-        muac=data.get('muac'),
-        status=case_status,
+    deduplication_key = ipc_deduplication_key(
+        facility.id, data['patient_name'], data['admission_date'], data['gender'],
     )
+    with transaction.atomic():
+        Facility.objects.select_for_update().get(pk=facility.pk)
+        existing = IpcCase.objects.filter(deduplication_key=deduplication_key).first()
+        if existing:
+            if client_uid and not existing.client_uid:
+                existing.client_uid = client_uid
+                existing.save(update_fields=['client_uid'])
+            return Response({
+                'success': True,
+                'message': 'Matching IPC registration already exists; the existing case was used.',
+                'data': IpcCaseSerializer(existing).data,
+                'duplicate': True,
+            })
+        case = IpcCase.objects.create(
+            facility=facility,
+            client_uid=client_uid,
+            deduplication_key=deduplication_key,
+            patient_name=data['patient_name'],
+            patient_age=int(data.get('patient_age', 0)),
+            gender=data['gender'],
+            admission_date=data['admission_date'],
+            weight=data['weight'],
+            height=data['height'],
+            muac=data.get('muac'),
+            status=case_status,
+        )
     return Response({
         'success': True,
-        'data': {
-            'id': case.id,
-            'patient_name': case.patient_name,
-            'status': case.status,
-        }
+        'data': IpcCaseSerializer(case).data,
     }, status=status.HTTP_201_CREATED)
 
 
@@ -4001,22 +4122,47 @@ def case_transfer_api(request, pk):
     notes = data.get('notes', '')
 
     if transfer_type == 'ipc':
-        # Create IPC case
-        ipc_case = IpcCase.objects.create(
-            facility_id=target_facility_id,
-            patient_name=case.child_name,
-            patient_age=case.age_months or 0,
-            gender=case.child_gender or 'Unknown',
-            admission_date=timezone.now().date().isoformat(),
-            weight=case.weight_kg,
-            height=case.height_cm,
-            muac=case.muac_cm,
-            status='Admitted',
+        try:
+            target_facility = Facility.objects.get(pk=target_facility_id, type='IPC')
+        except (Facility.DoesNotExist, TypeError, ValueError):
+            return Response({'success': False, 'message': 'A valid IPC target facility is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        denied = _check_facility_access_api(request, target_facility)
+        if denied:
+            return denied
+        raw_client_uid = data.get('client_uid')
+        transfer_client_uid = _client_uuid(raw_client_uid)
+        if raw_client_uid and not transfer_client_uid:
+            return Response({'success': False, 'message': 'client_uid must be a valid UUID.'}, status=status.HTTP_400_BAD_REQUEST)
+        admission_date = timezone.now().date()
+        deduplication_key = ipc_deduplication_key(
+            target_facility.id, case.child_name, admission_date, case.child_gender or 'Unknown',
         )
-        case.status = 'Transfer'
-        case.outcome = 'Transferred to IPC'
-        case.outcome_notes = f'Transferred to IPC facility. Reason: {reason}. Notes: {notes}'
-        case.save()
+        with transaction.atomic():
+            case = OpcRegistration.objects.select_for_update().get(pk=case.pk)
+            ipc_case = IpcCase.objects.filter(client_uid=transfer_client_uid).first() if transfer_client_uid else None
+            if not ipc_case:
+                ipc_case = IpcCase.objects.filter(deduplication_key=deduplication_key).first()
+            if not ipc_case:
+                ipc_case = IpcCase.objects.create(
+                    facility=target_facility,
+                    client_uid=transfer_client_uid,
+                    deduplication_key=deduplication_key,
+                    patient_name=case.child_name,
+                    patient_age=case.age_months or 0,
+                    gender=case.child_gender or 'Unknown',
+                    admission_date=admission_date,
+                    weight=case.weight_kg,
+                    height=case.height_cm,
+                    muac=case.muac_cm,
+                    status='Admitted',
+                )
+            elif transfer_client_uid and not ipc_case.client_uid:
+                ipc_case.client_uid = transfer_client_uid
+                ipc_case.save(update_fields=['client_uid'])
+            case.status = 'Transfer'
+            case.outcome = 'Transferred to IPC'
+            case.outcome_notes = f'Transferred to IPC facility. Reason: {reason}. Notes: {notes}'
+            case.save()
         return Response({
             'success': True,
             'message': 'Case transferred to IPC successfully',
@@ -4027,8 +4173,15 @@ def case_transfer_api(request, pk):
         if not target_facility_id:
             return Response({'success': False, 'message': 'Target facility required'},
                             status=status.HTTP_400_BAD_REQUEST)
+        try:
+            target_facility = Facility.objects.get(pk=target_facility_id, type='OPC')
+        except (Facility.DoesNotExist, TypeError, ValueError):
+            return Response({'success': False, 'message': 'A valid OPC target facility is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        denied = _check_facility_access_api(request, target_facility)
+        if denied:
+            return denied
         old_facility = case.facility.name if case.facility else 'Unknown'
-        case.facility_id = target_facility_id
+        case.facility = target_facility
         case.outcome_notes = f'Transferred from {old_facility}. Reason: {reason}. Notes: {notes}'
         case.save()
         return Response({

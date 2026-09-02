@@ -69,6 +69,7 @@ urlpatterns = [
     # Visits
     path('v1/cases/<int:registration_id>/visits/', views.case_visits, name='case_visits'),
     path('v1/cases/<int:registration_id>/visits/record/', views.record_visit_api, name='record_visit'),
+    path('v1/cases/client/<uuid:client_uid>/visits/record/', views.record_visit_api, name='record_visit_by_client'),
     path('v1/cases/<int:registration_id>/visits/<int:visit_id>/edit/', views.visit_edit_api, name='visit_edit'),
     path('v1/cases/<int:registration_id>/visits/<int:visit_id>/delete/', views.visit_delete_api, name='visit_delete'),
 

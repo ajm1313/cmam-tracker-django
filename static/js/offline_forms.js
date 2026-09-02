@@ -1,497 +1,389 @@
-/* CMAM Tracker — Offline Form Interception
- * 
- * This script works alongside the service worker to provide:
- * 1. Visual offline banner with pending sync count
- * 2. Form submission interception when offline (fallback if SW doesn't catch it)
- * 3. Auto-sync when connectivity returns
- * 4. Pending submission count badge
+/* CMAM Tracker offline form queue.
+ * Only forms explicitly marked data-offline-capable are stored.
  */
-
 (function () {
   'use strict';
 
-  // ── IndexedDB helper ──────────────────────────────────────────────────
   const DB_NAME = 'cmam_offline';
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   const STORE = 'pendingSubmissions';
-  const MAX_RETRIES = 5;
-  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB limit for base64 storage
+  let directSyncPromise = null;
+
+  function ownerId() {
+    const current = document.body?.dataset.userId || '';
+    if (current) localStorage.setItem('cmam_active_user', current);
+    return current || localStorage.getItem('cmam_active_user') || '';
+  }
+
+  function uuid() {
+    if (crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 3) | 8).toString(16);
+    });
+  }
 
   function openDB() {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = (e) => {
-        const db = e.target.result;
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains('metadata')) db.createObjectStore('metadata', { keyPath: 'key' });
+        let store;
         if (!db.objectStoreNames.contains(STORE)) {
-          const store = db.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
-          store.createIndex('timestamp', 'timestamp', { unique: false });
+          store = db.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
+        } else {
+          store = request.transaction.objectStore(STORE);
         }
+        if (!store.indexNames.contains('timestamp')) store.createIndex('timestamp', 'timestamp');
+        if (!store.indexNames.contains('ownerId')) store.createIndex('ownerId', 'ownerId');
+        if (!store.indexNames.contains('state')) store.createIndex('state', 'state');
       };
-      req.onsuccess = (e) => resolve(e.target.result);
-      req.onerror = (e) => reject(e.target.error);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
     });
   }
 
-  async function getPendingCount() {
-    const db = await openDB();
-    const tx = db.transaction(STORE, 'readonly');
+  function transaction(mode, action) {
+    return openDB().then((db) => new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, mode);
+      const store = tx.objectStore(STORE);
+      let result;
+      try { result = action(store); } catch (error) { reject(error); return; }
+      tx.oncomplete = () => resolve(result);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    }));
+  }
+
+  function requestResult(request, fallback) {
     return new Promise((resolve) => {
-      const req = tx.objectStore(STORE).count();
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => resolve(0);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve(fallback);
     });
   }
 
-  async function getAllPending() {
+  async function allItems() {
     const db = await openDB();
-    const tx = db.transaction(STORE, 'readonly');
-    return new Promise((resolve) => {
-      const req = tx.objectStore(STORE).getAll();
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => resolve([]);
-    });
+    return requestResult(db.transaction(STORE, 'readonly').objectStore(STORE).getAll(), []);
   }
 
-  async function removePending(id) {
+  async function putItem(item) {
     const db = await openDB();
-    const tx = db.transaction(STORE, 'readwrite');
-    return new Promise((resolve) => {
-      const req = tx.objectStore(STORE).delete(id);
-      req.onsuccess = () => resolve();
-      req.onerror = () => resolve();
-    });
+    return requestResult(db.transaction(STORE, 'readwrite').objectStore(STORE).put(item));
   }
 
-  async function queueSubmission(form) {
-    const formData = new FormData(form);
-    const data = {};
+  async function deleteItem(id) {
+    return transaction('readwrite', (store) => store.delete(id));
+  }
+
+  function currentItems(items) {
+    const owner = ownerId();
+    return items.filter((item) => !item.ownerId || item.ownerId === owner);
+  }
+
+  function ensureOfflineIdentity(form) {
+    let uid = form.querySelector('[name="client_uid"]');
+    if (!uid) {
+      uid = document.createElement('input');
+      uid.type = 'hidden';
+      uid.name = 'client_uid';
+      form.appendChild(uid);
+    }
+    if (!uid.value) uid.value = uuid();
+
+    let owner = form.querySelector('[name="_offline_owner_id"]');
+    if (!owner) {
+      owner = document.createElement('input');
+      owner.type = 'hidden';
+      owner.name = '_offline_owner_id';
+      form.appendChild(owner);
+    }
+    owner.value = ownerId();
+    return uid.value;
+  }
+
+  function fieldsFromFormData(formData) {
+    const fields = [];
     const files = [];
-
     for (const [key, value] of formData.entries()) {
       if (value instanceof File) {
-        // Store file as base64 if small enough; skip large files with a warning
-        if (value.size <= MAX_FILE_SIZE) {
-          const base64 = await fileToBase64(value);
-          files.push({
-            key,
-            name: value.name,
-            type: value.type,
-            size: value.size,
-            base64: base64,
-          });
-        } else {
-          // File too large for offline storage — record metadata only
-          files.push({
-            key,
-            name: value.name,
-            type: value.type,
-            size: value.size,
-            skipped: true,
-          });
-        }
+        if (value.name || value.size) files.push({ key, file: value, name: value.name });
       } else {
-        data[key] = value;
+        fields.push([key, value]);
       }
     }
+    return { fields, files };
+  }
 
-    // Generate idempotency key from form data hash
-    const idempotencyKey = generateIdempotencyKey(data, files, form.action || window.location.href);
-
+  async function queueForm(form) {
+    const clientUid = ensureOfflineIdentity(form);
+    const formData = new FormData(form);
+    const { fields, files } = fieldsFromFormData(formData);
     const item = {
-      url: form.action || window.location.href,
-      method: form.method.toUpperCase() || 'POST',
-      data: data,
-      files: files,
-      csrfToken: data.csrfmiddlewaretoken || '',
-      formId: form.id || '',
+      url: form.action || location.href,
+      method: (form.method || 'POST').toUpperCase(),
+      fields,
+      files,
+      ownerId: ownerId(),
+      clientUid,
+      kind: form.dataset.offlineKind || 'form',
       timestamp: Date.now(),
       retries: 0,
-      idempotencyKey: idempotencyKey,
+      state: 'queued',
+      lastError: '',
     };
-
     const db = await openDB();
-    const tx = db.transaction(STORE, 'readwrite');
-    return new Promise((resolve, reject) => {
-      const req = tx.objectStore(STORE).add(item);
-      req.onsuccess = () => resolve(item);
-      req.onerror = () => reject(req.error);
-    });
+    item.id = await requestResult(
+      db.transaction(STORE, 'readwrite').objectStore(STORE).add(item),
+      null
+    );
+    if (item.id === null) throw new Error('The offline record could not be saved.');
+    await registerBackgroundSync();
+    return item;
   }
 
-  function fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        // result is data URL: data:<type>;base64,<data>
-        resolve(reader.result);
-      };
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(file);
-    });
-  }
-
-  function base64ToBlob(dataUrl) {
-    const arr = dataUrl.split(',');
-    const mime = arr[0].match(/:(.*?);/)[1];
-    const bstr = atob(arr[1]);
-    const u8 = new Uint8Array(bstr.length);
-    for (let i = 0; i < bstr.length; i++) {
-      u8[i] = bstr.charCodeAt(i);
-    }
-    return new Blob([u8], { type: mime });
-  }
-
-  function generateIdempotencyKey(data, files, url) {
-    const fileKeys = files.map(f => f.name + f.size).join('|');
-    const dataStr = JSON.stringify(data) + fileKeys + url;
-    let hash = 0;
-    for (let i = 0; i < dataStr.length; i++) {
-      const char = dataStr.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
-    }
-    return 'offline-' + Math.abs(hash).toString(36) + '-' + Date.now().toString(36);
-  }
-
-  // ── Sync pending submissions ──────────────────────────────────────────
-  async function syncPending() {
-    const items = await getAllPending();
-    if (items.length === 0) {
-      updateBanner();
-      return;
-    }
-
-    showSyncingBanner(items.length);
-
-    let synced = 0;
-    let failed = 0;
-    let authFailed = false;
-
-    for (const item of items) {
-      // Skip items that have exceeded max retries
-      if (item.retries >= MAX_RETRIES) {
-        failed++;
-        continue;
+  function rebuildFormData(item) {
+    const formData = new FormData();
+    const fields = item.fields || Object.entries(item.data || {});
+    for (const [key, value] of fields) formData.append(key, value);
+    for (const stored of item.files || []) {
+      if (stored.file instanceof Blob) {
+        formData.append(stored.key, stored.file, stored.name || stored.file.name || 'upload');
+      } else if (stored.base64) {
+        const [header, encoded] = stored.base64.split(',');
+        const mime = (header.match(/:(.*?);/) || [])[1] || stored.type || 'application/octet-stream';
+        const binary = atob(encoded);
+        const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+        formData.append(stored.key, new Blob([bytes], { type: mime }), stored.name || 'upload');
       }
+    }
+    return formData;
+  }
 
-      try {
-        const formData = new FormData();
-        for (const [key, value] of Object.entries(item.data)) {
-          formData.append(key, value);
-        }
+  async function parseResult(response) {
+    const type = response.headers.get('content-type') || '';
+    if (!type.includes('application/json')) {
+      return { success: false, error: response.redirected ? 'Please sign in again before syncing.' : 'The server returned an unexpected response.' };
+    }
+    const result = await response.json().catch(() => ({}));
+    return {
+      success: response.ok && result.success === true,
+      error: result.error || result.message || `Server error (${response.status})`,
+      payload: result,
+    };
+  }
 
-        // Reconstruct files from base64
-        if (item.files && item.files.length > 0) {
-          for (const file of item.files) {
-            if (file.base64) {
-              const blob = base64ToBlob(file.base64);
-              formData.append(file.key, blob, file.name);
-            } else if (file.skipped) {
-              // File was too large to store offline — skip it
-              console.warn(`File ${file.name} was too large to store offline and will not be synced.`);
-            }
-          }
-        }
+  async function rewriteDependentVisits(clientUid, serverId) {
+    if (!clientUid || !serverId) return;
+    const pendingPath = `/manage/visits/client/${clientUid}/record/`;
+    for (const item of await allItems()) {
+      if (new URL(item.url, location.origin).pathname === pendingPath) {
+        item.url = new URL(`/manage/visits/${serverId}/record/`, location.origin).href;
+        await putItem(item);
+      }
+    }
+  }
 
-        // Add idempotency header if supported
-        const headers = {};
-        if (item.idempotencyKey) {
-          headers['X-Idempotency-Key'] = item.idempotencyKey;
-        }
-
-        const response = await fetch(item.url, {
-          method: item.method,
-          body: formData,
-          credentials: 'same-origin',
-          redirect: 'manual',
-          headers: headers,
-        });
-
-        // Check for auth redirect: Django redirects to login page with 302
-        // An opaque redirect (status 0) could also be an auth redirect
-        // We need to verify it's not a login redirect by checking the location
-        if (response.status === 302 || response.type === 'opaqueredirect' || response.status === 0) {
-          // Try to detect auth redirect by checking if the redirect target is a login page
-          const redirectUrl = response.headers.get('Location') || '';
-          if (redirectUrl.includes('/login') || redirectUrl.includes('/accounts/login') || redirectUrl.includes('next=')) {
-            // Session expired — don't treat as success, don't remove from queue
-            authFailed = true;
+  async function directSync() {
+    if (directSyncPromise) return directSyncPromise;
+    directSyncPromise = (async () => {
+      let synced = 0;
+      let failed = 0;
+      for (const snapshot of currentItems(await allItems())) {
+        const item = (await allItems()).find((candidate) => candidate.id === snapshot.id) || snapshot;
+        if (item.state === 'failed') { failed += 1; continue; }
+        try {
+          const response = await fetch(item.url, {
+            method: item.method || 'POST',
+            body: rebuildFormData(item),
+            credentials: 'same-origin',
+            headers: { 'X-Offline-Sync': '1' },
+          });
+          const result = await parseResult(response);
+          if (result.success) {
+            if (item.kind === 'case') await rewriteDependentVisits(item.clientUid, result.payload?.data?.id);
+            await deleteItem(item.id);
+            synced += 1;
+          } else if (response.status === 401 || response.status === 403 || response.redirected || response.status >= 500) {
+            item.state = 'queued';
+            item.lastError = result.error;
             item.retries = (item.retries || 0) + 1;
-            await updatePendingItem(item);
-            failed++;
-            continue;
+            await putItem(item);
+            failed += 1;
+          } else {
+            item.state = 'failed';
+            item.lastError = result.error;
+            await putItem(item);
+            failed += 1;
           }
-          // Non-auth redirect — treat as success (form was processed)
-          await removePending(item.id);
-          synced++;
-        } else if (response.ok) {
-          // 200-299 — success
-          await removePending(item.id);
-          synced++;
-        } else if (response.status === 401 || response.status === 403) {
-          // Auth failure — session expired
-          authFailed = true;
+        } catch (error) {
+          item.state = 'queued';
+          item.lastError = error.message || 'No internet connection.';
           item.retries = (item.retries || 0) + 1;
-          await updatePendingItem(item);
-          failed++;
-        } else if (response.status >= 400 && response.status < 500) {
-          // Client error — keep for review but don't retry
-          failed++;
-        } else {
-          // Server error — increment retry and keep
-          item.retries = (item.retries || 0) + 1;
-          await updatePendingItem(item);
-          failed++;
+          await putItem(item);
+          failed += 1;
         }
-      } catch (err) {
-        // Network error — increment retry and keep
-        item.retries = (item.retries || 0) + 1;
-        await updatePendingItem(item);
-        failed++;
       }
-    }
-
-    if (authFailed) {
-      showAuthWarning();
-    }
-
-    // If any synced, reload to show updated data
-    if (synced > 0) {
-      showSyncResult(synced, failed);
-      setTimeout(() => window.location.reload(), 1500);
-    } else {
-      updateBanner();
-    }
+      announceResult(synced, failed);
+      return { synced, failed };
+    })().finally(() => { directSyncPromise = null; });
+    return directSyncPromise;
   }
 
-  async function updatePendingItem(item) {
-    const db = await openDB();
-    const tx = db.transaction(STORE, 'readwrite');
-    return new Promise((resolve) => {
-      const req = tx.objectStore(STORE).put(item);
-      req.onsuccess = () => resolve();
-      req.onerror = () => resolve();
-    });
+  async function registerBackgroundSync() {
+    if (!('serviceWorker' in navigator)) return;
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      if ('sync' in registration) await registration.sync.register('cmam-sync');
+    } catch (_) { /* Online/page events remain as a fallback. */ }
   }
 
-  function showAuthWarning() {
-    const banner = document.getElementById('offlineBanner');
-    if (!banner) return;
-    banner.style.background = '#ef4444';
-    banner.style.display = 'block';
-    banner.innerHTML = '<span>⚠ Session expired — some submissions could not sync. Please <a href="/login/" style="color:#fff;text-decoration:underline;">log in</a> again.</span>';
-    document.body.style.paddingTop = banner.offsetHeight + 'px';
+  async function messageWorker(type, extra) {
+    if (!('serviceWorker' in navigator)) return false;
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const worker = navigator.serviceWorker.controller || registration.active;
+      if (!worker) return false;
+      worker.postMessage(Object.assign({ type }, extra || {}));
+      return true;
+    } catch (_) { return false; }
   }
 
-  // ── UI: Offline banner ────────────────────────────────────────────────
+  function toast(message, error) {
+    const element = document.createElement('div');
+    element.textContent = message;
+    element.style.cssText = `position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:999999;max-width:90vw;padding:12px 20px;border-radius:8px;color:white;text-align:center;background:${error ? '#dc2626' : '#059669'};box-shadow:0 4px 12px #0003`;
+    document.body.appendChild(element);
+    setTimeout(() => element.remove(), 4500);
+  }
+
   function createBanner() {
     if (document.getElementById('offlineBanner')) return;
-
-    const banner = document.createElement('div');
+    const banner = document.createElement('button');
+    banner.type = 'button';
     banner.id = 'offlineBanner';
-    banner.style.cssText = `
-      position: fixed; top: 0; left: 0; right: 0; z-index: 99999;
-      padding: 8px 16px; text-align: center; font-size: 13px; font-weight: 500;
-      color: #fff; background: #f59e0b; transition: all 0.3s ease;
-      display: none; box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-    `;
-    document.body.insertBefore(banner, document.body.firstChild);
-  }
-
-  function showOfflineBanner(pendingCount) {
-    const banner = document.getElementById('offlineBanner');
-    if (!banner) return;
-    banner.style.display = 'block';
-    banner.style.background = '#f59e0b';
-    banner.innerHTML = `
-      <span>⚠ You are offline</span>
-      ${pendingCount > 0 ? `<span style="margin-left:8px;background:rgba(255,255,255,0.25);padding:2px 8px;border-radius:10px;">${pendingCount} pending</span>` : ''}
-    `;
-    // Push content down so banner doesn't overlap
-    document.body.style.paddingTop = banner.offsetHeight + 'px';
-  }
-
-  function showOnlineBanner() {
-    const banner = document.getElementById('offlineBanner');
-    if (!banner) return;
-    banner.style.background = '#10b981';
-    banner.style.display = 'block';
-    banner.innerHTML = '<span>✓ Back online — syncing...</span>';
-  }
-
-  function showSyncingBanner(count) {
-    const banner = document.getElementById('offlineBanner');
-    if (!banner) return;
-    banner.style.background = '#3b82f6';
-    banner.style.display = 'block';
-    banner.innerHTML = `<span>⟳ Syncing ${count} pending submission(s)...</span>`;
-  }
-
-  function showSyncResult(synced, failed) {
-    const banner = document.getElementById('offlineBanner');
-    if (!banner) return;
-    banner.style.background = '#10b981';
-    banner.style.display = 'block';
-    banner.innerHTML = `<span>✓ Synced ${synced} submission(s)${failed > 0 ? `, ${failed} failed` : ''}. Refreshing...</span>`;
-  }
-
-  function hideBanner() {
-    const banner = document.getElementById('offlineBanner');
-    if (!banner) return;
-    banner.style.display = 'none';
-    document.body.style.paddingTop = '0';
+    banner.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;z-index:99999;border:0;padding:8px 16px;color:white;text-align:center;background:#d97706;cursor:pointer';
+    banner.addEventListener('click', showQueue);
+    document.body.prepend(banner);
   }
 
   async function updateBanner() {
-    const pending = await getPendingCount();
-    window.cmamPendingCount = pending;
-    // Update header sync indicator if present
-    if (typeof updateSyncStatus === 'function') updateSyncStatus();
-
-    if (!navigator.onLine) {
-      showOfflineBanner(pending);
-    } else if (pending > 0) {
-      showOnlineBanner();
-      // Auto-sync
-      syncPending();
+    const items = currentItems(await allItems());
+    const failed = items.filter((item) => item.state === 'failed').length;
+    const banner = document.getElementById('offlineBanner');
+    if (!banner) return;
+    window.cmamPendingCount = items.length;
+    if (typeof window.updateSyncStatus === 'function') window.updateSyncStatus();
+    if (!navigator.onLine || items.length) {
+      banner.style.display = 'block';
+      banner.style.background = failed ? '#dc2626' : (!navigator.onLine ? '#d97706' : '#2563eb');
+      banner.textContent = `${navigator.onLine ? 'Online' : 'Offline'} · ${items.length} pending${failed ? ` · ${failed} need attention` : ''} (tap to review)`;
+      document.body.style.paddingTop = `${banner.offsetHeight}px`;
     } else {
-      hideBanner();
+      banner.style.display = 'none';
+      document.body.style.paddingTop = '';
     }
   }
 
-  // ── Form interception ─────────────────────────────────────────────────
-  function interceptForms() {
-    document.addEventListener('submit', async function (e) {
-      // If online, let the form submit normally
+  async function showQueue() {
+    document.getElementById('offlineQueueDialog')?.remove();
+    const items = currentItems(await allItems());
+    const dialog = document.createElement('div');
+    dialog.id = 'offlineQueueDialog';
+    dialog.style.cssText = 'position:fixed;inset:0;z-index:100000;background:#0007;display:flex;align-items:center;justify-content:center;padding:20px';
+    const panel = document.createElement('div');
+    panel.style.cssText = 'background:white;border-radius:12px;max-width:620px;width:100%;max-height:80vh;overflow:auto;padding:20px;color:#111827';
+    panel.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><strong>Offline submissions (${items.length})</strong><button type="button" data-close style="font-size:24px;border:0;background:none">×</button></div>`;
+    if (!items.length) panel.insertAdjacentHTML('beforeend', '<p>Nothing is waiting to sync.</p>');
+    for (const item of items) {
+      const row = document.createElement('div');
+      row.style.cssText = 'border-top:1px solid #e5e7eb;padding:12px 0';
+      row.innerHTML = `<div><strong>${item.kind === 'visit' ? 'Visit' : item.kind === 'case' ? 'Registration' : 'Form'}</strong> · ${new Date(item.timestamp).toLocaleString()}</div><div style="font-size:13px;color:${item.state === 'failed' ? '#b91c1c' : '#4b5563'}">${item.state || 'queued'}${item.lastError ? ` — ${item.lastError}` : ''}</div>`;
+      const queuedType = (item.fields || []).find(([key]) => key === 'malnutrition_type')?.[1] || 'SAM';
+      if (item.kind === 'case' && item.clientUid && queuedType !== 'IPC') {
+        const link = document.createElement('a');
+        link.href = `/manage/visits/client/${item.clientUid}/record/?type=${encodeURIComponent(queuedType)}`;
+        link.textContent = 'Record a visit';
+        link.style.cssText = 'margin-right:12px;color:#2563eb;font-size:13px';
+        row.appendChild(link);
+      }
+      if (item.state === 'failed') {
+        const retry = document.createElement('button');
+        retry.type = 'button'; retry.textContent = 'Retry'; retry.style.cssText = 'margin-right:12px;color:#2563eb;border:0;background:none';
+        retry.onclick = async () => { item.state = 'queued'; item.lastError = ''; await putItem(item); dialog.remove(); triggerSync(); };
+        row.appendChild(retry);
+      }
+      const remove = document.createElement('button');
+      remove.type = 'button'; remove.textContent = 'Remove'; remove.style.cssText = 'color:#b91c1c;border:0;background:none';
+      remove.onclick = async () => { if (confirm('Remove this unsynced submission?')) { await deleteItem(item.id); dialog.remove(); updateBanner(); } };
+      row.appendChild(remove);
+      panel.appendChild(row);
+    }
+    dialog.appendChild(panel);
+    dialog.addEventListener('click', (event) => { if (event.target === dialog || event.target.dataset.close !== undefined) dialog.remove(); });
+    document.body.appendChild(dialog);
+  }
+
+  function announceResult(synced, failed) {
+    if (synced) toast(`${synced} offline submission${synced === 1 ? '' : 's'} synced.${failed ? ` ${failed} still need attention.` : ''}`);
+    updateBanner();
+  }
+
+  async function triggerSync() {
+    if (!navigator.onLine) { updateBanner(); return; }
+    if (!await messageWorker('TRIGGER_SYNC', { ownerId: ownerId() })) await directSync();
+  }
+
+  function prepareForms() {
+    document.querySelectorAll('form[data-offline-capable="true"]').forEach(ensureOfflineIdentity);
+    document.addEventListener('submit', async (event) => {
+      const form = event.target.closest?.('form[data-offline-capable="true"]');
+      if (!form) return;
+      ensureOfflineIdentity(form);
       if (navigator.onLine) return;
-
-      // If the service worker already handled it, don't double-intercept
-      if (e.target.dataset.offlineQueued === 'true') return;
-
-      e.preventDefault();
-      e.stopPropagation();
-
-      const form = e.target;
-      const submitBtn = form.querySelector('[type="submit"]');
-      const originalText = submitBtn ? submitBtn.textContent : '';
-
+      event.preventDefault();
+      event.stopImmediatePropagation();
       try {
-        await queueSubmission(form);
-        if (submitBtn) {
-          submitBtn.textContent = '✓ Saved Offline';
-          submitBtn.style.background = '#10b981';
-          submitBtn.style.color = '#fff';
-          submitBtn.disabled = true;
+        const item = await queueForm(form);
+        toast('Saved safely on this device. It will sync automatically.');
+        if (item.kind === 'case') {
+          const type = new FormData(form).get('malnutrition_type') || 'SAM';
+          if (type !== 'IPC' && confirm('Registration saved offline. Record the first visit now?')) {
+            location.href = `/manage/visits/client/${item.clientUid}/record/?type=${encodeURIComponent(type)}`;
+          }
         }
-
-        // Show toast
-        showToast('Form saved offline. It will sync automatically when you reconnect.', 'success');
-
-        // Update banner
         updateBanner();
-      } catch (err) {
-        showToast('Failed to save form offline. Please try again.', 'error');
-        if (submitBtn) {
-          submitBtn.textContent = originalText;
-          submitBtn.disabled = false;
-        }
+      } catch (error) {
+        toast(error.message || 'Could not save this form offline.', true);
       }
-    }, true); // Use capture phase to intercept before SW
+    }, true);
   }
 
-  // ── Toast notification ────────────────────────────────────────────────
-  function showToast(message, type) {
-    const toast = document.createElement('div');
-    toast.style.cssText = `
-      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-      padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 500;
-      color: #fff; z-index: 999999; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      transition: opacity 0.3s ease; max-width: 90vw; text-align: center;
-      background: ${type === 'error' ? '#ef4444' : '#10b981'};
-    `;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      setTimeout(() => toast.remove(), 300);
-    }, 3500);
+  async function initialise() {
+    createBanner();
+    prepareForms();
+    const visitUrls = Array.from(document.querySelectorAll('a[href]'))
+      .map((link) => new URL(link.href, location.origin))
+      .filter((url) => url.origin === location.origin && /^\/manage\/visits\/\d+\/record\/$/.test(url.pathname))
+      .map((url) => url.pathname);
+    await messageWorker('SET_ACTIVE_USER', {
+      ownerId: ownerId(),
+      csrfToken: (document.cookie.match(/(?:^|; )csrftoken=([^;]*)/) || [])[1] || '',
+      urls: Array.from(new Set(['/dashboard/', '/manage/cases/', '/manage/cases/create/', '/manage/visits/', '/manage/ipc/', ...visitUrls])),
+    });
+    await updateBanner();
+    if (navigator.onLine) triggerSync();
   }
 
-  // ── Manual sync button ────────────────────────────────────────────────
-  function addSyncButton() {
-    // Check if already added
-    if (document.getElementById('manualSyncBtn')) return;
-
-    // Add to the sync indicator in the header
-    const syncIndicator = document.getElementById('syncIndicator');
-    if (!syncIndicator) return;
-
-    // Add click handler to existing sync indicator
-    syncIndicator.style.cursor = 'pointer';
-    syncIndicator.title = 'Click to sync pending submissions';
-    syncIndicator.addEventListener('click', async function () {
-      const pending = await getPendingCount();
-      if (pending === 0) {
-        showToast('No pending submissions to sync.', 'info');
-        return;
-      }
-      if (!navigator.onLine) {
-        showToast('You are offline. Sync will happen automatically when you reconnect.', 'info');
-        return;
-      }
-      syncPending();
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      if (event.data?.type === 'SYNC_COMPLETE') announceResult(event.data.synced || 0, event.data.failed || 0);
     });
   }
-
-  // ── Listen for SW messages ────────────────────────────────────────────
-  navigator.serviceWorker.addEventListener('message', (event) => {
-    if (event.data && event.data.type === 'SYNC_COMPLETE') {
-      if (event.data.synced > 0) {
-        showSyncResult(event.data.synced, event.data.failed);
-        setTimeout(() => window.location.reload(), 1500);
-      } else {
-        updateBanner();
-      }
-    }
-  });
-
-  // ── Online/offline event listeners ────────────────────────────────────
-  window.addEventListener('online', () => {
-    showOnlineBanner();
-    // Trigger sync via service worker
-    if (navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({ type: 'TRIGGER_SYNC' });
-    }
-    // Also sync directly (in case SW doesn't handle it)
-    setTimeout(() => syncPending(), 500);
-  });
-
-  window.addEventListener('offline', () => {
-    updateBanner();
-  });
-
-  // ── Initialize ────────────────────────────────────────────────────────
-  function init() {
-    createBanner();
-    interceptForms();
-    addSyncButton();
-    updateBanner();
-
-    // If online and there are pending items, auto-sync on page load
-    if (navigator.onLine) {
-      getPendingCount().then((count) => {
-        if (count > 0) {
-          syncPending();
-        }
-      });
-    }
-  }
-
-  // Run when DOM is ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+  window.addEventListener('online', triggerSync);
+  window.addEventListener('offline', updateBanner);
+  window.CMAMOffline = { sync: triggerSync, review: showQueue };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialise);
+  else initialise();
 })();

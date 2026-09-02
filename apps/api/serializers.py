@@ -221,7 +221,7 @@ class OpcVisitSerializer(serializers.ModelSerializer):
             'treatment_response', 'visit_outcome', 'outcome_notes',
             'action_needed', 'home_visit_needed', 'home_visit_date',
             'home_visit_notes', 'community_volunteer',
-            'weight_change', 'created_at', 'updated_at',
+            'client_uid', 'weight_change', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'weight_change', 'created_at', 'updated_at']
     
@@ -239,7 +239,7 @@ class OpcRegistrationListSerializer(serializers.ModelSerializer):
     class Meta:
         model = OpcRegistration
         fields = [
-            'id', 'registration_number', 'child_name', 'child_gender',
+            'id', 'client_uid', 'registration_number', 'child_name', 'child_gender',
             'date_of_birth', 'age_months', 'malnutrition_type', 'mam_type',
             'status', 'admission_date', 'facility_name', 'facility_id',
             'weight_kg', 'height_cm', 'muac_cm', 'oedema',
@@ -281,7 +281,7 @@ class OpcRegistrationDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = OpcRegistration
         fields = [
-            'id', 'registration_number', 'child_name', 'child_gender',
+            'id', 'client_uid', 'registration_number', 'child_name', 'child_gender',
             'date_of_birth', 'age_months', 'caregiver_name', 'caregiver_phone',
             'caregiver_relationship', 'total_household_members', 'address',
             'malnutrition_type', 'mam_type', 'admission_criteria',
@@ -374,6 +374,6 @@ class IpcCaseSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = IpcCase
-        fields = ['id', 'facility', 'facility_name', 'patient_name', 'patient_age',
+        fields = ['id', 'client_uid', 'facility', 'facility_name', 'patient_name', 'patient_age',
                   'gender', 'admission_date', 'weight', 'height', 'muac', 'status',
                   'created_at']

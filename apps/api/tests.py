@@ -6,6 +6,7 @@ from apps.facilities.models import Facility
 from apps.locations.models import Region, District
 from apps.cases.models import OpcRegistration, IpcCase
 from datetime import date
+from uuid import uuid4
 
 
 class BaseTestCase(APITestCase):
@@ -84,6 +85,191 @@ class IpcCaseSerializerTests(BaseTestCase):
         }, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(response.data['success'])
+
+
+class OfflineRegistrationIdempotencyTests(BaseTestCase):
+    def case_payload(self, **overrides):
+        payload = {
+            'client_uid': str(uuid4()),
+            'child_name': 'Offline Child',
+            'child_gender': 'Female',
+            'date_of_birth': '2022-01-15',
+            'age_months': 24,
+            'malnutrition_type': 'SAM',
+            'admission_date': '2024-01-15',
+            'weight_kg': 7.2,
+            'height_cm': 71,
+            'muac_cm': 10.8,
+            'caregiver_name': 'Ama Parent',
+            'facility_id': self.facility.id,
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_replaying_same_client_registration_creates_one_case(self):
+        payload = self.case_payload()
+        first = self.client.post('/api/v1/cases/create/', payload, format='json')
+        second = self.client.post('/api/v1/cases/create/', payload, format='json')
+
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        self.assertTrue(second.data['duplicate'])
+        self.assertEqual(OpcRegistration.objects.count(), 1)
+        self.assertEqual(first.data['data']['id'], second.data['data']['id'])
+
+    def test_matching_registration_with_new_client_uid_uses_existing_case(self):
+        first = self.client.post('/api/v1/cases/create/', self.case_payload(), format='json')
+        second = self.client.post('/api/v1/cases/create/', self.case_payload(client_uid=str(uuid4())), format='json')
+
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        self.assertTrue(second.data['duplicate'])
+        self.assertEqual(OpcRegistration.objects.count(), 1)
+
+    def test_visit_can_follow_pending_case_uid_and_is_idempotent(self):
+        case_uid = str(uuid4())
+        created = self.client.post('/api/v1/cases/create/', self.case_payload(client_uid=case_uid), format='json')
+        visit_uid = str(uuid4())
+        payload = {
+            'client_uid': visit_uid,
+            'visit_date': '2024-01-22',
+            'weight_kg': 7.4,
+            'muac_cm': 11.0,
+            'appetite': 'Pass',
+        }
+        url = f'/api/v1/cases/client/{case_uid}/visits/record/'
+        first = self.client.post(url, payload, format='json')
+        second = self.client.post(url, payload, format='json')
+
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        self.assertTrue(second.data['duplicate'])
+        self.assertEqual(OpcRegistration.objects.get().visits.count(), 1)
+
+    def test_invalid_client_uid_is_rejected_cleanly(self):
+        response = self.client.post('/api/v1/cases/create/', self.case_payload(client_uid='not-a-uuid'), format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(OpcRegistration.objects.count(), 0)
+
+    def test_ipc_replay_creates_only_one_ipc_case(self):
+        payload = {
+            'client_uid': str(uuid4()),
+            'patient_name': 'Inpatient Child',
+            'patient_age': 18,
+            'gender': 'Male',
+            'admission_date': '2024-04-01',
+            'weight': 6.1,
+            'height': 66,
+            'facility_id': self.facility.id,
+            'status': 'Admitted',
+        }
+        first = self.client.post('/api/v1/ipc/cases/', payload, format='json')
+        second = self.client.post('/api/v1/ipc/cases/', payload, format='json')
+
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        self.assertTrue(second.data['duplicate'])
+        self.assertEqual(IpcCase.objects.count(), 1)
+        self.assertEqual(OpcRegistration.objects.count(), 0)
+
+
+class WebOfflineReplayTests(BaseTestCase):
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.user)
+
+    def test_web_registration_replay_returns_json_and_creates_once(self):
+        payload = {
+            'client_uid': str(uuid4()),
+            'facility_id': self.facility.id,
+            'malnutrition_type': 'SAM',
+            'child_name': 'Browser Offline Child',
+            'child_gender': 'Male',
+            'date_of_birth': '2022-02-02',
+            'age_months': '24',
+            'admission_date': '2024-02-02',
+            'weight_kg': '7.0',
+            'height_cm': '70',
+            'muac_cm': '10.5',
+            'caregiver_name': 'Browser Parent',
+        }
+        first = self.client.post('/manage/cases/create/', payload, HTTP_X_OFFLINE_SYNC='1')
+        second = self.client.post('/manage/cases/create/', payload, HTTP_X_OFFLINE_SYNC='1')
+
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(first.json()['success'])
+        self.assertTrue(second.json()['duplicate'])
+        self.assertEqual(OpcRegistration.objects.count(), 1)
+
+    def test_web_ipc_registration_creates_ipc_not_opc(self):
+        payload = {
+            'client_uid': str(uuid4()),
+            'facility_id': self.facility.id,
+            'malnutrition_type': 'IPC',
+            'child_name': 'Browser Inpatient',
+            'child_gender': 'Female',
+            'admission_date': '2024-03-03',
+            'weight_kg': '6.0',
+            'height_cm': '65',
+            'muac_cm': '10.0',
+            'age_months': '18',
+        }
+        response = self.client.post('/manage/cases/create/', payload, HTTP_X_OFFLINE_SYNC='1')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.json()['success'])
+        self.assertEqual(IpcCase.objects.count(), 1)
+        self.assertEqual(OpcRegistration.objects.count(), 0)
+
+    def test_generic_offline_mam_visit_accepts_appetite_field(self):
+        case = OpcRegistration.objects.create(
+            facility=self.facility, child_name='MAM Offline Child', child_gender='Female',
+            date_of_birth=date(2022, 1, 1), age_months=24, caregiver_name='Parent',
+            malnutrition_type='MAM', admission_date=date(2024, 1, 1),
+            registration_date=date(2024, 1, 1), weight_kg=7, height_cm=70,
+            muac_cm=12, created_by=self.user,
+        )
+        response = self.client.post(f'/manage/visits/{case.id}/record/', {
+            'client_uid': str(uuid4()),
+            'visit_date': '2024-01-08',
+            'visit_type': 'Routine',
+            'weight_kg': '7.2',
+            'muac_cm': '12.1',
+            'appetite': 'Pass',
+            'visit_outcome': 'Continue',
+        }, HTTP_X_OFFLINE_SYNC='1')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.json()['success'])
+        self.assertEqual(case.visits.get().appetite, 'Pass')
+
+
+class OfflineTransferIdempotencyTests(BaseTestCase):
+    def test_replayed_ipc_transfer_creates_one_ipc_case(self):
+        ipc_facility = Facility.objects.create(
+            name='Test IPC', code='TIPC', type='IPC', district=self.district,
+        )
+        case = OpcRegistration.objects.create(
+            facility=self.facility, child_name='Transfer Child', child_gender='Male',
+            date_of_birth=date(2022, 1, 1), age_months=24, caregiver_name='Parent',
+            malnutrition_type='SAM', admission_date=date(2024, 1, 1),
+            registration_date=date(2024, 1, 1), weight_kg=7, height_cm=70,
+            muac_cm=10, created_by=self.user,
+        )
+        payload = {
+            'client_uid': str(uuid4()),
+            'transfer_type': 'ipc',
+            'target_facility_id': ipc_facility.id,
+            'reason': 'Complications',
+        }
+        url = f'/api/v1/cases/{case.id}/transfer/'
+        first = self.client.post(url, payload, format='json')
+        second = self.client.post(url, payload, format='json')
+
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        self.assertEqual(IpcCase.objects.count(), 1)
 
 
 class CaseDeleteApiTests(BaseTestCase):

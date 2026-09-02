@@ -29,6 +29,7 @@ urlpatterns = [
 
     # Offline page (served by SW when network fails)
     path('offline/', TemplateView.as_view(template_name='offline.html'), name='offline'),
+    path('offline/visit/', TemplateView.as_view(template_name='offline_visit.html'), name='offline_visit'),
 
     # App URLs
     path('', include('apps.users.urls')),
