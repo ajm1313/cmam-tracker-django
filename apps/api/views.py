@@ -1436,8 +1436,8 @@ def dashboard_stats(request):
     total_discharged = qs.filter(status='Discharged').count()
     defaulters = qs.filter(status='Defaulted').count()
     total_all = qs.count()
-    other_mam = qs.filter(malnutrition_type='MAM', mam_type='Other MAM').count()
     high_risk_mam = qs.filter(malnutrition_type='MAM', mam_type='High-risk MAM').count()
+    other_mam = qs.filter(malnutrition_type='MAM').exclude(mam_type='High-risk MAM').count()
 
     facility_count = accessible.count() if accessible is not None else Facility.objects.count()
 
@@ -1511,13 +1511,21 @@ def dashboard_analytics(request):
         month_end = date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)
         month_label = month_start.strftime('%b %Y')
         
-        sam_count = qs.filter(malnutrition_type='SAM', registration_date__gte=month_start, registration_date__lt=month_end).count()
-        mam_count = qs.filter(malnutrition_type='MAM', registration_date__gte=month_start, registration_date__lt=month_end).count()
+        counts = qs.filter(
+            registration_date__gte=month_start,
+            registration_date__lt=month_end,
+        ).aggregate(
+            sam=Count('id', filter=Q(malnutrition_type='SAM')),
+            mam=Count('id', filter=Q(malnutrition_type='MAM')),
+            high_risk_mam=Count('id', filter=Q(malnutrition_type='MAM', mam_type='High-risk MAM')),
+        )
         
         months_data.append({
             'month': month_label,
-            'sam': sam_count,
-            'mam': mam_count
+            'sam': counts['sam'],
+            'mam': counts['mam'],  # Kept for older mobile app versions.
+            'high_risk_mam': counts['high_risk_mam'],
+            'other_mam': counts['mam'] - counts['high_risk_mam'],
         })
     
     # Case outcomes distribution (filtered by location)

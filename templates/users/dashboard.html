@@ -485,7 +485,7 @@ async function loadDashboardCharts() {
                 labels: data.monthly_trends.map(m => m.month),
                 datasets: [
                     {
-                        label: 'SAM Cases',
+                        label: 'SAM',
                         data: data.monthly_trends.map(m => m.sam),
                         borderColor: '#ef4444',
                         backgroundColor: 'rgba(239, 68, 68, 0.08)',
@@ -498,13 +498,26 @@ async function loadDashboardCharts() {
                         fill: true
                     },
                     {
-                        label: 'MAM Cases',
-                        data: data.monthly_trends.map(m => m.mam),
+                        label: 'High-Risk MAM',
+                        data: data.monthly_trends.map(m => m.high_risk_mam),
                         borderColor: '#f59e0b',
                         backgroundColor: 'rgba(245, 158, 11, 0.08)',
                         borderWidth: 2.5,
                         pointRadius: 4,
                         pointBackgroundColor: '#f59e0b',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        tension: 0.35,
+                        fill: true
+                    },
+                    {
+                        label: 'Other MAM',
+                        data: data.monthly_trends.map(m => m.other_mam),
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                        borderWidth: 2.5,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#3b82f6',
                         pointBorderColor: '#fff',
                         pointBorderWidth: 2,
                         tension: 0.35,

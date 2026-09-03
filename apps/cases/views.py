@@ -206,11 +206,11 @@ def case_manage(request):
     }
 
     # --- Monthly admissions trend (last 6 months) ---
-    from collections import OrderedDict
     today = date.today()
     trend_months = []
     trend_sam = []
-    trend_mam = []
+    trend_high_risk_mam = []
+    trend_other_mam = []
     for i in range(5, -1, -1):
         m = today.month - i
         y = today.year
@@ -218,11 +218,18 @@ def case_manage(request):
             m += 12
             y -= 1
         label = date(y, m, 1).strftime('%b %Y')
-        sam_count = opc_qs.filter(malnutrition_type='SAM', registration_date__year=y, registration_date__month=m).count()
-        mam_count = opc_qs.filter(malnutrition_type='MAM', registration_date__year=y, registration_date__month=m).count()
+        counts = opc_qs.filter(
+            registration_date__year=y,
+            registration_date__month=m,
+        ).aggregate(
+            sam=Count('id', filter=Q(malnutrition_type='SAM')),
+            mam=Count('id', filter=Q(malnutrition_type='MAM')),
+            high_risk_mam=Count('id', filter=Q(malnutrition_type='MAM', mam_type='High-risk MAM')),
+        )
         trend_months.append(label)
-        trend_sam.append(sam_count)
-        trend_mam.append(mam_count)
+        trend_sam.append(counts['sam'])
+        trend_high_risk_mam.append(counts['high_risk_mam'])
+        trend_other_mam.append(counts['mam'] - counts['high_risk_mam'])
 
     stats = {
         'total_sam_cases': total_sam,
@@ -254,7 +261,8 @@ def case_manage(request):
         'outcomes': json.dumps(outcomes),
         'trend_months': json.dumps(trend_months),
         'trend_sam': json.dumps(trend_sam),
-        'trend_mam': json.dumps(trend_mam),
+        'trend_high_risk_mam': json.dumps(trend_high_risk_mam),
+        'trend_other_mam': json.dumps(trend_other_mam),
         'all_facilities': dropdown_facilities,
         'selected_facility': facility_id,
         'access_level': location_context['access_level'],

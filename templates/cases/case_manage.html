@@ -107,7 +107,7 @@
 
     <!-- Admission Trends -->
     <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-      <h2 class="text-base font-bold text-gray-800 mb-4">Monthly Admissions (Last 6 Months)</h2>
+      <h2 class="text-base font-bold text-gray-800 mb-4">Monthly Case Trends</h2>
       <canvas id="trendChart" height="100"></canvas>
     </div>
 
@@ -158,7 +158,8 @@
 (function () {
   const trendMonths = {{ trend_months|safe }};
   const trendSAM   = {{ trend_sam|safe }};
-  const trendMAM   = {{ trend_mam|safe }};
+  const trendHighRiskMAM = {{ trend_high_risk_mam|safe }};
+  const trendOtherMAM = {{ trend_other_mam|safe }};
   const outcomes   = {{ outcomes|safe }};
 
   // Admission trends bar chart
@@ -168,7 +169,8 @@
       labels: trendMonths,
       datasets: [
         { label: 'SAM', data: trendSAM, backgroundColor: 'rgba(239,68,68,0.75)', borderRadius: 6 },
-        { label: 'MAM', data: trendMAM, backgroundColor: 'rgba(245,158,11,0.75)', borderRadius: 6 },
+        { label: 'High-Risk MAM', data: trendHighRiskMAM, backgroundColor: 'rgba(245,158,11,0.75)', borderRadius: 6 },
+        { label: 'Other MAM', data: trendOtherMAM, backgroundColor: 'rgba(59,130,246,0.75)', borderRadius: 6 },
       ],
     },
     options: {

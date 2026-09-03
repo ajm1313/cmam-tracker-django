@@ -371,6 +371,43 @@ class DashboardStatsTests(BaseTestCase):
         self.assertIn('total_sam', data)
         self.assertIn('active_sam', data)
 
+    def test_monthly_trends_split_mam_subtypes_and_keep_legacy_mam(self):
+        today = date.today()
+        case_types = [
+            ('SAM Child', 'SAM', None),
+            ('High Risk Child', 'MAM', 'High-risk MAM'),
+            ('Other MAM Child', 'MAM', 'Other MAM'),
+            ('Legacy MAM Child', 'MAM', None),
+        ]
+        for child_name, malnutrition_type, mam_type in case_types:
+            OpcRegistration.objects.create(
+                facility=self.facility, child_name=child_name, child_gender='Female',
+                date_of_birth=date(2023, 1, 1), age_months=24,
+                malnutrition_type=malnutrition_type, mam_type=mam_type, status='Active',
+                admission_date=today, registration_date=today,
+                weight_kg=7, height_cm=70, muac_cm=12, caregiver_name='Parent',
+                created_by=self.user,
+            )
+
+        response = self.client.get('/api/v1/dashboard/analytics/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        current_month = response.data['data']['monthly_trends'][-1]
+        self.assertEqual(current_month['sam'], 1)
+        self.assertEqual(current_month['mam'], 3)
+        self.assertEqual(current_month['high_risk_mam'], 1)
+        self.assertEqual(current_month['other_mam'], 2)
+
+    def test_web_trend_charts_show_all_three_categories(self):
+        self.client.force_login(self.user)
+
+        for url in ('/dashboard/', '/manage/cases/dashboard/'):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertContains(response, 'SAM')
+            self.assertContains(response, 'High-Risk MAM')
+            self.assertContains(response, 'Other MAM')
+
     def test_dashboard_stats_period_filter(self):
         OpcRegistration.objects.create(
             facility=self.facility, child_name='Jan Case',
