@@ -29,7 +29,9 @@
                 </div>
             </div>
             <div class="bg-gray-50 px-5 py-3">
+                {% if can_create_region %}
                 <a href="{% url 'locations:region_create' %}" class="text-sm font-medium text-blue-600 hover:text-blue-500">+ Add Region</a>
+                {% endif %}
             </div>
         </div>
 
@@ -53,7 +55,9 @@
                 </div>
             </div>
             <div class="bg-gray-50 px-5 py-3">
+                {% if can_create_district %}
                 <a href="{% url 'locations:district_create' %}" class="text-sm font-medium text-green-600 hover:text-green-500">+ Add District</a>
+                {% endif %}
             </div>
         </div>
 
@@ -76,7 +80,9 @@
                 </div>
             </div>
             <div class="bg-gray-50 px-5 py-3">
+                {% if can_create_sub_district %}
                 <a href="{% url 'locations:sub_district_create' %}" class="text-sm font-medium text-purple-600 hover:text-purple-500">+ Add Sub District</a>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -102,7 +108,9 @@
                         </div>
                     </div>
                     <div class="flex space-x-2">
+                        {% if can_create_district %}
                         <a href="{% url 'locations:district_create' %}?region={{ region.id }}" class="text-green-600 hover:text-green-900 text-sm font-medium">+ District</a>
+                        {% endif %}
                         <a href="{% url 'locations:region_edit' region.pk %}" class="text-indigo-600 hover:text-indigo-900 text-sm font-medium">Edit</a>
                         <a href="{% url 'locations:region_delete' region.pk %}" class="text-red-600 hover:text-red-900 text-sm font-medium">Delete</a>
                     </div>
@@ -121,7 +129,9 @@
                                 <span class="ml-2 text-sm text-gray-500">({{ district.sub_districts.count }} Sub District(s))</span>
                             </div>
                             <div class="flex space-x-2">
+                                {% if can_create_sub_district %}
                                 <a href="{% url 'locations:sub_district_create' %}?district={{ district.id }}" class="text-purple-600 hover:text-purple-900 text-xs font-medium">+ Sub District</a>
+                                {% endif %}
                                 <a href="{% url 'locations:district_edit' district.pk %}" class="text-indigo-600 hover:text-indigo-900 text-xs font-medium">Edit</a>
                                 <a href="{% url 'locations:district_delete' district.pk %}" class="text-red-600 hover:text-red-900 text-xs font-medium">Delete</a>
                             </div>
@@ -149,9 +159,11 @@
             {% empty %}
             <div class="p-8 text-center text-gray-500">
                 <p class="mb-4">No regions found. Start by creating a region.</p>
+                {% if can_create_region %}
                 <a href="{% url 'locations:region_create' %}" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
                     Create First Region
                 </a>
+                {% endif %}
             </div>
             {% endfor %}
         </div>

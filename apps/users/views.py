@@ -2,6 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate, login, logout
 from django.contrib import messages
+from django.db import transaction
 from django.db.models import Count, Q, F, Max, Sum
 from django.http import HttpResponseForbidden, JsonResponse
 from datetime import datetime, timedelta
@@ -11,6 +12,7 @@ from apps.facilities.models import Facility
 from apps.locations.models import Region, District, SubDistrict
 from apps.cases.models import OpcRegistration, OpcVisit
 from .validators import validate_weekly_sam_report, validate_monthly_sam_report, get_validation_summary
+from .access import resolve_user_role_assignment
 
 
 def login_view(request):
@@ -333,54 +335,48 @@ def user_create(request):
         elif User.objects.filter(email=email, is_active=True).exists():
             messages.error(request, f'User with email "{email}" already exists')
         else:
-            role = get_object_or_404(Role, pk=role_id)
-            
-            # Validate location requirements based on role level
-            if role.level >= 2 and not region_id:
-                messages.error(request, 'Region is required for this role')
-            elif role.level >= 3 and not district_id:
-                messages.error(request, 'District is required for this role')
-            elif role.level >= 4 and not sub_district_id:
-                messages.error(request, 'Sub District is required for this role')
-            elif role.level >= 5 and not facility_id:
-                messages.error(request, 'Facility is required for this role')
+            role = Role.objects.filter(pk=role_id).first()
+            if not role:
+                messages.error(request, 'Invalid role selected')
             else:
+                try:
+                    assignment = resolve_user_role_assignment(request.user, role, request.POST)
+                except (ValueError, PermissionError) as error:
+                    messages.error(request, str(error))
+                    assignment = None
+
+            if role and assignment:
                 # Reactivate deactivated user or create new one
-                existing = User.objects.filter(email=email, is_active=False).first()
-                if existing:
-                    existing.name = name
-                    existing.phone = phone
-                    existing.is_active = True
-                    existing.set_password(password)
-                    existing.save()
-                    user = existing
-                else:
-                    user = User.objects.create_user(
-                        email=email,
-                        password=password,
-                        name=name,
-                        phone=phone
+                with transaction.atomic():
+                    existing = User.objects.filter(email=email, is_active=False).first()
+                    if existing:
+                        existing.name = name
+                        existing.phone = phone
+                        existing.is_active = True
+                        existing.set_password(password)
+                        existing.save()
+                        user = existing
+                    else:
+                        user = User.objects.create_user(
+                            email=email,
+                            password=password,
+                            name=name,
+                            phone=phone
+                        )
+
+                    user.user_roles.filter(is_active=True).update(is_active=False)
+                    UserRole.objects.create(
+                        user=user, role=role, is_active=True, **assignment
                     )
-                
-                # Create user role with location assignment
-                UserRole.objects.create(
-                    user=user,
-                    role=role,
-                    region_id=region_id if role.level >= 2 else None,
-                    district_id=district_id if role.level >= 3 else None,
-                    sub_district_id=sub_district_id if role.level >= 4 else None,
-                    facility_id=facility_id if role.level >= 5 else None,
-                    is_active=True
-                )
                 
                 messages.success(request, f'User "{name}" created successfully')
                 return redirect('users:user_list')
     
-    roles = Role.objects.all().order_by('level')
-    regions = Region.objects.filter(is_active=True)
-    districts = District.objects.filter(is_active=True).select_related('region')
-    sub_districts = SubDistrict.objects.filter(is_active=True).select_related('district')
-    facilities = Facility.objects.filter(is_active=True).select_related('district', 'sub_district')
+    roles = request.user.get_assignable_roles().order_by('level')
+    regions = request.user.get_accessible_regions()
+    districts = request.user.get_accessible_districts().select_related('region')
+    sub_districts = request.user.get_accessible_sub_districts().select_related('district')
+    facilities = request.user.get_accessible_facilities().select_related('district', 'sub_district')
     
     context = {
         'roles': roles,

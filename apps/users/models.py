@@ -207,6 +207,91 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
             return False
         return True
 
+    def get_management_level(self):
+        """Return the user's highest active hierarchy level (lower is broader)."""
+        if self.is_superuser or self.is_staff:
+            return 0
+        return self.get_active_roles().aggregate(
+            level=models.Min('role__level')
+        )['level']
+
+    def can_create_location_level(self, location_level):
+        """A user may create locations only below their own hierarchy level."""
+        level = self.get_management_level()
+        return level is not None and level < location_level
+
+    def get_assignable_roles(self):
+        """Return roles at the creator's level or below."""
+        level = self.get_management_level()
+        if level is None or not self.can_create_users_and_facilities():
+            return Role.objects.none()
+        return Role.objects.filter(level__gte=level)
+
+    def get_accessible_regions(self):
+        """Return active regions inside the user's assigned hierarchy."""
+        from apps.locations.models import Region
+
+        level = self.get_management_level()
+        if level is not None and level <= 1:
+            return Region.objects.filter(is_active=True)
+
+        region_ids = set()
+        for assignment in self.get_active_roles().select_related(
+            'district__region', 'sub_district__district__region',
+            'facility__district__region'
+        ):
+            if assignment.region_id:
+                region_ids.add(assignment.region_id)
+            elif assignment.district_id:
+                region_ids.add(assignment.district.region_id)
+            elif assignment.sub_district_id:
+                region_ids.add(assignment.sub_district.district.region_id)
+            elif assignment.facility_id:
+                region_ids.add(assignment.facility.district.region_id)
+        return Region.objects.filter(id__in=region_ids, is_active=True)
+
+    def get_accessible_districts(self):
+        """Return active districts inside the user's assigned hierarchy."""
+        from apps.locations.models import District
+
+        level = self.get_management_level()
+        if level is not None and level <= 1:
+            return District.objects.filter(is_active=True)
+
+        query = models.Q(pk__in=[])
+        for assignment in self.get_active_roles().select_related(
+            'sub_district__district', 'facility__district'
+        ):
+            if assignment.role.level <= 2 and assignment.region_id:
+                query |= models.Q(region_id=assignment.region_id)
+            elif assignment.district_id:
+                query |= models.Q(id=assignment.district_id)
+            elif assignment.sub_district_id:
+                query |= models.Q(id=assignment.sub_district.district_id)
+            elif assignment.facility_id:
+                query |= models.Q(id=assignment.facility.district_id)
+        return District.objects.filter(query, is_active=True).distinct()
+
+    def get_accessible_sub_districts(self):
+        """Return active sub-districts inside the user's assigned hierarchy."""
+        from apps.locations.models import SubDistrict
+
+        level = self.get_management_level()
+        if level is not None and level <= 1:
+            return SubDistrict.objects.filter(is_active=True)
+
+        query = models.Q(pk__in=[])
+        for assignment in self.get_active_roles().select_related('facility'):
+            if assignment.role.level <= 2 and assignment.region_id:
+                query |= models.Q(district__region_id=assignment.region_id)
+            elif assignment.role.level <= 3 and assignment.district_id:
+                query |= models.Q(district_id=assignment.district_id)
+            elif assignment.sub_district_id:
+                query |= models.Q(id=assignment.sub_district_id)
+            elif assignment.facility_id and assignment.facility.sub_district_id:
+                query |= models.Q(id=assignment.facility.sub_district_id)
+        return SubDistrict.objects.filter(query, is_active=True).distinct()
+
     def can_import_export(self):
         """Import/Export is restricted to district level and above"""
         if self.is_superuser or self.is_staff:

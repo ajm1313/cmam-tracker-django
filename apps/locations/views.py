@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponseForbidden
-from django.db.models import Count
+from django.db.models import Count, Prefetch, Q
 from .models import Region, District, SubDistrict
 
 
@@ -13,22 +13,39 @@ def _admin_only(request):
     return HttpResponseForbidden('You do not have permission to manage locations.')
 
 
+def _creation_allowed(request, location_level):
+    if request.user.can_create_location_level(location_level):
+        return None
+    return HttpResponseForbidden('You cannot create a location at or above your assigned level.')
+
+
 # ==================== REGION VIEWS ====================
 
 @login_required
 def location_dashboard(request):
     """Location management dashboard"""
-    regions = Region.objects.filter(is_active=True).prefetch_related('districts__sub_districts')
+    region_scope = request.user.get_accessible_regions()
+    district_scope = request.user.get_accessible_districts()
+    sub_district_scope = request.user.get_accessible_sub_districts()
+    regions = region_scope.prefetch_related(Prefetch(
+        'districts',
+        queryset=district_scope.prefetch_related(Prefetch(
+            'sub_districts', queryset=sub_district_scope
+        )),
+    ))
     
     stats = {
-        'total_regions': Region.objects.filter(is_active=True).count(),
-        'total_districts': District.objects.filter(is_active=True).count(),
-        'total_sub_districts': SubDistrict.objects.filter(is_active=True).count(),
+        'total_regions': region_scope.count(),
+        'total_districts': district_scope.count(),
+        'total_sub_districts': sub_district_scope.count(),
     }
     
     context = {
         'regions': regions,
         'stats': stats,
+        'can_create_region': request.user.can_create_location_level(2),
+        'can_create_district': request.user.can_create_location_level(3),
+        'can_create_sub_district': request.user.can_create_location_level(4),
     }
     return render(request, 'locations/location_dashboard.html', context)
 
@@ -36,15 +53,22 @@ def location_dashboard(request):
 @login_required
 def region_list(request):
     """List all regions"""
-    regions = Region.objects.filter(is_active=True).annotate(district_count=Count('districts'))
-    context = {'regions': regions}
+    districts = request.user.get_accessible_districts()
+    regions = request.user.get_accessible_regions().annotate(
+        district_count=Count('districts', filter=Q(districts__in=districts))
+    )
+    context = {
+        'regions': regions,
+        'can_create_region': request.user.can_create_location_level(2),
+        'can_create_district': request.user.can_create_location_level(3),
+    }
     return render(request, 'locations/region_list.html', context)
 
 
 @login_required
 def region_create(request):
     """Create new region"""
-    denied = _admin_only(request)
+    denied = _creation_allowed(request, 2)
     if denied:
         return denied
     if request.method == 'POST':
@@ -122,16 +146,18 @@ def region_delete(request, pk):
 def district_list(request):
     """List all districts"""
     region_id = request.GET.get('region')
-    districts = District.objects.filter(is_active=True).select_related('region')
+    districts = request.user.get_accessible_districts().select_related('region')
     
     if region_id:
         districts = districts.filter(region_id=region_id)
     
-    regions = Region.objects.filter(is_active=True)
+    regions = request.user.get_accessible_regions()
     context = {
         'districts': districts,
         'regions': regions,
         'selected_region': region_id,
+        'can_create_district': request.user.can_create_location_level(3),
+        'can_create_sub_district': request.user.can_create_location_level(4),
     }
     return render(request, 'locations/district_list.html', context)
 
@@ -139,9 +165,10 @@ def district_list(request):
 @login_required
 def district_create(request):
     """Create new district"""
-    denied = _admin_only(request)
+    denied = _creation_allowed(request, 3)
     if denied:
         return denied
+    regions = request.user.get_accessible_regions()
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
         code = request.POST.get('code', '').strip().upper()
@@ -149,21 +176,22 @@ def district_create(request):
         
         if not name or not code or not region_id:
             messages.error(request, 'Name, Code, and Region are required')
-            regions = Region.objects.filter(is_active=True)
             return render(request, 'locations/district_form.html', {'regions': regions, 'action': 'Create'})
         
         if District.objects.filter(code=code).exists():
             messages.error(request, f'District with code "{code}" already exists')
-            regions = Region.objects.filter(is_active=True)
             return render(request, 'locations/district_form.html', {'regions': regions, 'action': 'Create'})
         
-        region = get_object_or_404(Region, pk=region_id)
+        region = regions.filter(pk=region_id).first()
+        if not region:
+            return HttpResponseForbidden('The selected region is outside your assigned area.')
         District.objects.create(name=name, code=code, region=region)
         messages.success(request, f'District "{name}" created successfully')
         return redirect('locations:location_dashboard')
     
-    regions = Region.objects.filter(is_active=True)
     preselected_region = request.GET.get('region')
+    if preselected_region and not regions.filter(pk=preselected_region).exists():
+        preselected_region = None
     context = {
         'regions': regions,
         'action': 'Create',
@@ -236,15 +264,15 @@ def sub_district_list(request):
     district_id = request.GET.get('district')
     region_id = request.GET.get('region')
     
-    sub_districts = SubDistrict.objects.filter(is_active=True).select_related('district__region')
+    sub_districts = request.user.get_accessible_sub_districts().select_related('district__region')
     
     if district_id:
         sub_districts = sub_districts.filter(district_id=district_id)
     elif region_id:
         sub_districts = sub_districts.filter(district__region_id=region_id)
     
-    regions = Region.objects.filter(is_active=True)
-    districts = District.objects.filter(is_active=True)
+    regions = request.user.get_accessible_regions()
+    districts = request.user.get_accessible_districts()
     
     if region_id:
         districts = districts.filter(region_id=region_id)
@@ -255,6 +283,7 @@ def sub_district_list(request):
         'districts': districts,
         'selected_region': region_id,
         'selected_district': district_id,
+        'can_create_sub_district': request.user.can_create_location_level(4),
     }
     return render(request, 'locations/sub_district_list.html', context)
 
@@ -262,9 +291,11 @@ def sub_district_list(request):
 @login_required
 def sub_district_create(request):
     """Create new sub district"""
-    denied = _admin_only(request)
+    denied = _creation_allowed(request, 4)
     if denied:
         return denied
+    regions = request.user.get_accessible_regions()
+    districts = request.user.get_accessible_districts()
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
         code = request.POST.get('code', '').strip().upper()
@@ -272,28 +303,24 @@ def sub_district_create(request):
         
         if not name or not code or not district_id:
             messages.error(request, 'Name, Code, and District are required')
-            regions = Region.objects.filter(is_active=True)
-            districts = District.objects.filter(is_active=True)
             return render(request, 'locations/sub_district_form.html', {'regions': regions, 'districts': districts, 'action': 'Create'})
         
         if SubDistrict.objects.filter(code=code).exists():
             messages.error(request, f'Sub District with code "{code}" already exists')
-            regions = Region.objects.filter(is_active=True)
-            districts = District.objects.filter(is_active=True)
             return render(request, 'locations/sub_district_form.html', {'regions': regions, 'districts': districts, 'action': 'Create'})
         
-        district = get_object_or_404(District, pk=district_id)
+        district = districts.filter(pk=district_id).first()
+        if not district:
+            return HttpResponseForbidden('The selected district is outside your assigned area.')
         SubDistrict.objects.create(name=name, code=code, district=district)
         messages.success(request, f'Sub District "{name}" created successfully')
         return redirect('locations:location_dashboard')
     
-    regions = Region.objects.filter(is_active=True)
-    districts = District.objects.filter(is_active=True)
     preselected_district = request.GET.get('district')
     preselected_region = None
     
     if preselected_district:
-        district = District.objects.filter(pk=preselected_district).first()
+        district = districts.filter(pk=preselected_district).first()
         if district:
             preselected_region = str(district.region_id)
     
@@ -368,12 +395,16 @@ def sub_district_delete(request, pk):
 @login_required
 def api_districts_by_region(request, region_id):
     """API endpoint to get districts by region for cascading dropdown"""
-    districts = District.objects.filter(region_id=region_id, is_active=True).values('id', 'name', 'code')
+    districts = request.user.get_accessible_districts().filter(
+        region_id=region_id
+    ).values('id', 'name', 'code')
     return JsonResponse({'districts': list(districts)})
 
 
 @login_required
 def api_sub_districts_by_district(request, district_id):
     """API endpoint to get sub districts by district for cascading dropdown"""
-    sub_districts = SubDistrict.objects.filter(district_id=district_id, is_active=True).values('id', 'name', 'code')
+    sub_districts = request.user.get_accessible_sub_districts().filter(
+        district_id=district_id
+    ).values('id', 'name', 'code')
     return JsonResponse({'sub_districts': list(sub_districts)})

@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, date
 from uuid import UUID
 
 from apps.users.models import User, UserRole, Role, RoleFeaturePermission, SystemFeature
+from apps.users.access import resolve_user_role_assignment
 from apps.facilities.models import Facility
 from apps.inventory.models import (
     InventoryItem, StockLevel, StockMovement, StockRequest, StockRequestItem, ItemBatch
@@ -2231,85 +2232,39 @@ def user_create_api(request):
     if missing:
         return Response({'success': False, 'message': f'Missing: {", ".join(missing)}'}, status=status.HTTP_400_BAD_REQUEST)
 
-    existing = User.objects.filter(email=data['email']).first()
+    role = Role.objects.filter(pk=data.get('role_id')).first()
+    if not role:
+        return Response({'success': False, 'message': 'Invalid role selected'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        assignment = resolve_user_role_assignment(request.user, role, data)
+    except ValueError as error:
+        return Response({'success': False, 'message': str(error)}, status=status.HTTP_400_BAD_REQUEST)
+    except PermissionError as error:
+        return Response({'success': False, 'message': str(error)}, status=status.HTTP_403_FORBIDDEN)
+
+    email = data['email'].strip().lower()
+    existing = User.objects.filter(email=email).first()
     if existing and existing.is_active:
         return Response({'success': False, 'message': 'Email already exists'}, status=status.HTTP_400_BAD_REQUEST)
 
-    if existing:
-        # Reactivate a previously deactivated user with the same email
-        existing.name = data['name']
-        existing.phone = data.get('phone', '')
-        existing.is_active = True
-        existing.set_password(data['password'])
-        existing.save()
-        user = existing
-    else:
-        user = User.objects.create_user(
-            email=data['email'], password=data['password'],
-            name=data['name'], phone=data.get('phone', ''),
-            is_active=data.get('is_active', True),
-        )
+    with transaction.atomic():
+        if existing:
+            existing.name = data['name']
+            existing.phone = data.get('phone', '')
+            existing.is_active = True
+            existing.set_password(data['password'])
+            existing.save()
+            user = existing
+        else:
+            user = User.objects.create_user(
+                email=email, password=data['password'],
+                name=data['name'], phone=data.get('phone', ''),
+                is_active=data.get('is_active', True),
+            )
 
-    # Assign role
-    role_id = data.get('role_id')
-    try:
-        role = Role.objects.get(pk=role_id)
-    except Role.DoesNotExist:
-        return Response({'success': False, 'message': 'Invalid role selected'}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Resolve location hierarchy: auto-populate parent IDs from child
-    region_id = data.get('region_id')
-    district_id = data.get('district_id')
-    sub_district_id = data.get('sub_district_id')
-    facility_id = data.get('facility_id')
-
-    if facility_id:
-        try:
-            fac = Facility.objects.get(pk=facility_id)
-            sub_district_id = sub_district_id or fac.sub_district_id
-            district_id = district_id or fac.district_id
-            region_id = region_id or (fac.district.region_id if fac.district_id else None)
-        except Facility.DoesNotExist:
-            pass
-    if sub_district_id:
-        try:
-            sd = SubDistrict.objects.get(pk=sub_district_id)
-            district_id = district_id or sd.district_id
-            region_id = region_id or (sd.district.region_id if sd.district_id else None)
-        except SubDistrict.DoesNotExist:
-            pass
-    if district_id:
-        try:
-            d = District.objects.get(pk=district_id)
-            region_id = region_id or d.region_id
-        except District.DoesNotExist:
-            pass
-
-    # Filter by role level (matching webapp logic)
-    region_id = region_id if role.level >= 2 else None
-    district_id = district_id if role.level >= 3 else None
-    sub_district_id = sub_district_id if role.level >= 4 else None
-    facility_id = facility_id if role.level >= 5 else None
-
-    # Validate required location based on role level
-    if role.level >= 2 and not region_id:
-        return Response({'success': False, 'message': 'Region is required for this role'}, status=status.HTTP_400_BAD_REQUEST)
-    if role.level >= 3 and not district_id:
-        return Response({'success': False, 'message': 'District is required for this role'}, status=status.HTTP_400_BAD_REQUEST)
-    if role.level >= 4 and not sub_district_id:
-        return Response({'success': False, 'message': 'Sub-District is required for this role'}, status=status.HTTP_400_BAD_REQUEST)
-    if role.level >= 5 and not facility_id:
-        return Response({'success': False, 'message': 'Facility is required for this role'}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Deactivate any old roles (for reactivated users)
-    user.user_roles.filter(is_active=True).update(is_active=False)
-
-    UserRole.objects.create(
-        user=user, role=role,
-        region_id=region_id, district_id=district_id,
-        sub_district_id=sub_district_id, facility_id=facility_id,
-        is_active=True,
-    )
+        user.user_roles.filter(is_active=True).update(is_active=False)
+        UserRole.objects.create(user=user, role=role, is_active=True, **assignment)
 
     return Response({'success': True, 'message': 'User created', 'data': {'id': user.id, 'email': user.email, 'name': user.name}},
                     status=status.HTTP_201_CREATED)
@@ -2469,14 +2424,27 @@ def facility_create_api(request):
     if Facility.objects.filter(code=code).exists():
         return Response({'success': False, 'message': 'Facility code already exists'}, status=status.HTTP_400_BAD_REQUEST)
 
-    try:
-        district = District.objects.get(pk=data['district_id'])
-    except District.DoesNotExist:
-        return Response({'success': False, 'message': 'District not found'}, status=status.HTTP_404_NOT_FOUND)
+    district = request.user.get_accessible_districts().filter(pk=data['district_id']).first()
+    if not district:
+        return Response(
+            {'success': False, 'message': 'The selected district is outside your assigned area'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    sub_district = None
+    if data.get('sub_district_id'):
+        sub_district = request.user.get_accessible_sub_districts().filter(
+            pk=data['sub_district_id'], district=district
+        ).first()
+        if not sub_district:
+            return Response(
+                {'success': False, 'message': 'The selected sub-district does not belong to that district'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
     f = Facility.objects.create(
         name=data['name'], code=code, type=facility_type, district=district,
-        sub_district_id=data.get('sub_district_id'),
+        sub_district=sub_district,
         address=data.get('address', ''), contact_person=data.get('contact_person', ''),
         phone=phone or '', email=email or '',
         capacity=data.get('capacity'), latitude=data.get('latitude'), longitude=data.get('longitude'),
@@ -2576,15 +2544,19 @@ def facility_hard_delete_api(request, facility_id):
 def regions_api(request):
     """List / create regions"""
     if request.method == 'GET':
-        regions = Region.objects.filter(is_active=True).annotate(
-            district_count=Count('districts')
+        accessible_districts = request.user.get_accessible_districts()
+        regions = request.user.get_accessible_regions().annotate(
+            district_count=Count('districts', filter=Q(districts__in=accessible_districts))
         )
         data = [{'id': r.id, 'name': r.name, 'code': r.code, 'district_count': r.district_count} for r in regions]
-        return Response({'success': True, 'data': data})
+        return Response({
+            'success': True, 'data': data,
+            'can_create': request.user.can_create_location_level(2),
+        })
 
     # POST
-    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
-        return Response({'success': False, 'message': 'Admin permission required'}, status=status.HTTP_403_FORBIDDEN)
+    if not request.user.can_create_location_level(2):
+        return Response({'success': False, 'message': 'Only National-level administrators can create regions'}, status=status.HTTP_403_FORBIDDEN)
     name = request.data.get('name', '').strip()
     code = request.data.get('code', '').strip()
     if not name or not code:
@@ -2620,21 +2592,29 @@ def region_detail_api(request, pk):
 def districts_api(request):
     """List / create districts"""
     if request.method == 'GET':
-        qs = District.objects.filter(is_active=True).select_related('region')
+        qs = request.user.get_accessible_districts().select_related('region')
         region_id = request.query_params.get('region_id')
         if region_id:
             qs = qs.filter(region_id=region_id)
         data = [{'id': d.id, 'name': d.name, 'code': d.code, 'region_id': d.region_id, 'region_name': d.region.name} for d in qs]
-        return Response({'success': True, 'data': data})
+        return Response({
+            'success': True, 'data': data,
+            'can_create': request.user.can_create_location_level(3),
+        })
 
     name = request.data.get('name', '').strip()
     code = request.data.get('code', '').strip()
     region_id = request.data.get('region_id')
-    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
-        return Response({'success': False, 'message': 'Admin permission required'}, status=status.HTTP_403_FORBIDDEN)
+    if not request.user.can_create_location_level(3):
+        return Response({'success': False, 'message': 'You cannot create districts at your assigned level'}, status=status.HTTP_403_FORBIDDEN)
     if not name or not code or not region_id:
         return Response({'success': False, 'message': 'Name, code, region_id required'}, status=status.HTTP_400_BAD_REQUEST)
-    d = District.objects.create(name=name, code=code, region_id=region_id)
+    if District.objects.filter(code=code).exists():
+        return Response({'success': False, 'message': 'Code already exists'}, status=status.HTTP_400_BAD_REQUEST)
+    region = request.user.get_accessible_regions().filter(pk=region_id).first()
+    if not region:
+        return Response({'success': False, 'message': 'The selected region is outside your assigned area'}, status=status.HTTP_403_FORBIDDEN)
+    d = District.objects.create(name=name, code=code, region=region)
     return Response({'success': True, 'data': {'id': d.id, 'name': d.name, 'code': d.code}}, status=status.HTTP_201_CREATED)
 
 
@@ -2665,7 +2645,7 @@ def district_detail_api(request, pk):
 def sub_districts_api(request):
     """List / create sub-districts"""
     if request.method == 'GET':
-        qs = SubDistrict.objects.filter(is_active=True).select_related('district__region')
+        qs = request.user.get_accessible_sub_districts().select_related('district__region')
         district_id = request.query_params.get('district_id')
         region_id = request.query_params.get('region_id')
         if district_id:
@@ -2675,16 +2655,24 @@ def sub_districts_api(request):
         data = [{'id': s.id, 'name': s.name, 'code': s.code,
                  'district_id': s.district_id, 'district_name': s.district.name,
                  'region_name': s.district.region.name} for s in qs]
-        return Response({'success': True, 'data': data})
+        return Response({
+            'success': True, 'data': data,
+            'can_create': request.user.can_create_location_level(4),
+        })
 
     name = request.data.get('name', '').strip()
     code = request.data.get('code', '').strip()
     district_id = request.data.get('district_id')
-    if not (request.user.is_superuser or request.user.can_create_users_and_facilities()):
-        return Response({'success': False, 'message': 'Admin permission required'}, status=status.HTTP_403_FORBIDDEN)
+    if not request.user.can_create_location_level(4):
+        return Response({'success': False, 'message': 'You cannot create sub-districts at your assigned level'}, status=status.HTTP_403_FORBIDDEN)
     if not name or not code or not district_id:
         return Response({'success': False, 'message': 'Name, code, district_id required'}, status=status.HTTP_400_BAD_REQUEST)
-    s = SubDistrict.objects.create(name=name, code=code, district_id=district_id)
+    if SubDistrict.objects.filter(code=code).exists():
+        return Response({'success': False, 'message': 'Code already exists'}, status=status.HTTP_400_BAD_REQUEST)
+    district = request.user.get_accessible_districts().filter(pk=district_id).first()
+    if not district:
+        return Response({'success': False, 'message': 'The selected district is outside your assigned area'}, status=status.HTTP_403_FORBIDDEN)
+    s = SubDistrict.objects.create(name=name, code=code, district=district)
     return Response({'success': True, 'data': {'id': s.id, 'name': s.name, 'code': s.code}}, status=status.HTTP_201_CREATED)
 
 
@@ -3847,8 +3835,8 @@ def monthly_report_api(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def roles_api(request):
-    """List all roles"""
-    roles = Role.objects.all().order_by('level')
+    """List roles the current administrator may assign."""
+    roles = request.user.get_assignable_roles().order_by('level')
     data = [{'id': r.id, 'name': r.name, 'display_name': r.display_name, 'level': r.level, 'description': r.description} for r in roles]
     return Response({'success': True, 'data': data})
 

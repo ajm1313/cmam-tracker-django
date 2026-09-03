@@ -1,9 +1,9 @@
 from django.test import TestCase
 from rest_framework.test import APIClient, APITestCase
 from rest_framework import status
-from apps.users.models import User
+from apps.users.models import User, Role, UserRole
 from apps.facilities.models import Facility
-from apps.locations.models import Region, District
+from apps.locations.models import Region, District, SubDistrict
 from apps.cases.models import OpcRegistration, IpcCase
 from datetime import date
 from uuid import uuid4
@@ -124,6 +124,185 @@ class DashboardUserScopingTests(BaseTestCase):
         self.client.force_login(viewers[1])
         response = self.client.get('/dashboard/', {'district': other_district.id})
         self.assertEqual(response.context['stats']['total_users'], 0)
+
+
+class CreationDataSegregationTests(APITestCase):
+    def setUp(self):
+        self.region = Region.objects.create(name='Northern', code='NR')
+        self.district = District.objects.create(name='Own District', code='OWN', region=self.region)
+        self.sub_district = SubDistrict.objects.create(
+            name='Own Sub-District', code='OWNSD', district=self.district,
+        )
+        self.facility = Facility.objects.create(
+            name='Own Facility', code='OWNF', type='OPC',
+            district=self.district, sub_district=self.sub_district,
+        )
+        self.other_region = Region.objects.create(name='Southern', code='SR')
+        self.other_district = District.objects.create(
+            name='Other District', code='OTHER', region=self.other_region,
+        )
+        self.other_sub_district = SubDistrict.objects.create(
+            name='Other Sub-District', code='OTHSD', district=self.other_district,
+        )
+        self.other_facility = Facility.objects.create(
+            name='Other Facility', code='OTHF', type='OPC',
+            district=self.other_district, sub_district=self.other_sub_district,
+        )
+
+        self.regional_role = Role.objects.create(name='scope-regional', display_name='Regional', level=2)
+        self.district_role = Role.objects.create(name='scope-district', display_name='District', level=3)
+        self.sub_district_role = Role.objects.create(name='scope-sub-district', display_name='Sub-District', level=4)
+        self.facility_role = Role.objects.create(name='scope-facility', display_name='Facility', level=5)
+
+        self.regional_user = User.objects.create_user(
+            email='regional-scope@example.com', password='testpass123', name='Regional Manager',
+        )
+        UserRole.objects.create(
+            user=self.regional_user, role=self.regional_role, region=self.region,
+        )
+        self.district_user = User.objects.create_user(
+            email='district-scope@example.com', password='testpass123', name='District Manager',
+        )
+        UserRole.objects.create(
+            user=self.district_user, role=self.district_role,
+            region=self.region, district=self.district,
+        )
+        self.client = APIClient()
+
+    def test_location_lists_and_creation_permissions_are_scoped(self):
+        self.client.force_authenticate(self.district_user)
+
+        regions = self.client.get('/api/v1/locations/regions/').data
+        districts = self.client.get('/api/v1/locations/districts/').data
+        sub_districts = self.client.get('/api/v1/locations/sub-districts/').data
+
+        self.assertEqual([item['id'] for item in regions['data']], [self.region.id])
+        self.assertEqual([item['id'] for item in districts['data']], [self.district.id])
+        self.assertEqual([item['id'] for item in sub_districts['data']], [self.sub_district.id])
+        self.assertFalse(regions['can_create'])
+        self.assertFalse(districts['can_create'])
+        self.assertTrue(sub_districts['can_create'])
+
+        forbidden = self.client.post('/api/v1/locations/sub-districts/', {
+            'name': 'Forged Sub-District', 'code': 'FORGEDSD',
+            'district_id': self.other_district.id,
+        })
+        self.assertEqual(forbidden.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(SubDistrict.objects.filter(code='FORGEDSD').exists())
+
+        allowed = self.client.post('/api/v1/locations/sub-districts/', {
+            'name': 'New Own Sub-District', 'code': 'NEWOWNSD',
+            'district_id': self.district.id,
+        })
+        self.assertEqual(allowed.status_code, status.HTTP_201_CREATED)
+
+    def test_regional_user_can_only_create_districts_in_own_region(self):
+        self.client.force_authenticate(self.regional_user)
+
+        forbidden_region = self.client.post('/api/v1/locations/regions/', {
+            'name': 'New Region', 'code': 'NEWREG',
+        })
+        self.assertEqual(forbidden_region.status_code, status.HTTP_403_FORBIDDEN)
+
+        forbidden_district = self.client.post('/api/v1/locations/districts/', {
+            'name': 'Forged District', 'code': 'FORGEDD',
+            'region_id': self.other_region.id,
+        })
+        self.assertEqual(forbidden_district.status_code, status.HTTP_403_FORBIDDEN)
+
+        allowed = self.client.post('/api/v1/locations/districts/', {
+            'name': 'New Own District', 'code': 'NEWOWND',
+            'region_id': self.region.id,
+        })
+        self.assertEqual(allowed.status_code, status.HTTP_201_CREATED)
+
+    def test_facility_creation_rejects_other_district(self):
+        self.client.force_authenticate(self.district_user)
+
+        forbidden = self.client.post('/api/v1/facilities/create/', {
+            'name': 'Forged Facility', 'code': 'FORGEDF', 'type': 'OPC',
+            'district_id': self.other_district.id,
+            'sub_district_id': self.other_sub_district.id,
+        })
+        self.assertEqual(forbidden.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(Facility.objects.filter(code='FORGEDF').exists())
+
+        allowed = self.client.post('/api/v1/facilities/create/', {
+            'name': 'New Own Facility', 'code': 'NEWOWNF', 'type': 'OPC',
+            'district_id': self.district.id,
+            'sub_district_id': self.sub_district.id,
+        })
+        self.assertEqual(allowed.status_code, status.HTTP_201_CREATED)
+
+    def test_user_creation_rejects_higher_roles_and_other_districts(self):
+        self.client.force_authenticate(self.district_user)
+
+        roles = self.client.get('/api/v1/roles/').data['data']
+        self.assertEqual({item['level'] for item in roles}, {3, 4, 5})
+
+        forbidden_role = self.client.post('/api/v1/users/create/', {
+            'name': 'Regional Escalation', 'email': 'escalation@example.com',
+            'password': 'testpass123', 'role_id': self.regional_role.id,
+            'region_id': self.region.id,
+        })
+        self.assertEqual(forbidden_role.status_code, status.HTTP_403_FORBIDDEN)
+
+        forbidden_location = self.client.post('/api/v1/users/create/', {
+            'name': 'Outside User', 'email': 'outside@example.com',
+            'password': 'testpass123', 'role_id': self.district_role.id,
+            'district_id': self.other_district.id,
+        })
+        self.assertEqual(forbidden_location.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(User.objects.filter(email='outside@example.com').exists())
+
+        allowed = self.client.post('/api/v1/users/create/', {
+            'name': 'Own User', 'email': 'own-user@example.com',
+            'password': 'testpass123', 'role_id': self.district_role.id,
+            'district_id': self.district.id,
+        })
+        self.assertEqual(allowed.status_code, status.HTTP_201_CREATED)
+        assignment = UserRole.objects.get(user__email='own-user@example.com', is_active=True)
+        self.assertEqual(assignment.region_id, self.region.id)
+        self.assertEqual(assignment.district_id, self.district.id)
+
+    def test_web_creation_forms_only_offer_and_accept_own_scope(self):
+        self.client.force_login(self.district_user)
+
+        location_dashboard = self.client.get('/locations/')
+        self.assertEqual(location_dashboard.status_code, status.HTTP_200_OK)
+        self.assertEqual(location_dashboard.context['stats'], {
+            'total_regions': 1, 'total_districts': 1, 'total_sub_districts': 1,
+        })
+
+        user_form = self.client.get('/manage/users/create/')
+        self.assertQuerySetEqual(user_form.context['regions'], [self.region])
+        self.assertQuerySetEqual(user_form.context['districts'], [self.district])
+        self.assertNotIn(self.regional_role, list(user_form.context['roles']))
+
+        facility_form = self.client.get('/manage/facilities/create/')
+        self.assertQuerySetEqual(facility_form.context['districts'], [self.district])
+
+        response = self.client.post('/manage/facilities/create/', {
+            'name': 'Forged Web Facility', 'code': 'FORGEDWEB', 'type': 'OPC',
+            'district_id': self.other_district.id,
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(Facility.objects.filter(code='FORGEDWEB').exists())
+
+        response = self.client.post('/manage/users/create/', {
+            'name': 'Forged Web User', 'email': 'forged-web@example.com',
+            'password': 'testpass123', 'password_confirm': 'testpass123',
+            'role': self.district_role.id, 'district_id': self.other_district.id,
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(User.objects.filter(email='forged-web@example.com').exists())
+
+        response = self.client.post('/locations/sub-districts/create/', {
+            'name': 'Forged Web Sub-District', 'code': 'FORGEDWEBSD',
+            'district_id': self.other_district.id,
+        })
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(SubDistrict.objects.filter(code='FORGEDWEBSD').exists())
 
 
 class IpcCaseSerializerTests(BaseTestCase):

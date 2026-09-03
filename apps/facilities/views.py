@@ -28,6 +28,10 @@ def facility_create(request):
     if not request.user.can_create_users_and_facilities():
         messages.error(request, 'You do not have permission to create facilities')
         return redirect('facilities:facility_list')
+
+    regions = request.user.get_accessible_regions()
+    districts = request.user.get_accessible_districts().select_related('region')
+    sub_districts = request.user.get_accessible_sub_districts().select_related('district')
     
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
@@ -48,34 +52,35 @@ def facility_create(request):
         elif Facility.objects.filter(code=code).exists():
             messages.error(request, f'Facility with code "{code}" already exists')
         else:
-            district = get_object_or_404(District, pk=district_id)
-            sub_district = None
-            if sub_district_id:
-                sub_district = get_object_or_404(SubDistrict, pk=sub_district_id)
-            
-            Facility.objects.create(
-                name=name,
-                code=code,
-                type=facility_type,
-                district=district,
-                sub_district=sub_district,
-                contact_person=contact_person,
-                phone=phone,
-                email=request.POST.get('email', '').strip() or None,
-                address=address,
-                population=int(population) if population else None,
-                sam_prevalence=sam_prevalence if sam_prevalence else None,
-                opc_day=opc_day,
-                latitude=request.POST.get('latitude') or None,
-                longitude=request.POST.get('longitude') or None,
-                capacity=request.POST.get('capacity') or None,
-            )
-            messages.success(request, f'Facility "{name}" created successfully')
-            return redirect('facilities:facility_list')
-    
-    regions = Region.objects.filter(is_active=True)
-    districts = District.objects.filter(is_active=True).select_related('region')
-    sub_districts = SubDistrict.objects.filter(is_active=True).select_related('district')
+            district = districts.filter(pk=district_id).first()
+            sub_district = sub_districts.filter(
+                pk=sub_district_id, district_id=district_id
+            ).first() if sub_district_id else None
+
+            if not district:
+                messages.error(request, 'The selected district is outside your assigned area')
+            elif sub_district_id and not sub_district:
+                messages.error(request, 'The selected sub-district does not belong to that district')
+            else:
+                Facility.objects.create(
+                    name=name,
+                    code=code,
+                    type=facility_type,
+                    district=district,
+                    sub_district=sub_district,
+                    contact_person=contact_person,
+                    phone=phone,
+                    email=request.POST.get('email', '').strip() or None,
+                    address=address,
+                    population=int(population) if population else None,
+                    sam_prevalence=sam_prevalence if sam_prevalence else None,
+                    opc_day=opc_day,
+                    latitude=request.POST.get('latitude') or None,
+                    longitude=request.POST.get('longitude') or None,
+                    capacity=request.POST.get('capacity') or None,
+                )
+                messages.success(request, f'Facility "{name}" created successfully')
+                return redirect('facilities:facility_list')
     context = {
         'regions': regions,
         'districts': districts,
