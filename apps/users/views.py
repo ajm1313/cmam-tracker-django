@@ -111,37 +111,36 @@ def dashboard(request):
     date_filter = Q(registration_date__year=year, registration_date__month=month)
     
     # Get statistics scoped to filtered facilities and selected month/year
-    # Count users with active roles matching the cascading filter level
+    # Start from the requester's hierarchy so an empty or forged filter cannot
+    # expose user counts from another location.
+    scoped_users = user.get_accessible_users()
     if selected_facility:
-        # Facility level: users assigned to this facility
-        scoped_user_count = User.objects.filter(
-            is_active=True,
+        scoped_users = scoped_users.filter(
             user_roles__is_active=True,
             user_roles__facility_id=selected_facility,
-        ).distinct().count()
+        )
     elif selected_sub_district:
-        # Sub-district level: users at this sub-district OR at any facility within it
-        scoped_user_count = User.objects.filter(
-            is_active=True,
+        scoped_users = scoped_users.filter(
+            Q(user_roles__sub_district_id=selected_sub_district) |
+            Q(user_roles__facility__sub_district_id=selected_sub_district),
             user_roles__is_active=True,
-            user_roles__sub_district_id=selected_sub_district,
-        ).distinct().count()
+        )
     elif selected_district:
-        # District level: users at this district, its sub-districts, or facilities within it
-        scoped_user_count = User.objects.filter(
-            is_active=True,
+        scoped_users = scoped_users.filter(
+            Q(user_roles__district_id=selected_district) |
+            Q(user_roles__sub_district__district_id=selected_district) |
+            Q(user_roles__facility__district_id=selected_district),
             user_roles__is_active=True,
-            user_roles__district_id=selected_district,
-        ).distinct().count()
+        )
     elif selected_region:
-        # Region level: users at this region, its districts, sub-districts, or facilities
-        scoped_user_count = User.objects.filter(
-            is_active=True,
+        scoped_users = scoped_users.filter(
+            Q(user_roles__region_id=selected_region) |
+            Q(user_roles__district__region_id=selected_region) |
+            Q(user_roles__sub_district__district__region_id=selected_region) |
+            Q(user_roles__facility__district__region_id=selected_region),
             user_roles__is_active=True,
-            user_roles__region_id=selected_region,
-        ).distinct().count()
-    else:
-        scoped_user_count = User.objects.filter(is_active=True).count()
+        )
+    scoped_user_count = scoped_users.distinct().count()
 
     stats = {
         'total_users': scoped_user_count,

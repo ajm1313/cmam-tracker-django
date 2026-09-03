@@ -71,6 +71,61 @@ class ProductionErrorRegressionTests(BaseTestCase):
         self.assertIsNone(response.data['data']['profile_picture'])
 
 
+class DashboardUserScopingTests(BaseTestCase):
+    def test_region_district_and_sub_district_counts_stay_in_scope(self):
+        from apps.locations.models import SubDistrict
+        from apps.users.models import Role, UserRole
+
+        sub_district = SubDistrict.objects.create(
+            name='Test Sub-District', code='TSD', district=self.district,
+        )
+        self.facility.sub_district = sub_district
+        self.facility.save(update_fields=['sub_district'])
+
+        other_region = Region.objects.create(name='Other Region', code='OR')
+        other_district = District.objects.create(
+            name='Other District', code='OD', region=other_region,
+        )
+        other_sub_district = SubDistrict.objects.create(
+            name='Other Sub-District', code='OSD', district=other_district,
+        )
+        other_facility = Facility.objects.create(
+            name='Other Facility', code='OF001', type='OPC',
+            district=other_district, sub_district=other_sub_district,
+        )
+
+        regional_role = Role.objects.create(name='test-regional', display_name='Regional', level=2)
+        district_role = Role.objects.create(name='test-district', display_name='District', level=3)
+        sub_district_role = Role.objects.create(name='test-sub-district', display_name='Sub-District', level=4)
+        facility_role = Role.objects.create(name='test-facility', display_name='Facility', level=5)
+
+        assignments = [
+            ('regional@example.com', regional_role, self.region, None, None, None),
+            ('district@example.com', district_role, self.region, self.district, None, None),
+            ('sub-district@example.com', sub_district_role, self.region, self.district, sub_district, None),
+            ('facility@example.com', facility_role, self.region, self.district, sub_district, self.facility),
+            ('other-facility@example.com', facility_role, other_region, other_district, other_sub_district, other_facility),
+        ]
+        viewers = []
+        for email, role, region, district, assigned_sub_district, facility in assignments:
+            assigned_user = User.objects.create_user(email=email, password='testpass123', name=email)
+            UserRole.objects.create(
+                user=assigned_user, role=role, region=region, district=district,
+                sub_district=assigned_sub_district, facility=facility,
+            )
+            viewers.append(assigned_user)
+
+        for viewer, expected_count in zip(viewers[:3], (4, 3, 2)):
+            self.client.force_login(viewer)
+            response = self.client.get('/dashboard/')
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual(response.context['stats']['total_users'], expected_count)
+
+        self.client.force_login(viewers[1])
+        response = self.client.get('/dashboard/', {'district': other_district.id})
+        self.assertEqual(response.context['stats']['total_users'], 0)
+
+
 class IpcCaseSerializerTests(BaseTestCase):
     """Tests for IPC case API endpoints using the serializer."""
 
