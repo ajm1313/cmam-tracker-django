@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class UserSerializer(serializers.ModelSerializer):
+    profile_picture = serializers.ImageField(source='avatar', read_only=True, allow_null=True)
     role = serializers.SerializerMethodField()
     location = serializers.SerializerMethodField()
     is_facility_level_only = serializers.SerializerMethodField()

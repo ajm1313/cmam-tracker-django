@@ -43,6 +43,34 @@ class HealthCheckTests(BaseTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
 
+class ProductionErrorRegressionTests(BaseTestCase):
+    def test_case_visit_annotations_can_populate_model_properties(self):
+        from django.db.models import Count, Max
+
+        case = OpcRegistration.objects.create(
+            facility=self.facility, child_name='Reminder Child', child_gender='Female',
+            date_of_birth=date(2023, 1, 1), age_months=24, caregiver_name='Parent',
+            malnutrition_type='SAM', admission_date=date(2024, 1, 1),
+            registration_date=date(2024, 1, 1), weight_kg=7, height_cm=70,
+            muac_cm=10, created_by=self.user,
+        )
+
+        annotated = OpcRegistration.objects.annotate(
+            visit_count=Count('visits'),
+            last_visit_date=Max('visits__visit_date'),
+        ).get(pk=case.pk)
+
+        self.assertEqual(annotated.visit_count, 0)
+        self.assertIsNone(annotated.last_visit_date)
+
+    def test_profile_returns_avatar_under_mobile_profile_picture_name(self):
+        response = self.client.get('/api/v1/profile/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('profile_picture', response.data['data'])
+        self.assertIsNone(response.data['data']['profile_picture'])
+
+
 class IpcCaseSerializerTests(BaseTestCase):
     """Tests for IPC case API endpoints using the serializer."""
 

@@ -369,12 +369,24 @@ class OpcRegistration(TimeStampedModel):
 
     @property
     def visit_count(self):
+        if hasattr(self, '_visit_count'):
+            return self._visit_count
         return self.visits.count()
+
+    @visit_count.setter
+    def visit_count(self, value):
+        self._visit_count = value
 
     @property
     def last_visit_date(self):
+        if hasattr(self, '_last_visit_date'):
+            return self._last_visit_date
         latest = self.get_latest_visit()
         return latest.visit_date if latest else None
+
+    @last_visit_date.setter
+    def last_visit_date(self, value):
+        self._last_visit_date = value
 
     def get_latest_visit(self):
         return self.visits.order_by('-visit_date').first()
