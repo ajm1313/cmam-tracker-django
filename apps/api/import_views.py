@@ -333,16 +333,14 @@ def _execute_case_import(rows, user, default_facility_id=None, default_malnutrit
 
             # Use savepoint so a single row failure doesn't abort the whole import
             with transaction.atomic():
+                facility.__class__.objects.select_for_update().get(pk=facility.pk)
                 # Duplicate check: skip if same case already exists at this facility
                 adm_date = parse_date(row_data.get('admission_date')) or reg_date
                 caregiver = str(row_data.get('caregiver_name') or row_data.get('guardian_name') or 'Unknown').strip()
-                existing = OpcRegistration.objects.filter(
-                    facility=facility,
-                    child_name__iexact=str(row_data.get('child_name') or '').strip(),
-                    date_of_birth=dob,
-                    admission_date=adm_date,
-                    caregiver_name__iexact=caregiver,
-                ).first()
+                existing = OpcRegistration.find_duplicate(
+                    facility.id, str(row_data.get('child_name') or '').strip(), dob,
+                    adm_date, caregiver, str(row_data.get('child_gender') or 'Male').strip(),
+                )
                 if existing:
                     skipped += 1
                     errors.append(f"Row {idx}: Duplicate case — already registered as {existing.registration_number}")

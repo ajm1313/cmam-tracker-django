@@ -384,9 +384,12 @@ def case_create(request):
             dob = request.POST.get('date_of_birth')
             caregiver_name = (request.POST.get('caregiver_name') or '').strip()
             deduplication_key = registration_deduplication_key(
-                facility.id, child_name, dob, admission_date, caregiver_name,
+                facility.id, child_name, dob, admission_date,
             )
-            existing = OpcRegistration.objects.filter(deduplication_key=deduplication_key).first()
+            existing = OpcRegistration.find_duplicate(
+                facility.id, child_name, dob, admission_date,
+                caregiver_name, request.POST.get('child_gender') or request.POST.get('gender'),
+            )
             if existing:
                 if client_uid and not existing.client_uid:
                     OpcRegistration.objects.filter(pk=existing.pk, client_uid__isnull=True).update(client_uid=client_uid)
@@ -401,7 +404,10 @@ def case_create(request):
             try:
                 with transaction.atomic():
                     facility.__class__.objects.select_for_update().get(pk=facility.pk)
-                    existing = OpcRegistration.objects.filter(deduplication_key=deduplication_key).first()
+                    existing = OpcRegistration.find_duplicate(
+                        facility.id, child_name, dob, admission_date,
+                        caregiver_name, request.POST.get('child_gender') or request.POST.get('gender'),
+                    )
                     if existing:
                         if client_uid and not existing.client_uid:
                             existing.client_uid = client_uid

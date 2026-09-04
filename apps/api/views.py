@@ -823,9 +823,12 @@ def case_create_api(request):
     caregiver_name = (data.get('caregiver_name') or '').strip()
     deduplication_key = registration_deduplication_key(
         facility.id, data.get('child_name'), data.get('date_of_birth'),
-        admission_date, caregiver_name,
+        admission_date,
     )
-    existing = OpcRegistration.objects.filter(deduplication_key=deduplication_key).first()
+    existing = OpcRegistration.find_duplicate(
+        facility.id, data.get('child_name'), data.get('date_of_birth'), admission_date,
+        caregiver_name, data.get('child_gender'),
+    )
     if existing:
         if client_uid and not existing.client_uid:
             OpcRegistration.objects.filter(pk=existing.pk, client_uid__isnull=True).update(client_uid=client_uid)
@@ -841,7 +844,10 @@ def case_create_api(request):
     with transaction.atomic():
         # Serialize registrations per facility, then re-check inside the lock.
         Facility.objects.select_for_update().get(pk=facility.pk)
-        existing = OpcRegistration.objects.filter(deduplication_key=deduplication_key).first()
+        existing = OpcRegistration.find_duplicate(
+            facility.id, data.get('child_name'), data.get('date_of_birth'), admission_date,
+            caregiver_name, data.get('child_gender'),
+        )
         if existing:
             if client_uid and not existing.client_uid:
                 existing.client_uid = client_uid

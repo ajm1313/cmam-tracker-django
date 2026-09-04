@@ -405,6 +405,20 @@ class OfflineRegistrationIdempotencyTests(BaseTestCase):
         self.assertTrue(second.data['duplicate'])
         self.assertEqual(OpcRegistration.objects.count(), 1)
 
+    def test_same_episode_survives_caregiver_and_minor_name_variations(self):
+        first = self.client.post('/api/v1/cases/create/', self.case_payload(), format='json')
+        caregiver_change = self.client.post('/api/v1/cases/create/', self.case_payload(
+            client_uid=str(uuid4()), caregiver_name='Different Caregiver',
+        ), format='json')
+        spelling_change = self.client.post('/api/v1/cases/create/', self.case_payload(
+            client_uid=str(uuid4()), child_name='Ofline Child',
+        ), format='json')
+
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(caregiver_change.data['duplicate'])
+        self.assertTrue(spelling_change.data['duplicate'])
+        self.assertEqual(OpcRegistration.objects.count(), 1)
+
     def test_visit_can_follow_pending_case_uid_and_is_idempotent(self):
         case_uid = str(uuid4())
         created = self.client.post('/api/v1/cases/create/', self.case_payload(client_uid=case_uid), format='json')

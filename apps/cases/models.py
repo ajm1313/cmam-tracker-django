@@ -2,6 +2,7 @@ from django.db import models, transaction
 from apps.core.models import TimeStampedModel
 from django.conf import settings
 from datetime import datetime, timedelta
+from difflib import SequenceMatcher
 import hashlib
 import unicodedata
 
@@ -10,10 +11,10 @@ def _normalise_identity(value):
     return ' '.join(unicodedata.normalize('NFKC', str(value or '')).casefold().split())
 
 
-def registration_deduplication_key(facility_id, child_name, date_of_birth, admission_date, caregiver_name):
+def registration_deduplication_key(facility_id, child_name, date_of_birth, admission_date):
     identity = '|'.join([
         str(facility_id or ''), _normalise_identity(child_name), str(date_of_birth or ''),
-        str(admission_date or ''), _normalise_identity(caregiver_name),
+        str(admission_date or ''),
     ])
     return hashlib.sha256(identity.encode('utf-8')).hexdigest()
 
@@ -265,14 +266,39 @@ class OpcRegistration(TimeStampedModel):
             )
         self.deduplication_key = registration_deduplication_key(
             self.facility_id, self.child_name, self.date_of_birth,
-            self.admission_date, self.caregiver_name,
+            self.admission_date,
         )
         update_fields = kwargs.get('update_fields')
         if update_fields and set(update_fields).intersection({
-            'facility', 'facility_id', 'child_name', 'date_of_birth', 'admission_date', 'caregiver_name'
+            'facility', 'facility_id', 'child_name', 'date_of_birth', 'admission_date'
         }):
             kwargs['update_fields'] = set(update_fields) | {'deduplication_key'}
         return super().save(*args, **kwargs)
+
+    @classmethod
+    def find_duplicate(cls, facility_id, child_name, date_of_birth, admission_date,
+                       caregiver_name='', child_gender=None):
+        """Return a matching registration for the same facility and admission episode."""
+        exact = cls.objects.filter(deduplication_key=registration_deduplication_key(
+            facility_id, child_name, date_of_birth, admission_date,
+        )).first()
+        if exact:
+            return exact
+
+        caregiver = _normalise_identity(caregiver_name)
+        if not caregiver:
+            return None
+        candidates = cls.objects.filter(
+            facility_id=facility_id,
+            date_of_birth=date_of_birth,
+            admission_date=admission_date,
+        )
+        if child_gender:
+            candidates = candidates.filter(child_gender=child_gender)
+        name = _normalise_identity(child_name)
+        return next((candidate for candidate in candidates
+                     if _normalise_identity(candidate.caregiver_name) == caregiver
+                     and SequenceMatcher(None, _normalise_identity(candidate.child_name), name).ratio() >= .85), None)
 
     @classmethod
     def _compute_next_sequence(cls, facility, malnutrition_type):
