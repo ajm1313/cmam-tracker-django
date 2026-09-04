@@ -12,36 +12,7 @@ Usage:
 
 from django.core.management.base import BaseCommand
 from apps.dhis2.models import Dhis2DataElementMapping
-# DHIMS2 data element UIDs (from the FHD Monthly Nutrition data set)
-DE_BEGINNING = 'n05TAHfeyes'   # CMAM cases at the beginning of the period
-DE_ADMISSIONS = 'ojH1gEl6pnN'  # SAM admissions
-DE_CURED = 'bFgrgi87pJP'       # CMAM cured
-DE_DEFAULTERS = 'tzDmjIZhMBM'  # CMAM defaulters
-DE_DIED = 'uUOcPN3aiev'        # CMAM died
-DE_DISCHARGES = 'eSs3SXx5Oyu'  # CMAM discharges (total exits)
-DE_NON_RECOVERED = 'iWxa1J8IEXC'  # CMAM non-recovered
-
-# Category option combo UIDs
-COC_OPC = 'stfb1wKdAtw'  # Out-patient
-COC_IPC = 'L2lk1pIYtOS'  # In-patient
-
-
-def _build_mapping_table():
-    """Build a dict of metric_key -> (data_element_uid, category_option_combo_uid)."""
-    elements = {
-        'beginning': DE_BEGINNING,
-        'admissions': DE_ADMISSIONS,
-        'cured': DE_CURED,
-        'defaulted': DE_DEFAULTERS,
-        'died': DE_DIED,
-        'non_recovered': DE_NON_RECOVERED,
-        'discharges': DE_DISCHARGES,
-    }
-    return {
-        f'sam_{service}_{metric}': (data_element, coc)
-        for service, coc in (('opc', COC_OPC), ('ipc', COC_IPC))
-        for metric, data_element in elements.items()
-    }
+from apps.dhis2.report_spec import get_dhis2_mapping_table
 
 
 class Command(BaseCommand):
@@ -56,7 +27,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         apply = options['apply']
-        mapping_table = _build_mapping_table()
+        mapping_table = get_dhis2_mapping_table()
 
         self.stdout.write(self.style.MIGRATE_HEADING(
             f'{"APPLYING" if apply else "DRY RUN — use --apply to save"} '
@@ -68,11 +39,8 @@ class Command(BaseCommand):
         skipped_count = 0
 
         legacy = Dhis2DataElementMapping.objects.filter(
-            data_element_uid__in={
-                DE_BEGINNING, DE_ADMISSIONS, DE_CURED, DE_DEFAULTERS,
-                DE_DIED, DE_DISCHARGES, DE_NON_RECOVERED,
-            },
-            category_option_combo_uid__in={COC_OPC, COC_IPC},
+            data_element_uid__in={cell[0] for cell in mapping_table.values()},
+            category_option_combo_uid__in={cell[1] for cell in mapping_table.values()},
         ).exclude(metric_key__in=mapping_table)
         legacy_count = legacy.count()
         if apply:

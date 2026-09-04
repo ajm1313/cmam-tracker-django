@@ -22,6 +22,7 @@ from apps.dhis2.models import Dhis2Config, Dhis2DataElementMapping, Dhis2PushLog
 from apps.dhis2.client import Dhis2Client, Dhis2PushError
 from apps.dhis2.push_service import push_facility_report
 from apps.dhis2.report_builder import CmamReportBuilder
+from apps.dhis2.report_spec import DHIS2_INDICATORS, IPC_UNAVAILABLE_WARNING
 from django.conf import settings
 from datetime import date
 
@@ -156,6 +157,12 @@ def dhis2_save_mapping(request):
         messages.error(request, 'Metric key and data element UID are required.')
         return redirect('dhis2:dashboard')
 
+    try:
+        CmamReportBuilder.validate_mapping(metric_key, data_element_uid, category_option_combo_uid)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect('dhis2:dashboard')
+
     mapping, created = Dhis2DataElementMapping.objects.get_or_create(
         metric_key=metric_key,
         defaults={
@@ -233,12 +240,28 @@ def dhis2_preview_report(request):
     )
     try:
         metrics = CmamReportBuilder.build_report(facility, period)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as exc:
         return JsonResponse({
             'success': False,
-            'message': 'Period must use YYYYMM format.',
+            'message': str(exc),
         }, status=400)
-    return JsonResponse({'success': True, 'data': metrics})
+    mapping_error = ''
+    try:
+        data_values = CmamReportBuilder.build_data_values(metrics, Dhis2DataElementMapping.objects.all())
+    except ValueError as exc:
+        data_values = []
+        mapping_error = str(exc)
+    rows = [{
+        'label': label,
+        'ipc': metrics[f'sam_ipc_{key}'],
+        'opc': metrics[f'sam_opc_{key}'],
+    } for key, label, _ in DHIS2_INDICATORS]
+    return JsonResponse({
+        'success': True, 'data': metrics, 'rows': rows,
+        'warnings': [IPC_UNAVAILABLE_WARNING], 'mapping_error': mapping_error,
+        'can_push': bool(data_values) and not mapping_error,
+        'submitted_cells': len(data_values),
+    })
 
 
 @login_required
@@ -383,7 +406,7 @@ def dhis2_push_all(request):
     msg = f'Push complete: {success_count} succeeded, {partial_count} partial, {fail_count} failed.'
     if fail_count == 0 and partial_count == 0:
         messages.success(request, msg)
-    elif fail_count > 0 and success_count > 0:
+    elif success_count > 0 or partial_count > 0:
         messages.warning(request, msg)
     else:
         messages.error(request, msg)

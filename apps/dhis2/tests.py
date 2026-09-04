@@ -1,14 +1,17 @@
 from datetime import date
 from io import StringIO
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
-from apps.cases.models import OpcRegistration
+from apps.cases.models import IpcCase, OpcRegistration
 from apps.dhis2.models import Dhis2Config, Dhis2DataElementMapping
 from apps.dhis2.report_builder import CmamReportBuilder
+from apps.dhis2.report_spec import DHIS2_INDICATORS, get_dhis2_mapping_table
+from apps.dhis2.push_service import interpret_import_response, push_facility_report
 from apps.facilities.models import Facility
 from apps.locations.models import District, Region, SubDistrict
 from apps.users.models import Role, User, UserRole
@@ -40,7 +43,7 @@ class Dhis2ReportBuilderTests(TestCase):
         values.update(overrides)
         return OpcRegistration.objects.create(**values)
 
-    def test_summary_uses_monthly_report_dates_and_starting_caseload(self):
+    def test_summary_uses_admission_dates_and_starting_caseload(self):
         self.registration('Carried case', date(2026, 6, 10))
         self.registration(
             'Entered in July',
@@ -57,11 +60,11 @@ class Dhis2ReportBuilderTests(TestCase):
 
         metrics = CmamReportBuilder.build_report(self.facility, '202607')
 
-        self.assertEqual(metrics['sam_opc_beginning'], 2)
-        self.assertEqual(metrics['sam_opc_admissions'], 1)
+        self.assertEqual(metrics['sam_opc_beginning'], 3)
+        self.assertEqual(metrics['sam_opc_admissions'], 0)
         self.assertEqual(metrics['sam_opc_died'], 1)
         self.assertEqual(metrics['sam_opc_discharges'], 1)
-        self.assertEqual(metrics['sam_opc_6_59_muac_new_male'], 1)
+        self.assertEqual(set(metrics), set(get_dhis2_mapping_table()))
 
     def test_summary_metrics_map_to_non_zero_dhis2_values(self):
         self.registration('Carried case', date(2026, 6, 10))
@@ -73,11 +76,120 @@ class Dhis2ReportBuilderTests(TestCase):
             is_active=True,
         )]
 
-        self.assertEqual(CmamReportBuilder.build_data_values(metrics, mappings), [{
+        self.assertEqual(CmamReportBuilder.build_data_values(
+            {'sam_opc_beginning': metrics['sam_opc_beginning']}, mappings,
+        ), [{
             'dataElement': 'n05TAHfeyes',
             'value': '1',
             'categoryOptionCombo': 'stfb1wKdAtw',
         }])
+
+    def test_sam_only_admissions_and_exits_use_calendar_boundaries(self):
+        for subtype in ('High-risk MAM', 'Other MAM'):
+            self.registration(f'{subtype} admission', date(2026, 7, 1),
+                              malnutrition_type='MAM', mam_type=subtype)
+            self.registration(f'{subtype} exit', date(2026, 6, 1),
+                              malnutrition_type='MAM', mam_type=subtype,
+                              status='Discharged', outcome='Cured', discharge_date=date(2026, 7, 2))
+        self.registration('Late entry', date(2026, 8, 10), admission_date=date(2026, 7, 31))
+        self.registration('Future admission', date(2026, 7, 20), admission_date=date(2026, 8, 1))
+        for case_status, outcome in (
+            ('Discharged', 'Cured'), ('Death', None), ('Defaulted', 'Defaulted'),
+            ('Discharged', 'Non-Response'), ('Transfer', 'Transfer-to-IPC'),
+        ):
+            self.registration(f'Exit {case_status} {outcome}', date(2026, 6, 10),
+                              status=case_status, outcome=outcome, discharge_date=date(2026, 7, 1))
+        self.registration('Previous exit', date(2026, 5, 1), status='Discharged',
+                          outcome='Cured', discharge_date=date(2026, 6, 30))
+        metrics = CmamReportBuilder.build_report(self.facility, '202607')
+        self.assertEqual(metrics['sam_opc_beginning'], 5)
+        self.assertEqual(metrics['sam_opc_admissions'], 1)
+        for key in ('cured', 'died', 'defaulted', 'non_recovered'):
+            self.assertEqual(metrics[f'sam_opc_{key}'], 1)
+        self.assertEqual(metrics['sam_opc_discharges'], 4)
+        self.assertFalse(any(key.startswith('mam_') for key in metrics))
+
+    def test_unavailable_ipc_cells_are_not_sent_even_as_zero(self):
+        IpcCase.objects.create(facility=self.facility, patient_name='IPC admission',
+                               patient_age=24, gender='Male', admission_date=date(2026, 7, 1),
+                               weight=7, height=70, status='Discharged')
+        metrics = CmamReportBuilder.build_report(self.facility, '202607')
+        self.assertEqual(metrics['sam_ipc_admissions'], 1)
+        self.assertEqual(sum(value is None for value in metrics.values()), 6)
+        mappings = [SimpleNamespace(metric_key=key, data_element_uid=cell[0],
+                                   category_option_combo_uid=cell[1], is_active=True)
+                    for key, cell in get_dhis2_mapping_table().items()]
+        values = CmamReportBuilder.build_data_values(metrics, mappings)
+        self.assertEqual(len(values), 8)
+        self.assertEqual([v for v in values if v['categoryOptionCombo'] == 'L2lk1pIYtOS'], [{
+            'dataElement': 'ojH1gEl6pnN', 'categoryOptionCombo': 'L2lk1pIYtOS', 'value': '1',
+        }])
+
+    def test_missing_mappings_mam_metrics_and_wrong_cells_block_submission(self):
+        metrics = CmamReportBuilder.build_report(self.facility, '202607')
+        with self.assertRaisesMessage(ValueError, 'Missing active DHIMS2 mapping'):
+            CmamReportBuilder.build_data_values(metrics, [])
+        with self.assertRaisesMessage(ValueError, 'Only SAM summary'):
+            CmamReportBuilder.build_data_values({'mam_opc_high_risk_new_male': 9}, [])
+        for key, element, combo in (
+            ('mam_opc_high_risk_new_male', 'ojH1gEl6pnN', 'stfb1wKdAtw'),
+            ('sam_opc_beginning', 'ojH1gEl6pnN', 'stfb1wKdAtw'),
+            ('sam_opc_beginning', 'n05TAHfeyes', 'L2lk1pIYtOS'),
+        ):
+            with self.assertRaises(ValueError):
+                CmamReportBuilder.validate_mapping(key, element, combo)
+
+    def test_invalid_dates_and_ambiguous_outcomes_are_blocked(self):
+        for period in ('202600', '202613', '000001', '2026-07', '', None):
+            with self.subTest(period=period), self.assertRaises(ValueError):
+                CmamReportBuilder.build_report(self.facility, period)
+        self.assertEqual(CmamReportBuilder._period_range('202402')[1], date(2024, 2, 29))
+        case = self.registration('Missing discharge', date(2026, 6, 1), status='Discharged')
+        with self.assertRaisesMessage(ValueError, 'no discharge date'):
+            CmamReportBuilder.build_report(self.facility, '202607')
+        case.discharge_date = date(2026, 7, 1)
+        case.status, case.outcome = 'Death', 'Defaulted'
+        case.save()
+        with self.assertRaisesMessage(ValueError, 'conflict'):
+            CmamReportBuilder.build_report(self.facility, '202607')
+
+    @patch('apps.dhis2.push_service.Dhis2Client.from_config')
+    def test_push_omits_unknown_cells_and_does_not_claim_complete_success(self, client):
+        self.facility.dhis2_org_unit_id = 'testOrgUnit'
+        Dhis2Config.objects.create(server_url='https://dhims.example.org', username='test',
+                                  password='secret', dataset_id='AGj1roihPkH')
+        call_command('seed_dhis2_mappings', apply=True, stdout=StringIO())
+        client.return_value.push_data_value_set.return_value = {
+            'status': 'OK', 'response': {'status': 'SUCCESS', 'importCount': {
+                'imported': 1, 'updated': 0, 'ignored': 0, 'deleted': 0,
+            }},
+        }
+        result = push_facility_report(self.facility, '202607')
+        self.assertEqual(result.status, 'partial')
+        self.assertEqual(len(result.payload['dataValues']), 8)
+        self.assertIn('six cells are not sent', result.error_message)
+        self.assertEqual(client.return_value.push_data_value_set.call_count, 1)
+
+
+class Dhis2ImportResponseTests(SimpleTestCase):
+    def test_wrapped_and_direct_import_results_are_checked(self):
+        for wrapped in (False, True):
+            for status, counts, conflicts, expected in (
+                ('SUCCESS', {'imported': 8}, [], 'success'),
+                ('SUCCESS', {'imported': 0}, [], 'success'),
+                ('ERROR', {'ignored': 8}, [{'value': 'Rejected'}], 'failed'),
+                ('ERROR', {'imported': 1, 'ignored': 7}, [], 'partial'),
+                ('SUCCESS', {'ignored': 1}, [], 'partial'),
+                ('SUCCESS', {'imported': 1}, [{'value': 'Conflict'}], 'partial'),
+                ('WARNING', {'imported': 1}, [], 'partial'),
+            ):
+                summary = {'status': status, 'importCount': counts, 'conflicts': conflicts}
+                response = {'status': 'OK', 'response': summary} if wrapped else summary
+                with self.subTest(wrapped=wrapped, status=status, counts=counts):
+                    self.assertEqual(interpret_import_response(response)[0], expected)
+        for response in (None, {}, {'status': 'OK'}, {'response': 'not a summary'},
+                         {'status': 'SUCCESS', 'importCount': {'imported': -1}}):
+            self.assertEqual(interpret_import_response(response)[0], 'failed')
 
 
 class Dhis2AccessTests(TestCase):
@@ -141,6 +253,44 @@ class Dhis2AccessTests(TestCase):
         self.client.force_login(self.assign(5))
         response = self.client.get(reverse('dhis2:dashboard'))
         self.assertEqual(response.status_code, 302)
+
+    def test_preview_shows_exact_seven_sam_rows_and_only_available_cells(self):
+        self.client.force_login(self.assign(3))
+        call_command('seed_dhis2_mappings', apply=True, stdout=StringIO())
+        response = self.client.get(reverse('dhis2:preview_report'), {
+            'facility_id': self.facility.pk, 'period': '202607',
+        })
+        self.assertEqual(response.status_code, 200)
+        preview = response.json()
+        self.assertEqual([row['label'] for row in preview['rows']],
+                         [label for _, label, _ in DHIS2_INDICATORS])
+        self.assertEqual(len(preview['rows']), 7)
+        self.assertEqual(preview['submitted_cells'], 8)
+        self.assertEqual(sum(row['ipc'] is None for row in preview['rows']), 6)
+        self.assertTrue(preview['warnings'])
+        self.assertTrue(preview['can_push'])
+        self.assertFalse(any(key.startswith('mam_') for key in preview['data']))
+        Dhis2DataElementMapping.objects.filter(metric_key='sam_opc_cured').delete()
+        blocked = self.client.get(reverse('dhis2:preview_report'), {
+            'facility_id': self.facility.pk, 'period': '202607',
+        }).json()
+        self.assertFalse(blocked['can_push'])
+        self.assertIn('sam_opc_cured', blocked['mapping_error'])
+
+    def test_mapping_editor_rejects_mam_and_wrong_category(self):
+        admin = User.objects.create_superuser('dhis-admin@example.com', 'password', name='Admin')
+        self.client.force_login(admin)
+        for key, combo in (('mam_opc_high_risk_new_male', 'stfb1wKdAtw'),
+                           ('sam_opc_admissions', 'L2lk1pIYtOS')):
+            response = self.client.post(reverse('dhis2:save_mapping'), {
+                'metric_key': key, 'data_element_uid': 'ojH1gEl6pnN',
+                'category_option_combo_uid': combo,
+            })
+            self.assertEqual(response.status_code, 302)
+            self.assertFalse(Dhis2DataElementMapping.objects.exists())
+        dashboard = self.client.get(reverse('dhis2:dashboard'))
+        self.assertContains(dashboard, 'SAM only')
+        self.assertNotContains(dashboard, 'value="mam_opc_')
 
     def test_user_credentials_are_personal_and_facility_scope_is_enforced(self):
         global_config = Dhis2Config.objects.create(

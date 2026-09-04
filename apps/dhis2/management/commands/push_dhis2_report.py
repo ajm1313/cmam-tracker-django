@@ -59,6 +59,7 @@ class Command(BaseCommand):
             raise CommandError('Specify --facility <id> or --all')
 
         success_count = 0
+        partial_count = 0
         fail_count = 0
 
         for facility in facilities:
@@ -74,7 +75,7 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.WARNING(
                         f'  ⚠ {facility.code}: {result.status} — {result.error_message}'
                     ))
-                    success_count += 1
+                    partial_count += 1
                 else:
                     self.stdout.write(self.style.ERROR(
                         f'  ✗ {facility.code}: {result.error_message}'
@@ -87,5 +88,5 @@ class Command(BaseCommand):
                 fail_count += 1
 
         self.stdout.write(self.style.NOTICE(
-            f'\nDone: {success_count} succeeded, {fail_count} failed.'
+            f'\nDone: {success_count} succeeded, {partial_count} partial, {fail_count} failed.'
         ))

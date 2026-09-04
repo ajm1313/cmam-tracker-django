@@ -74,7 +74,7 @@ class Dhis2Client:
             )
             resp.raise_for_status()
             result = resp.json()
-            logger.info('DHIS2 push succeeded: %s', result.get('description', 'OK'))
+            logger.info('DHIS2 import response received; import summary must be checked.')
             return result
         except requests.exceptions.HTTPError as e:
             error_body = ''

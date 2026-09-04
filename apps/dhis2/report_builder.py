@@ -1,352 +1,100 @@
-"""
-CMAM Report Builder — aggregates OpcRegistration / IpcCase data into
-monthly DHIS2-compatible indicators matching the Ghana CMAM report structure.
-"""
+"""Build only the seven SAM indicators used by the DHIMS2 CMAM form."""
 
-import logging
+from calendar import monthrange
 from datetime import date
-from typing import Dict, List
 
 from django.db.models import Q
 
-from apps.cases.models import OpcRegistration, OpcVisit
-from apps.facilities.models import Facility
-
-from apps.dhis2.report_spec import (
-    SAM_OPC_AGE_GROUPS, SAM_OPC_COLUMNS,
-    SAM_IPC_AGE_GROUPS, SAM_IPC_COLUMNS,
-    MAM_OPC_CATEGORIES, MAM_OPC_COLUMNS,
-    classify_sam_opc_age_group, classify_sam_ipc_age_group,
-    classify_mam_opc_category,
-)
-
-logger = logging.getLogger(__name__)
+from apps.cases.models import IpcCase, OpcRegistration
+from apps.dhis2.report_spec import DHIS2_INDICATORS, get_dhis2_mapping_table
 
 
 class CmamReportBuilder:
-    """Builds a dictionary of CMAM metric → integer value for a given
-    facility and reporting period (month), matching the exact structure
-    of the Ghana CMAM monthly report."""
-
     @staticmethod
-    def _period_range(period: str):
-        """Convert a DHIS2 monthly period code like '202608' to
-        (first_day, last_day) date objects."""
-        if len(period) != 6 or not period.isdigit():
+    def _period_range(period):
+        if not isinstance(period, str) or len(period) != 6 or not period.isdigit():
             raise ValueError('Period must use YYYYMM format.')
-        year = int(period[:4])
-        month = int(period[4:6])
-        first = date(year, month, 1)
-        if month == 12:
-            last = date(year, 12, 31)
-        else:
-            from calendar import monthrange
-            last = date(year, month, monthrange(year, month)[1])
-        return first, last
+        year, month = int(period[:4]), int(period[4:])
+        try:
+            return date(year, month, 1), date(year, month, monthrange(year, month)[1])
+        except ValueError:
+            raise ValueError('Period must use a valid YYYYMM month.') from None
 
     @staticmethod
-    def build_report(facility: Facility, period: str) -> Dict[str, int]:
-        """Compute all CMAM monthly indicators for a facility.
-
-        Args:
-            facility: Facility instance.
-            period: DHIS2 monthly period code, e.g. '202608'.
-
-        Returns:
-            dict mapping metric_key → integer count.
-        """
+    def build_report(facility, period):
         first_day, last_day = CmamReportBuilder._period_range(period)
-        metrics = CmamReportBuilder._build_dhis2_summary(
-            facility, first_day, last_day
+        sam = OpcRegistration.objects.filter(facility=facility, malnutrition_type='SAM')
+        if sam.filter(admission_date__lte=last_day, discharge_date__isnull=True).exclude(status='Active').exists():
+            raise ValueError('Some closed SAM cases have no discharge date. Correct these records before reporting.')
+
+        metrics = {f'sam_opc_{key}': 0 for key, _, _ in DHIS2_INDICATORS}
+        metrics['sam_opc_beginning'] = sam.filter(admission_date__lt=first_day).filter(
+            Q(discharge_date__gte=first_day) |
+            Q(status='Active', discharge_date__isnull=True)
+        ).count()
+        metrics['sam_opc_admissions'] = sam.filter(admission_date__range=(first_day, last_day)).count()
+
+        exits = sam.filter(discharge_date__range=(first_day, last_day)).exclude(status='Active')
+        outcome_keys = {
+            'cured': 'cured', 'death': 'died', 'died': 'died', 'defaulted': 'defaulted',
+            'non-response': 'non_recovered', 'non-recovered': 'non_recovered',
+            'non recovered': 'non_recovered',
+        }
+        for case_status, outcome in exits.values_list('status', 'outcome'):
+            outcome = (outcome or '').strip().lower()
+            status_key = outcome_keys.get(case_status.lower())
+            outcome_key = outcome_keys.get(outcome)
+            if status_key and outcome_key and status_key != outcome_key:
+                raise ValueError('Some SAM discharge statuses conflict with their outcomes. Correct these records before reporting.')
+            key = outcome_key or status_key
+            if key:
+                metrics[f'sam_opc_{key}'] += 1
+            elif case_status != 'Transfer' and outcome not in ('transfer', 'transfer-to-ipc', 'referral'):
+                raise ValueError('Some discharged SAM cases have no recognised outcome. Correct these records before reporting.')
+        metrics['sam_opc_discharges'] = sum(
+            metrics[f'sam_opc_{key}'] for key in ('cured', 'died', 'defaulted', 'non_recovered')
         )
 
-        # ── SAM OPC ────────────────────────────────────────────────
-        CmamReportBuilder._build_sam_opc(facility, first_day, last_day, metrics)
-
-        # ── SAM IPC ────────────────────────────────────────────────
-        CmamReportBuilder._build_sam_ipc(facility, first_day, last_day, metrics)
-
-        # ── MAM OPC ────────────────────────────────────────────────
-        CmamReportBuilder._build_mam_opc(facility, first_day, last_day, metrics)
-
+        # IPC is the app's SAM inpatient register. Without dated exits, even its
+        # historical starting caseload cannot be reconstructed safely.
+        metrics.update({f'sam_ipc_{key}': None for key, _, _ in DHIS2_INDICATORS})
+        metrics['sam_ipc_admissions'] = IpcCase.objects.filter(
+            facility=facility, admission_date__range=(first_day, last_day),
+        ).count()
         return metrics
 
     @staticmethod
-    def _build_dhis2_summary(facility, first_day, last_day):
-        """Build the aggregate values used by the configured DHIMS2 data set."""
-        registrations = OpcRegistration.objects.filter(
-            facility=facility,
-            malnutrition_type='SAM',
-        )
-        admissions = registrations.filter(
-            registration_date__range=(first_day, last_day)
-        )
-        exits = registrations.filter(
-            discharge_date__range=(first_day, last_day)
-        ).exclude(status='Active')
-
-        beginning = registrations.filter(
-            registration_date__lt=first_day,
-        ).filter(
-            Q(status='Active') | Q(discharge_date__gte=first_day)
-        ).count()
-        cured = exits.filter(outcome='Cured').count()
-        defaulted = exits.filter(
-            Q(status='Defaulted') | Q(outcome='Defaulted')
-        ).count()
-        died = exits.filter(Q(status='Death') | Q(outcome='Death')).count()
-        non_recovered = exits.filter(outcome__icontains='Non-R').count()
-
-        from apps.cases.models import IpcCase
-        ipc_cases = IpcCase.objects.filter(facility=facility)
-        ipc_beginning = ipc_cases.filter(
-            admission_date__lt=first_day,
-            status='Admitted',
-        ).count()
-        ipc_admissions = ipc_cases.filter(
-            admission_date__range=(first_day, last_day)
-        ).count()
-
-        return {
-            'sam_opc_beginning': beginning,
-            'sam_opc_admissions': admissions.count(),
-            'sam_opc_cured': cured,
-            'sam_opc_defaulted': defaulted,
-            'sam_opc_died': died,
-            'sam_opc_non_recovered': non_recovered,
-            'sam_opc_discharges': cured + defaulted + died + non_recovered,
-            'sam_ipc_beginning': ipc_beginning,
-            'sam_ipc_admissions': ipc_admissions,
-            # IpcCase does not yet store discharge dates/outcomes.
-            'sam_ipc_cured': 0,
-            'sam_ipc_defaulted': 0,
-            'sam_ipc_died': 0,
-            'sam_ipc_non_recovered': 0,
-            'sam_ipc_discharges': 0,
-        }
+    def validate_mapping(metric_key, data_element_uid, category_option_combo_uid):
+        expected = get_dhis2_mapping_table().get(metric_key)
+        if expected is None:
+            raise ValueError('Only the seven SAM summary indicators may be mapped to this DHIMS2 form. MAM and detailed metrics are not allowed.')
+        if (data_element_uid, category_option_combo_uid) != expected:
+            raise ValueError(f'Incorrect DHIMS2 cell for {metric_key}. Expected data element {expected[0]} and category option combo {expected[1]}.')
 
     @staticmethod
-    def _build_sam_opc(facility, first_day, last_day, metrics):
-        """Build SAM Outpatient Care metrics."""
-        admissions = OpcRegistration.objects.filter(
-            facility=facility,
-            malnutrition_type='SAM',
-            registration_date__gte=first_day,
-            registration_date__lte=last_day,
-        )
-
-        exits = OpcRegistration.objects.filter(
-            facility=facility,
-            malnutrition_type='SAM',
-            discharge_date__gte=first_day,
-            discharge_date__lte=last_day,
-        ).exclude(status='Active')
-
-        # Initialize all metrics to 0
-        for ag_key, _ in SAM_OPC_AGE_GROUPS:
-            for col_key, _, _, _, _, _ in SAM_OPC_COLUMNS:
-                metrics[f'sam_opc_{ag_key}_{col_key}'] = 0
-
-        # Count enrollments
-        for reg in admissions:
-            ag = classify_sam_opc_age_group(reg)
-            if ag is None:
-                # >= 60 months → "other" column (>=5 years)
-                metrics['sam_opc_6_59_muac_other'] += 1
-                continue
-
-            for col_key, _, col_type, gender, _, adm_types in SAM_OPC_COLUMNS:
-                if col_type != 'enroll':
-                    continue
-                if col_key == 'other':
-                    continue
-
-                if gender and reg.child_gender != gender:
-                    continue
-
-                if adm_types and reg.admission_type not in adm_types:
-                    continue
-
-                metrics[f'sam_opc_{ag}_{col_key}'] += 1
-                break
-
-        # Count exits
-        for reg in exits:
-            ag = classify_sam_opc_age_group(reg)
-            if ag is None:
-                metrics['sam_opc_6_59_muac_exit_5plus'] += 1
-                continue
-
-            for col_key, _, col_type, gender, outcome, _ in SAM_OPC_COLUMNS:
-                if col_type != 'exit':
-                    continue
-                if col_key == 'exit_5plus':
-                    continue
-
-                if gender and reg.child_gender != gender:
-                    continue
-
-                if col_key == 'referred_out':
-                    if reg.outcome in ('Transfer-to-IPC', 'Referral', 'Transfer'):
-                        metrics[f'sam_opc_{ag}_{col_key}'] += 1
-                        break
-                    continue
-
-                if outcome and reg.outcome != outcome:
-                    continue
-
-                metrics[f'sam_opc_{ag}_{col_key}'] += 1
-                break
-
-    @staticmethod
-    def _build_sam_ipc(facility, first_day, last_day, metrics):
-        """Build SAM Inpatient Care (Stabilization Centre) metrics."""
-        # Initialize all metrics to 0
-        for ag_key, _ in SAM_IPC_AGE_GROUPS:
-            for col_key, _, _, _, _, _ in SAM_IPC_COLUMNS:
-                metrics[f'sam_ipc_{ag_key}_{col_key}'] = 0
-
-        try:
-            from apps.cases.models import IpcCase
-        except ImportError:
-            return
-
-        admissions = IpcCase.objects.filter(
-            facility=facility,
-            admission_date__gte=first_day,
-            admission_date__lte=last_day,
-        )
-
-        # Count admissions
-        # IpcCase has limited fields: patient_age, gender, status
-        # No admission_type, no discharge_date, no outcome
-        for case in admissions:
-            ag = classify_sam_ipc_age_group(case)
-            if ag is None:
-                metrics['sam_ipc_6_59_muac_other'] += 1
-                continue
-
-            for col_key, _, col_type, gender, _, _ in SAM_IPC_COLUMNS:
-                if col_type != 'enroll':
-                    continue
-                if col_key == 'other':
-                    continue
-
-                if gender and case.gender != gender:
-                    continue
-
-                # IpcCase has no admission_type; count all as "new"
-                if col_key in ('new_male', 'new_female'):
-                    metrics[f'sam_ipc_{ag}_{col_key}'] += 1
-                    break
-
-        # Note: IPC exits cannot be reliably computed because IpcCase
-        # lacks discharge_date and outcome fields. This is a known
-        # limitation — exit metrics will remain 0 until the model is
-        # extended.
-
-    @staticmethod
-    def _build_mam_opc(facility, first_day, last_day, metrics):
-        """Build MAM Outpatient Care (Supplementary Feeding) metrics."""
-        admissions = OpcRegistration.objects.filter(
-            facility=facility,
-            malnutrition_type='MAM',
-            registration_date__gte=first_day,
-            registration_date__lte=last_day,
-        )
-
-        exits = OpcRegistration.objects.filter(
-            facility=facility,
-            malnutrition_type='MAM',
-            discharge_date__gte=first_day,
-            discharge_date__lte=last_day,
-        ).exclude(status='Active')
-
-        # Initialize all metrics to 0
-        for cat_key, _ in MAM_OPC_CATEGORIES:
-            for col_key, _, _, _, _, _ in MAM_OPC_COLUMNS:
-                metrics[f'mam_opc_{cat_key}_{col_key}'] = 0
-
-        # Count enrollments
-        for reg in admissions:
-            cat = classify_mam_opc_category(reg)
-            if cat is None:
-                continue
-
-            for col_key, _, col_type, gender, _, adm_types in MAM_OPC_COLUMNS:
-                if col_type != 'enroll':
-                    continue
-
-                if gender and reg.child_gender != gender:
-                    continue
-
-                if adm_types and reg.admission_type not in adm_types:
-                    continue
-
-                metrics[f'mam_opc_{cat}_{col_key}'] += 1
-                break
-
-        # Count exits
-        for reg in exits:
-            cat = classify_mam_opc_category(reg)
-            if cat is None:
-                continue
-
-            for col_key, _, col_type, gender, outcome, _ in MAM_OPC_COLUMNS:
-                if col_type != 'exit':
-                    continue
-
-                if gender and reg.child_gender != gender:
-                    continue
-
-                if col_key == 'referred_out':
-                    if reg.outcome in ('Transfer-to-IPC', 'Referral', 'Transfer'):
-                        metrics[f'mam_opc_{cat}_{col_key}'] += 1
-                        break
-                    continue
-
-                if outcome and reg.outcome != outcome:
-                    continue
-
-                metrics[f'mam_opc_{cat}_{col_key}'] += 1
-                break
-
-    @staticmethod
-    def build_data_values(metrics: Dict[str, int], mappings) -> List[Dict]:
-        """Convert metrics dict + Dhis2DataElementMapping queryset into
-        DHIS2 data value dicts ready for POST /api/dataValueSets.
-
-        Multiple metric keys can map to the same data element + category
-        option combo; their values are summed (aggregated).
-
-        Args:
-            metrics: output of build_report().
-            mappings: queryset of Dhis2DataElementMapping (active only).
-
-        Returns:
-            list of {'dataElement': ..., 'value': ..., 'categoryOptionCombo': ...}
-        """
-        # Aggregate values by (data_element_uid, category_option_combo_uid)
-        aggregated = {}  # key: (de_uid, coc_uid) -> summed value
-        mapping_map = {m.metric_key: m for m in mappings if m.is_active}
-
-        for metric_key, value in metrics.items():
-            mapping = mapping_map.get(metric_key)
-            if not mapping:
-                logger.debug('No DHIS2 mapping for metric %s, skipping', metric_key)
-                continue
-
-            agg_key = (mapping.data_element_uid, mapping.category_option_combo_uid or '')
-            aggregated[agg_key] = aggregated.get(agg_key, 0) + value
-
+    def build_data_values(metrics, mappings):
+        expected = get_dhis2_mapping_table()
+        mapping_map = {}
+        for mapping in mappings:
+            if mapping.is_active:
+                CmamReportBuilder.validate_mapping(
+                    mapping.metric_key, mapping.data_element_uid, mapping.category_option_combo_uid,
+                )
+                mapping_map[mapping.metric_key] = mapping
         data_values = []
-        for (de_uid, coc_uid), value in aggregated.items():
-            dv = {
-                'dataElement': de_uid,
+        for metric_key, value in metrics.items():
+            if metric_key not in expected:
+                raise ValueError('Only SAM summary metrics can be sent to DHIMS2.')
+            if value is None:
+                continue  # Unknown is not zero; never overwrite this DHIMS2 cell.
+            mapping = mapping_map.get(metric_key)
+            if mapping is None:
+                raise ValueError(f'Missing active DHIMS2 mapping for {metric_key}. Configure all available SAM indicators before pushing.')
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError(f'Invalid SAM count for {metric_key}.')
+            data_values.append({
+                'dataElement': mapping.data_element_uid,
+                'categoryOptionCombo': mapping.category_option_combo_uid,
                 'value': str(value),
-            }
-            if coc_uid:
-                dv['categoryOptionCombo'] = coc_uid
-            data_values.append(dv)
-
+            })
         return data_values

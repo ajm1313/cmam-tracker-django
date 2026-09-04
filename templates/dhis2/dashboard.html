@@ -14,7 +14,7 @@
             </div>
             <div>
                 <h1 class="text-xl font-bold text-white tracking-tight">DHIMS2 Integration</h1>
-                <p class="text-blue-300 text-xs mt-0.5">Push CMAM facility reports to DHIMS2</p>
+                <p class="text-blue-300 text-xs mt-0.5">Push SAM-only facility reports to DHIMS2</p>
             </div>
         </div>
         <button onclick="testConnection()" class="text-xs font-semibold text-white bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg transition-colors border border-white/20">
@@ -89,7 +89,9 @@
 
     <!-- Push Report -->
     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <h2 class="text-lg font-bold text-gray-900 mb-4">Push Monthly Report</h2>
+        <h2 class="text-lg font-bold text-gray-900 mb-2">Nutrition Rehabilitation (CMAM) — SAM only</h2>
+        <p class="text-sm text-gray-600 mb-2">The seven DHIMS2 indicators include SAM cases only. High-Risk MAM and Other MAM are excluded. Admissions use admission dates; outcomes use discharge dates.</p>
+        <p class="text-xs text-amber-800 bg-amber-50 rounded-lg p-3 mb-4">IPC starting caseload and discharge outcomes are not yet available and will not be sent or overwritten. A push is reported as partial while these six IPC cells are omitted. DHIMS2 may show zeros as blank when its “Store zero data values” setting is disabled.</p>
         <div class="flex flex-col sm:flex-row gap-4 items-end">
             <div class="flex-1">
                 <label class="block text-sm font-medium text-gray-700 mb-1">Facility</label>
@@ -109,7 +111,7 @@
                 {% csrf_token %}
                 <input type="hidden" name="facility_id" id="push_facility_id">
                 <input type="hidden" name="period" id="push_period_hidden">
-                <button type="submit" class="px-5 py-2 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors">Push to DHIMS2</button>
+                <button type="submit" class="px-5 py-2 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors">Push Available SAM Data</button>
             </form>
         </div>
         <div class="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-100 flex items-center gap-3">
@@ -121,7 +123,7 @@
             </form>
         </div>
         <div id="preview_result" class="mt-4 hidden">
-            <h3 class="text-sm font-bold text-gray-700 mb-2">Report Preview</h3>
+            <h3 class="text-sm font-bold text-gray-700 mb-2">SAM Report Preview — DHIMS2 Indicators</h3>
             <div id="preview_table" class="overflow-x-auto"></div>
         </div>
     </div>
@@ -153,7 +155,7 @@
                 <button type="button" onclick="searchDataElements()" class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-blue-600 hover:text-blue-800">Search</button>
                 <div id="de_results" class="absolute z-10 mt-1 w-full max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg hidden"></div>
             </div>
-            <input type="text" name="category_option_combo_uid" placeholder="Cat option combo UID (optional)" class="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg">
+            <input type="text" name="category_option_combo_uid" placeholder="IPC/OPC category option combo UID" required class="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg">
             <button type="submit" class="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg">Add/Update</button>
         </form>
 
@@ -278,13 +280,36 @@ function previewReport() {
         .then(r => r.json())
         .then(data => {
             if (!data.success) { alert(data.message); return; }
-            const metrics = data.data;
-            let html = '<table class="min-w-full text-sm"><tbody>';
-            for (const [key, val] of Object.entries(metrics)) {
-                html += `<tr class="border-b border-gray-50"><td class="px-4 py-2 font-medium text-gray-700">${key.replace(/_/g, ' ')}</td><td class="px-4 py-2 text-gray-900 font-bold">${val}</td></tr>`;
+            const container = document.getElementById('preview_table');
+            container.replaceChildren();
+            for (const message of [...(data.warnings || []), data.mapping_error].filter(Boolean)) {
+                const note = document.createElement('p');
+                note.className = 'text-xs text-amber-800 bg-amber-50 rounded-lg p-3 mb-3';
+                note.textContent = message;
+                container.appendChild(note);
             }
-            html += '</tbody></table>';
-            document.getElementById('preview_table').innerHTML = html;
+            const table = document.createElement('table');
+            table.className = 'min-w-full text-sm';
+            table.innerHTML = '<thead><tr class="bg-blue-50"><th scope="col" class="px-4 py-3 text-left">Indicator (SAM only)</th><th scope="col" class="px-4 py-3 text-right">IPC</th><th scope="col" class="px-4 py-3 text-right">OPC</th></tr></thead>';
+            const body = document.createElement('tbody');
+            for (const row of data.rows) {
+                const tr = document.createElement('tr');
+                tr.className = 'border-b border-gray-100';
+                for (const [index, value] of [row.label, row.ipc, row.opc].entries()) {
+                    const td = document.createElement(index === 0 ? 'th' : 'td');
+                    td.className = 'px-4 py-3 ' + (index === 0 ? 'text-left font-medium' : 'text-right font-bold');
+                    if (index === 0) td.scope = 'row';
+                    td.textContent = value === null ? 'Not available — not sent' : String(value);
+                    tr.appendChild(td);
+                }
+                body.appendChild(tr);
+            }
+            table.appendChild(body);
+            container.appendChild(table);
+            const count = document.createElement('p');
+            count.className = 'text-xs text-gray-600 mt-3';
+            count.textContent = data.can_push ? `${data.submitted_cells} available SAM cells will be sent. Unavailable cells are left unchanged.` : 'Push blocked until the mapping issues above are resolved.';
+            container.appendChild(count);
             document.getElementById('preview_result').classList.remove('hidden');
         })
         .catch(() => alert('✗ Preview failed'));
@@ -299,14 +324,14 @@ function validatePush() {
     if (!orgUnit) { alert('This facility has no DHIMS2 org unit ID configured.'); return false; }
     document.getElementById('push_facility_id').value = facilityId;
     document.getElementById('push_period_hidden').value = period;
-    return confirm(`Push report for ${sel.options[sel.selectedIndex].text} to DHIMS2 for period ${period}?`);
+    return confirm(`Push available SAM-only data for ${sel.options[sel.selectedIndex].text} to DHIMS2 for period ${period}? Unavailable IPC cells will be left unchanged.`);
 }
 
 function validatePushAll() {
     const period = document.getElementById('push_period').value;
     if (!period) { alert('Enter a period (YYYYMM)'); return false; }
     document.getElementById('push_all_period').value = period;
-    return confirm(`Push reports for all linked facilities in your scope to DHIMS2 for period ${period}?`);
+    return confirm(`Push available SAM-only data for all linked facilities in your scope to DHIMS2 for period ${period}? Unavailable IPC cells will be left unchanged.`);
 }
 
 // ── DHIS2 Search Functions ──────────────────────────────────────

@@ -45,11 +45,7 @@ class Dhis2Config(TimeStampedModel):
 
 
 class Dhis2DataElementMapping(TimeStampedModel):
-    """Maps a CMAM metric key to a DHIS2 data element UID.
-
-    Metric keys follow the pattern: {program}_{age_group}_{column}
-    e.g. sam_opc_under6_new_male, mam_opc_high_risk_male_cured
-    """
+    """Maps one of the seven SAM indicators to its IPC or OPC DHIMS2 cell."""
 
     METRIC_CHOICES = generate_metric_choices()
 
