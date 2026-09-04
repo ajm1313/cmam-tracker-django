@@ -168,21 +168,39 @@ class StrategicReportsTests(APITestCase):
             weight_kg=7, height_cm=70, muac_cm=11, created_by=self.regional_user,
         )
 
-    def test_only_regional_and_higher_can_open_strategic_reports(self):
-        for viewer in (self.regional_user, self.national_user, self.super_user):
+    def test_district_and_higher_can_open_strategic_reports(self):
+        for viewer in (self.district_user, self.regional_user, self.national_user, self.super_user):
             self.client.force_login(viewer)
             for path in ('/reports/case-linelist/', '/reports/analytics/'):
                 with self.subTest(viewer=viewer.email, path=path):
                     self.assertEqual(self.client.get(path).status_code, status.HTTP_200_OK)
+                    self.assertContains(self.client.get('/reports/'), path)
 
-        self.client.force_login(self.regional_user)
-        self.assertContains(self.client.get('/reports/'), '/reports/case-linelist/')
-
-        self.client.force_login(self.district_user)
-        for path in ('/reports/case-linelist/', '/reports/analytics/'):
-            with self.subTest(path=path):
-                self.assertEqual(self.client.get(path).status_code, status.HTTP_403_FORBIDDEN)
-        self.assertNotContains(self.client.get('/reports/'), '/reports/case-linelist/')
+    def test_lower_and_inactive_roles_cannot_open_or_export_strategic_reports(self):
+        assignment = self.district_user.user_roles.get()
+        for level in (4, 5, None):
+            if level is None:
+                assignment.is_active = False
+            else:
+                assignment.role = Role.objects.create(
+                    name=f'strategic-level-{level}', display_name=f'Level {level}', level=level,
+                )
+            assignment.save()
+            self.client.force_login(self.district_user)
+            self.client.force_authenticate(self.district_user)
+            for path in (
+                '/reports/case-linelist/', '/reports/analytics/',
+                '/api/v1/reports/strategic/linelist/',
+                '/api/v1/reports/strategic/analytics/',
+            ):
+                with self.subTest(level=level, path=path):
+                    self.assertEqual(self.client.get(path).status_code, status.HTTP_403_FORBIDDEN)
+                    self.assertEqual(
+                        self.client.get(path, {'export': 'csv'}).status_code,
+                        status.HTTP_403_FORBIDDEN,
+                    )
+            self.assertNotContains(self.client.get('/reports/'), '/reports/case-linelist/')
+            self.assertNotContains(self.client.get('/reports/'), '/reports/analytics/')
 
     def test_linelist_and_csv_stay_in_region_and_include_visits(self):
         self.client.force_login(self.regional_user)
@@ -243,7 +261,87 @@ class StrategicReportsTests(APITestCase):
             '/api/v1/reports/strategic/analytics/',
         ):
             with self.subTest(path=path):
-                self.assertEqual(self.client.get(path).status_code, status.HTTP_403_FORBIDDEN)
+                self.assertEqual(self.client.get(path).status_code, status.HTTP_200_OK)
+
+    def test_district_reports_and_exports_cannot_include_neighbouring_district(self):
+        neighbour_district = District.objects.create(
+            name='Neighbour District', code='ND', region=self.region,
+        )
+        neighbour_sub_district = SubDistrict.objects.create(
+            name='Neighbour Sub-District', code='NSUB', district=neighbour_district,
+        )
+        neighbour_facility = Facility.objects.create(
+            name='Neighbour Facility', code='NF', type='OPC', district=neighbour_district,
+            sub_district=neighbour_sub_district,
+        )
+        self._case(
+            facility=neighbour_facility, child_name='Neighbour Child', malnutrition_type='SAM',
+            registration_date=date(2026, 1, 9), date_of_birth=date(2023, 1, 9),
+        )
+        self.client.force_login(self.district_user)
+        self.client.force_authenticate(self.district_user)
+        for filters in (
+            {}, {'region': self.other_region.id}, {'district': neighbour_district.id},
+            {'sub_district': neighbour_sub_district.id}, {'facility': neighbour_facility.id},
+            {'sub_district': self.sub_district.id, 'facility': self.facility.id},
+        ):
+            with self.subTest(filters=filters):
+                web = self.client.get('/reports/case-linelist/', filters)
+                self.assertEqual(web.context['totals']['total'], 2)
+                self.assertContains(web, 'Scoped Child')
+                self.assertNotContains(web, 'Neighbour Child')
+                self.assertNotContains(web, 'Outside Child')
+                self.assertEqual(list(web.context['facilities']), [self.facility])
+                self.assertEqual(list(web.context['sub_districts']), [self.sub_district])
+                api = self.client.get('/api/v1/reports/strategic/linelist/', filters)
+                self.assertEqual(api.data['data']['totals']['total'], 2)
+                self.assertEqual(
+                    {item['child_name'] for item in api.data['data']['results']},
+                    {'Scoped Child', 'Other MAM Child'},
+                )
+                web_analytics = self.client.get('/reports/analytics/', {**filters, 'year': 2026})
+                self.assertEqual(web_analytics.context['facility_count'], 1)
+                self.assertEqual(web_analytics.context['analytics_data']['admissions']['sam'][0], 1)
+                api_analytics = self.client.get(
+                    '/api/v1/reports/strategic/analytics/', {**filters, 'year': 2026},
+                )
+                self.assertEqual(api_analytics.data['data']['facility_count'], 1)
+                self.assertEqual(api_analytics.data['data']['monthly'][0]['sam'], 1)
+
+        for path in ('/reports/case-linelist/', '/api/v1/reports/strategic/linelist/'):
+            for layout in ('panel', 'long'):
+                exported = self.client.get(path, {
+                    'export': 'csv', 'layout': layout, 'district': neighbour_district.id,
+                })
+                self.assertEqual(exported.status_code, status.HTTP_200_OK)
+                csv_text = exported.content.decode('utf-8-sig')
+                self.assertIn('Scoped Child', csv_text)
+                self.assertIn('Follow-up', csv_text)
+                self.assertNotIn('Neighbour Child', csv_text)
+                self.assertNotIn('Outside Child', csv_text)
+
+    def test_incomplete_district_assignments_do_not_broaden_report_scope(self):
+        self.client.force_login(self.district_user)
+        self.client.force_authenticate(self.district_user)
+        assignment = self.district_user.user_roles.get()
+        for region, district, expected_cases in (
+            (None, self.district, 2), (self.region, None, 0), (None, None, 0),
+        ):
+            assignment.region = region
+            assignment.district = district
+            assignment.save()
+            web = self.client.get('/reports/case-linelist/')
+            self.assertEqual(web.context['totals']['total'], expected_cases)
+            self.assertEqual(web.context['access_level'], 'district')
+            self.assertEqual(web.context['regions'], [])
+            self.assertEqual(web.context['districts'], [])
+            self.assertEqual(len(web.context['sub_districts']), int(bool(expected_cases)))
+            api = self.client.get('/api/v1/reports/strategic/linelist/')
+            self.assertEqual(api.data['data']['totals']['total'], expected_cases)
+            web_analytics = self.client.get('/reports/analytics/', {'year': 2026})
+            api_analytics = self.client.get('/api/v1/reports/strategic/analytics/', {'year': 2026})
+            self.assertEqual(web_analytics.context['facility_count'], int(bool(expected_cases)))
+            self.assertEqual(api_analytics.data['data']['facility_count'], int(bool(expected_cases)))
 
     def test_mobile_linelist_csv_uses_the_same_scoped_export(self):
         self.client.force_authenticate(self.regional_user)

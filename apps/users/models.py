@@ -315,9 +315,16 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
         return True
 
     def can_view_strategic_reports(self):
-        """Longitudinal and analytics reports are restricted to regional level and above."""
+        """Longitudinal and analytics reports are restricted to district level and above."""
         level = self.get_management_level()
-        return level is not None and level <= 2
+        return level is not None and level <= 3
+
+    def get_strategic_report_facilities(self):
+        """Keep regional/district reports scoped even with incomplete assignments."""
+        facilities = self.get_accessible_facilities()
+        if self.get_management_level() in (2, 3):
+            facilities = facilities.filter(district__in=self.get_accessible_districts())
+        return facilities
     
     def get_accessible_users(self):
         """Get users accessible based on role hierarchy"""

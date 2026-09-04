@@ -804,7 +804,7 @@ def reports(request):
 
 def _strategic_report_scope(request):
     """Return a tamper-safe facility scope and shared filter context."""
-    accessible = request.user.get_accessible_facilities().select_related(
+    accessible = request.user.get_strategic_report_facilities().select_related(
         'district', 'district__region', 'sub_district'
     )
 
@@ -835,6 +835,11 @@ def _strategic_report_scope(request):
         scoped = scoped.filter(id=selected_facility)
 
     location_context = get_user_location_context(request.user)
+    if request.user.get_management_level() == 3:
+        location_context.update(
+            access_level='district', regions=[], districts=[],
+            sub_districts=request.user.get_accessible_sub_districts().order_by('name'),
+        )
     enrich_location_context(location_context, selected_region, selected_district)
 
     facility_options = accessible
@@ -998,7 +1003,7 @@ def _write_case_linelist_csv(cases, layout='long'):
 def case_linelist_report(request):
     """Longitudinal child line list with every linked OPC visit."""
     if not request.user.can_view_strategic_reports():
-        return HttpResponseForbidden('This report is available to regional, national, and super administrator users only.')
+        return HttpResponseForbidden('This report is available to district, regional, national, and super administrator users only.')
 
     facilities, filter_context = _strategic_report_scope(request)
     selected_date_from = request.GET.get('date_from', '').strip()
@@ -1074,7 +1079,7 @@ def case_linelist_report(request):
 def analytics_dashboard_report(request):
     """Jan-to-Dec indicator trends for the user's permitted facility scope."""
     if not request.user.can_view_strategic_reports():
-        return HttpResponseForbidden('This report is available to regional, national, and super administrator users only.')
+        return HttpResponseForbidden('This report is available to district, regional, national, and super administrator users only.')
 
     facilities, filter_context = _strategic_report_scope(request)
     try:

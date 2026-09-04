@@ -3919,7 +3919,7 @@ def access_control_update_api(request):
 
 def _strategic_facility_scope_api(user, params):
     """Intersect report filters with the authenticated user's facility scope."""
-    accessible = user.get_accessible_facilities().select_related(
+    accessible = user.get_strategic_report_facilities().select_related(
         'district', 'district__region', 'sub_district'
     )
     filters = (
@@ -3996,10 +3996,10 @@ def _linelist_case_data(case):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def strategic_linelist_api(request):
-    """Mobile longitudinal line list, limited to regional level and above."""
+    """Mobile longitudinal line list, limited to district level and above."""
     if not request.user.can_view_strategic_reports():
         return Response(
-            {'success': False, 'message': 'This report is available to regional, national, and super administrator users only.'},
+            {'success': False, 'message': 'This report is available to district, regional, national, and super administrator users only.'},
             status=status.HTTP_403_FORBIDDEN,
         )
 
@@ -4067,10 +4067,10 @@ def strategic_linelist_api(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def strategic_analytics_api(request):
-    """Mobile Jan-Dec indicator trends, limited to regional level and above."""
+    """Mobile Jan-Dec indicator trends, limited to district level and above."""
     if not request.user.can_view_strategic_reports():
         return Response(
-            {'success': False, 'message': 'This report is available to regional, national, and super administrator users only.'},
+            {'success': False, 'message': 'This report is available to district, regional, national, and super administrator users only.'},
             status=status.HTTP_403_FORBIDDEN,
         )
 
