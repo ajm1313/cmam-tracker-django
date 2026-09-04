@@ -70,6 +70,23 @@ class ProductionErrorRegressionTests(BaseTestCase):
         self.assertIn('profile_picture', response.data['data'])
         self.assertIsNone(response.data['data']['profile_picture'])
 
+    def test_weekly_reports_render_when_rutf_inventory_exists(self):
+        from apps.inventory.models import InventoryItem, StockLevel
+
+        rutf = InventoryItem.objects.create(
+            name='RUTF', code='RUTF-TEST', category='RUTF',
+            unit_of_measure='Sachets',
+        )
+        StockLevel.objects.create(
+            inventory_item=rutf, location_type='facility',
+            facility=self.facility, current_stock=10,
+        )
+        self.client.force_login(self.user)
+
+        for path in ('/reports/weekly-sam/', '/reports/weekly-mam/'):
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, status.HTTP_200_OK)
+
 
 class DashboardUserScopingTests(BaseTestCase):
     def test_region_district_and_sub_district_counts_stay_in_scope(self):

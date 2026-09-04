@@ -946,6 +946,8 @@ def _calculate_rutf_stock_data(facility_ids, week_ranges):
         import logging
         logging.getLogger(__name__).warning(f"Weekly SAM RUTF stock calculation failed: {e}")
 
+    return result
+
 
 @login_required
 def weekly_sam_report(request):
