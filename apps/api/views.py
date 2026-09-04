@@ -4020,7 +4020,9 @@ def strategic_linelist_api(request):
     if request.query_params.get('export') == 'csv':
         # The web and API exports intentionally share one audited CSV definition.
         from apps.users.views import _write_case_linelist_csv
-        return _write_case_linelist_csv(cases)
+        return _write_case_linelist_csv(
+            cases, request.query_params.get('layout', 'long')
+        )
 
     totals = cases.aggregate(
         total=Count('id'),

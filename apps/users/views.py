@@ -867,26 +867,87 @@ def _csv_safe(value):
     return f"'{text}" if text.startswith(('=', '+', '-', '@')) else text
 
 
-def _write_case_linelist_csv(cases):
+_LINELIST_CASE_HEADERS = [
+    'Region', 'District', 'Sub-District', 'Facility', 'Facility Code',
+    'Registration Number', 'Child Name', 'Sex', 'Date of Birth', 'Age (Months)',
+    'Caregiver Name', 'Caregiver Phone', 'Programme', 'Admission Date',
+    'Registration Date', 'Admission Type', 'Admission Criteria', 'Admission Weight (kg)',
+    'Admission Height (cm)', 'Admission MUAC (cm)', 'Admission Oedema',
+    'Registration RUTF Sachets',
+]
+_LINELIST_VISIT_HEADERS = [
+    'Visit Number', 'Visit Date', 'Visit Type', 'Visit Weight (kg)',
+    'Visit Height (cm)', 'Visit MUAC (cm)', 'Visit Oedema', 'Visit Outcome',
+    'Visit RUTF Sachets', 'CSB+ Given', 'Oil Given',
+]
+_LINELIST_OUTCOME_HEADERS = [
+    'Case Status', 'Discharge Outcome', 'Discharge Date', 'Outcome Notes',
+]
+
+
+def _linelist_case_values(case):
+    return [
+        case.facility.district.region.name,
+        case.facility.district.name,
+        case.facility.sub_district.name if case.facility.sub_district else '',
+        case.facility.name,
+        case.facility.code,
+        case.registration_number or '',
+        case.child_name,
+        case.child_gender,
+        case.date_of_birth,
+        case.age_months,
+        case.caregiver_name,
+        case.caregiver_phone or '',
+        _programme_label(case),
+        case.admission_date,
+        case.registration_date,
+        case.admission_type,
+        case.admission_criteria or '',
+        case.weight_kg if case.weight_kg is not None else '',
+        case.height_cm if case.height_cm is not None else '',
+        case.muac_cm if case.muac_cm is not None else '',
+        case.oedema or '',
+        case.rutf_sachets_given if case.rutf_sachets_given is not None else '',
+    ]
+
+
+def _linelist_visit_values(visit):
+    if visit is None:
+        return [''] * len(_LINELIST_VISIT_HEADERS)
+    return [
+        visit.visit_number,
+        visit.visit_date,
+        visit.visit_type,
+        visit.weight_kg if visit.weight_kg is not None else '',
+        visit.height_cm if visit.height_cm is not None else '',
+        visit.muac_cm if visit.muac_cm is not None else '',
+        visit.oedema or '',
+        visit.visit_outcome or '',
+        visit.rutf_sachets_given if visit.rutf_sachets_given is not None else '',
+        visit.csb_plus_given if visit.csb_plus_given is not None else '',
+        visit.oil_given if visit.oil_given is not None else '',
+    ]
+
+
+def _linelist_outcome_values(case):
+    return [
+        case.status,
+        case.outcome or '',
+        case.discharge_date or '',
+        case.outcome_notes or '',
+    ]
+
+
+def _write_case_linelist_csv(cases, layout='long'):
+    layout = 'panel' if str(layout).lower() in ('panel', 'wide') else 'long'
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = (
-        f'attachment; filename="cmam-case-linelist-{date.today().isoformat()}.csv"'
+        f'attachment; filename="cmam-case-linelist-{layout}-{date.today().isoformat()}.csv"'
     )
     response['Cache-Control'] = 'private, no-store'
     response.write('\ufeff')
     writer = csv.writer(response)
-    writer.writerow([
-        'Region', 'District', 'Sub-District', 'Facility', 'Facility Code',
-        'Registration Number', 'Child Name', 'Sex', 'Date of Birth', 'Age (Months)',
-        'Caregiver Name', 'Caregiver Phone', 'Programme', 'Admission Date',
-        'Registration Date', 'Admission Type', 'Admission Criteria', 'Admission Weight (kg)',
-        'Admission Height (cm)', 'Admission MUAC (cm)', 'Admission Oedema',
-        'Registration RUTF Sachets', 'Visit Number', 'Visit Date', 'Visit Type',
-        'Visit Weight (kg)', 'Visit Height (cm)', 'Visit MUAC (cm)', 'Visit Oedema',
-        'Visit Outcome', 'Visit RUTF Sachets', 'CSB+ Given', 'Oil Given',
-        'Case Status', 'Discharge Outcome', 'Discharge Date', 'Outcome Notes',
-    ])
-
     visits = OpcVisit.objects.filter(registration__in=cases).order_by(
         'registration_id', 'visit_date', 'visit_number'
     )
@@ -894,48 +955,42 @@ def _write_case_linelist_csv(cases):
     for visit in visits.iterator():
         visits_by_case.setdefault(visit.registration_id, []).append(visit)
 
+    if layout == 'panel':
+        max_visit_number = max(1, max(
+            (visit.visit_number for case_visits in visits_by_case.values() for visit in case_visits),
+            default=1,
+        ))
+        panel_visit_headers = []
+        for visit_number in range(1, max_visit_number + 1):
+            panel_visit_headers.extend([
+                f'Visit {visit_number} {header.removeprefix("Visit ")}'
+                for header in _LINELIST_VISIT_HEADERS[1:]
+            ])
+        writer.writerow(
+            _LINELIST_CASE_HEADERS + _LINELIST_OUTCOME_HEADERS + panel_visit_headers
+        )
+        for case in cases.iterator():
+            visits_by_number = {
+                visit.visit_number: visit for visit in visits_by_case.get(case.id, [])
+            }
+            row = _linelist_case_values(case) + _linelist_outcome_values(case)
+            for visit_number in range(1, max_visit_number + 1):
+                row.extend(_linelist_visit_values(visits_by_number.get(visit_number))[1:])
+            writer.writerow(map(_csv_safe, row))
+        return response
+
+    writer.writerow(
+        _LINELIST_CASE_HEADERS + _LINELIST_VISIT_HEADERS + _LINELIST_OUTCOME_HEADERS
+    )
     for case in cases.iterator():
         case_visits = visits_by_case.get(case.id) or [None]
         for visit in case_visits:
-            writer.writerow(map(_csv_safe, [
-                case.facility.district.region.name,
-                case.facility.district.name,
-                case.facility.sub_district.name if case.facility.sub_district else '',
-                case.facility.name,
-                case.facility.code,
-                case.registration_number or '',
-                case.child_name,
-                case.child_gender,
-                case.date_of_birth,
-                case.age_months,
-                case.caregiver_name,
-                case.caregiver_phone or '',
-                _programme_label(case),
-                case.admission_date,
-                case.registration_date,
-                case.admission_type,
-                case.admission_criteria or '',
-                case.weight_kg if case.weight_kg is not None else '',
-                case.height_cm if case.height_cm is not None else '',
-                case.muac_cm if case.muac_cm is not None else '',
-                case.oedema or '',
-                case.rutf_sachets_given if case.rutf_sachets_given is not None else '',
-                visit.visit_number if visit else '',
-                visit.visit_date if visit else '',
-                visit.visit_type if visit else '',
-                visit.weight_kg if visit and visit.weight_kg is not None else '',
-                visit.height_cm if visit and visit.height_cm is not None else '',
-                visit.muac_cm if visit and visit.muac_cm is not None else '',
-                visit.oedema if visit and visit.oedema else '',
-                visit.visit_outcome if visit and visit.visit_outcome else '',
-                visit.rutf_sachets_given if visit and visit.rutf_sachets_given is not None else '',
-                visit.csb_plus_given if visit and visit.csb_plus_given is not None else '',
-                visit.oil_given if visit and visit.oil_given is not None else '',
-                case.status,
-                case.outcome or '',
-                case.discharge_date or '',
-                case.outcome_notes or '',
-            ]))
+            writer.writerow(map(
+                _csv_safe,
+                _linelist_case_values(case)
+                + _linelist_visit_values(visit)
+                + _linelist_outcome_values(case),
+            ))
     return response
 
 
@@ -969,7 +1024,7 @@ def case_linelist_report(request):
     cases = cases.order_by('-registration_date', 'child_name')
 
     if request.GET.get('export') == 'csv':
-        return _write_case_linelist_csv(cases)
+        return _write_case_linelist_csv(cases, request.GET.get('layout', 'long'))
 
     totals = cases.aggregate(
         total=Count('id'),
@@ -996,6 +1051,7 @@ def case_linelist_report(request):
     query = request.GET.copy()
     query.pop('page', None)
     query.pop('export', None)
+    query.pop('layout', None)
     context = {
         **filter_context,
         'case_page': case_page,

@@ -1,3 +1,6 @@
+import csv
+from io import StringIO
+
 from django.test import TestCase
 from rest_framework.test import APIClient, APITestCase
 from rest_framework import status
@@ -252,6 +255,36 @@ class StrategicReportsTests(APITestCase):
         self.assertIn('Scoped Child', csv_text)
         self.assertIn('Follow-up', csv_text)
         self.assertNotIn('Outside Child', csv_text)
+
+    def test_panel_csv_has_one_child_row_and_numbered_visit_columns(self):
+        OpcVisit.objects.create(
+            registration=self.own_sam, visit_number=2, visit_date=date(2026, 1, 22),
+            visit_type='Follow-up', weight_kg=7.5, muac_cm=11.7,
+            visit_outcome='Continue', conducted_by=self.regional_user,
+            created_by=self.regional_user,
+        )
+        self.client.force_login(self.regional_user)
+
+        response = self.client.get(
+            '/reports/case-linelist/', {'export': 'csv', 'layout': 'panel'},
+        )
+        rows = list(csv.reader(StringIO(response.content.decode('utf-8-sig'))))
+        header = rows[0]
+        scoped_row = next(row for row in rows[1:] if 'Scoped Child' in row)
+
+        self.assertIn('cmam-case-linelist-panel-', response['Content-Disposition'])
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(sum('Scoped Child' in row for row in rows[1:]), 1)
+        self.assertEqual(scoped_row[header.index('Visit 1 Date')], '2026-01-15')
+        self.assertEqual(scoped_row[header.index('Visit 2 Date')], '2026-01-22')
+        self.assertFalse(any('Outside Child' in row for row in rows))
+
+        self.client.force_authenticate(self.regional_user)
+        api_response = self.client.get(
+            '/api/v1/reports/strategic/linelist/',
+            {'export': 'csv', 'layout': 'panel'},
+        )
+        self.assertEqual(api_response.content, response.content)
 
 
 class PushNotificationTests(BaseTestCase):
