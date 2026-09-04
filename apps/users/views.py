@@ -161,6 +161,10 @@ def dashboard(request):
             status='Active',
             facility_id__in=facility_ids,
         ).count(),
+        'active_high_risk_mam_cases': OpcRegistration.objects.filter(
+            malnutrition_type='MAM', mam_type='High-risk MAM',
+            status='Active', facility_id__in=facility_ids,
+        ).count(),
         'total_sam_cases': OpcRegistration.objects.filter(
             malnutrition_type='SAM',
             facility_id__in=facility_ids,
@@ -179,8 +183,7 @@ def dashboard(request):
         'other_mam_cases': OpcRegistration.objects.filter(
             facility_id__in=facility_ids,
             malnutrition_type='MAM',
-            mam_type='Other MAM',
-        ).count(),
+        ).exclude(mam_type='High-risk MAM').count(),
         'high_risk_mam_cases': OpcRegistration.objects.filter(
             facility_id__in=facility_ids,
             malnutrition_type='MAM',
@@ -199,6 +202,7 @@ def dashboard(request):
             facility_id__in=facility_ids,
         ).count(),
     }
+    stats['active_other_mam_cases'] = stats['active_mam_cases'] - stats['active_high_risk_mam_cases']
     
     # Build months/years lists for the time filter dropdowns
     months = [(i, calendar.month_name[i]) for i in range(1, 13)]

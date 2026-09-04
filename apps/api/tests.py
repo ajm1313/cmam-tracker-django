@@ -1089,6 +1089,67 @@ class VisitDeleteApiTests(BaseTestCase):
 class DashboardStatsTests(BaseTestCase):
     """Tests for dashboard stats period filtering."""
 
+    def test_web_and_mobile_active_mam_summary_is_split_and_scoped(self):
+        other_district = District.objects.create(
+            name='Outside Summary District', code='OSD', region=self.region,
+        )
+        other_facility = Facility.objects.create(
+            name='Outside Summary Facility', code='OSF', type='OPC', district=other_district,
+        )
+        for index, (facility, programme, subtype, case_status) in enumerate([
+            (self.facility, 'SAM', None, 'Active'),
+            (self.facility, 'MAM', 'High-risk MAM', 'Active'),
+            (self.facility, 'MAM', 'Other MAM', 'Active'),
+            (self.facility, 'MAM', None, 'Active'),
+            (self.facility, 'MAM', '', 'Active'),
+            (self.facility, 'MAM', 'High-risk MAM', 'Discharged'),
+            (self.facility, 'MAM', 'Other MAM', 'Discharged'),
+            (other_facility, 'MAM', 'High-risk MAM', 'Active'),
+            (other_facility, 'MAM', 'Other MAM', 'Active'),
+        ]):
+            OpcRegistration.objects.create(
+                facility=facility, child_name=f'Summary Child {index}', child_gender='Female',
+                date_of_birth=date(2023, 1, 1), age_months=24, caregiver_name='Parent',
+                malnutrition_type=programme, mam_type=subtype, status=case_status,
+                admission_date=date(2024, 1, 15), registration_date=date(2024, 1, 15),
+                weight_kg=7, height_cm=70, muac_cm=12, created_by=self.user,
+            )
+        self.user.is_superuser = False
+        self.user.is_staff = False
+        self.user.save()
+        role = Role.objects.create(name='summary-district', display_name='District', level=3)
+        UserRole.objects.create(
+            user=self.user, role=role, region=self.region, district=self.district,
+        )
+        self.client.force_login(self.user)
+
+        for filters, expected in (
+            ({}, (1, 3, 2, 4)),
+            ({'facility': self.facility.id, 'year': 2025, 'month': 1}, (1, 3, 2, 4)),
+            ({'district': other_district.id}, (0, 0, 0, 0)),
+        ):
+            with self.subTest(filters=filters):
+                web = self.client.get('/dashboard/', filters)
+                api = self.client.get('/api/v1/dashboard/stats/', filters)
+                self.assertEqual(web.status_code, status.HTTP_200_OK)
+                self.assertEqual(api.status_code, status.HTTP_200_OK)
+                web_stats, api_stats = web.context['stats'], api.data['data']
+                for web_key, api_key, value in zip(
+                    ('active_high_risk_mam_cases', 'active_other_mam_cases',
+                     'high_risk_mam_cases', 'other_mam_cases'),
+                    ('active_high_risk_mam', 'active_other_mam', 'high_risk_mam', 'other_mam'),
+                    expected,
+                ):
+                    self.assertEqual(web_stats[web_key], value)
+                    self.assertEqual(api_stats[api_key], value)
+                self.assertEqual(api_stats['active_mam'], sum(expected[:2]))
+                self.assertEqual(web_stats['active_mam_cases'], sum(expected[:2]))
+                summary_html = web.content.decode().split('<!-- Case Summary Mini Card -->')[1]
+                summary_html = summary_html.split('<!-- Visit Reminders Widget -->')[0]
+                self.assertIn('Active High-Risk MAM (all time)', summary_html)
+                self.assertIn('Active Other MAM (all time)', summary_html)
+                self.assertNotIn('>Active MAM (all time)<', summary_html)
+
     def test_dashboard_stats_returns_counts(self):
         OpcRegistration.objects.create(
             facility=self.facility, child_name='SAM Child',
@@ -1105,6 +1166,8 @@ class DashboardStatsTests(BaseTestCase):
         data = response.data['data']
         self.assertIn('total_sam', data)
         self.assertIn('active_sam', data)
+        self.assertEqual(data['active_high_risk_mam'], 0)
+        self.assertEqual(data['active_other_mam'], 0)
 
     def test_monthly_trends_split_mam_subtypes_and_keep_legacy_mam(self):
         today = date.today()

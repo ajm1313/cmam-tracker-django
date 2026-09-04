@@ -1469,6 +1469,9 @@ def dashboard_stats(request):
     total_mam = period_qs.filter(malnutrition_type='MAM').count()
     active_sam = qs.filter(malnutrition_type='SAM', status='Active').count()
     active_mam = qs.filter(malnutrition_type='MAM', status='Active').count()
+    active_high_risk_mam = qs.filter(
+        malnutrition_type='MAM', mam_type='High-risk MAM', status='Active',
+    ).count()
     discharged_month = qs.filter(status='Discharged', discharge_date__gte=month_start).count()
     total_discharged = qs.filter(status='Discharged').count()
     defaulters = qs.filter(status='Defaulted').count()
@@ -1485,6 +1488,8 @@ def dashboard_stats(request):
             'total_mam': total_mam,
             'active_sam': active_sam,
             'active_mam': active_mam,
+            'active_high_risk_mam': active_high_risk_mam,
+            'active_other_mam': active_mam - active_high_risk_mam,
             'discharged_this_month': discharged_month,
             'total_discharged': total_discharged,
             'defaulters': defaulters,
