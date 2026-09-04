@@ -287,6 +287,33 @@
         </div>
     </div>
 
+    {% if can_view_strategic_reports %}
+    <div class="relative overflow-hidden bg-slate-950 rounded-2xl border border-slate-800 shadow-xl">
+        <div class="absolute -right-16 -top-20 h-52 w-52 rounded-full bg-indigo-500/20 blur-3xl"></div>
+        <div class="relative px-6 py-5 border-b border-white/10 flex items-center justify-between gap-4">
+            <div>
+                <div class="flex items-center gap-2"><div class="w-1 h-5 bg-indigo-400 rounded-full"></div><h2 class="text-sm font-bold text-white uppercase tracking-wider">Strategic Intelligence</h2></div>
+                <p class="text-xs text-slate-400 mt-1.5 ml-3">Regional and national longitudinal reporting</p>
+            </div>
+            <span class="hidden sm:inline-flex rounded-full border border-indigo-400/20 bg-indigo-400/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-indigo-300">Restricted access</span>
+        </div>
+        <div class="relative grid grid-cols-1 lg:grid-cols-2 gap-4 p-6">
+            <a href="{% url 'users:case_linelist_report' %}" class="group rounded-2xl border border-white/10 bg-white/[.06] p-5 hover:bg-white/[.10] hover:border-indigo-400/40 transition-all">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-emerald-500 flex items-center justify-center shadow-lg shadow-emerald-950/30"><svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m4 10H5a2 2 0 01-2-2V5a2 2 0 012-2h4l2 2h8a2 2 0 012 2v12a2 2 0 01-2 2z"/></svg></div>
+                    <div class="flex-1"><h3 class="font-bold text-white group-hover:text-emerald-300 transition-colors">Longitudinal Case Line List</h3><p class="text-sm text-slate-400 mt-1">Follow every child from registration through each visit and discharge, with secure CSV export.</p><p class="text-xs font-bold text-emerald-400 mt-3">Open line list →</p></div>
+                </div>
+            </a>
+            <a href="{% url 'users:analytics_dashboard_report' %}" class="group rounded-2xl border border-white/10 bg-white/[.06] p-5 hover:bg-white/[.10] hover:border-indigo-400/40 transition-all">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-950/30"><svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 19V9m5 10V5m5 14v-7m5 7V3"/></svg></div>
+                    <div class="flex-1"><h3 class="font-bold text-white group-hover:text-indigo-300 transition-colors">Programme Analytics</h3><p class="text-sm text-slate-400 mt-1">Explore Jan–Dec trends for admissions, visits, outcomes, active caseload and RUTF.</p><p class="text-xs font-bold text-indigo-400 mt-3">Open analytics →</p></div>
+                </div>
+            </a>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Detailed Report Links -->
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-emerald-50 flex items-center gap-2">

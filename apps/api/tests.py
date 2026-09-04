@@ -4,7 +4,7 @@ from rest_framework import status
 from apps.users.models import User, Role, UserRole
 from apps.facilities.models import Facility
 from apps.locations.models import Region, District, SubDistrict
-from apps.cases.models import OpcRegistration, IpcCase
+from apps.cases.models import OpcRegistration, OpcVisit, IpcCase
 from datetime import date
 from uuid import uuid4
 
@@ -86,6 +86,129 @@ class ProductionErrorRegressionTests(BaseTestCase):
         for path in ('/reports/weekly-sam/', '/reports/weekly-mam/'):
             with self.subTest(path=path):
                 self.assertEqual(self.client.get(path).status_code, status.HTTP_200_OK)
+
+
+class StrategicReportsTests(APITestCase):
+    def setUp(self):
+        self.region = Region.objects.create(name='North Strategic', code='NS')
+        self.district = District.objects.create(name='North District', code='NSD', region=self.region)
+        self.sub_district = SubDistrict.objects.create(
+            name='North Sub-District', code='NSSD', district=self.district,
+        )
+        self.facility = Facility.objects.create(
+            name='North Facility', code='NSF', type='OPC', district=self.district,
+            sub_district=self.sub_district,
+        )
+        self.other_region = Region.objects.create(name='South Strategic', code='SS')
+        self.other_district = District.objects.create(
+            name='South District', code='SSD', region=self.other_region,
+        )
+        self.other_facility = Facility.objects.create(
+            name='South Facility', code='SSF', type='OPC', district=self.other_district,
+        )
+
+        self.regional_role = Role.objects.create(
+            name='strategic-regional', display_name='Regional', level=2,
+        )
+        self.national_role = Role.objects.create(
+            name='strategic-national', display_name='National', level=1,
+        )
+        self.district_role = Role.objects.create(
+            name='strategic-district', display_name='District', level=3,
+        )
+        self.regional_user = User.objects.create_user(
+            email='strategic-regional@example.com', password='testpass123', name='Regional Viewer',
+        )
+        self.district_user = User.objects.create_user(
+            email='strategic-district@example.com', password='testpass123', name='District Viewer',
+        )
+        self.national_user = User.objects.create_user(
+            email='strategic-national@example.com', password='testpass123', name='National Viewer',
+        )
+        self.super_user = User.objects.create_superuser(
+            email='strategic-admin@example.com', password='testpass123', name='Super Administrator',
+        )
+        UserRole.objects.create(user=self.regional_user, role=self.regional_role, region=self.region)
+        UserRole.objects.create(user=self.national_user, role=self.national_role)
+        UserRole.objects.create(
+            user=self.district_user, role=self.district_role,
+            region=self.region, district=self.district,
+        )
+
+        self.own_sam = self._case(
+            facility=self.facility, child_name='Scoped Child', malnutrition_type='SAM',
+            registration_date=date(2026, 1, 8), date_of_birth=date(2023, 1, 8),
+        )
+        self.own_mam = self._case(
+            facility=self.facility, child_name='Other MAM Child', malnutrition_type='MAM',
+            registration_date=date(2026, 4, 12), date_of_birth=date(2022, 4, 12),
+            mam_type='Other MAM',
+        )
+        self.outside_case = self._case(
+            facility=self.other_facility, child_name='Outside Child', malnutrition_type='MAM',
+            registration_date=date(2026, 2, 2), date_of_birth=date(2022, 2, 2),
+            mam_type='High-risk MAM',
+        )
+        OpcVisit.objects.create(
+            registration=self.own_sam, visit_number=1, visit_date=date(2026, 1, 15),
+            visit_type='Follow-up', weight_kg=7.2, muac_cm=11.4, visit_outcome='Continue',
+            rutf_sachets_given=14, conducted_by=self.regional_user, created_by=self.regional_user,
+        )
+
+    def _case(self, facility, child_name, malnutrition_type, registration_date,
+              date_of_birth, mam_type=None):
+        return OpcRegistration.objects.create(
+            facility=facility, child_name=child_name, child_gender='Female',
+            date_of_birth=date_of_birth, age_months=36, caregiver_name='Caregiver',
+            malnutrition_type=malnutrition_type, mam_type=mam_type,
+            admission_date=registration_date, registration_date=registration_date,
+            weight_kg=7, height_cm=70, muac_cm=11, created_by=self.regional_user,
+        )
+
+    def test_only_regional_and_higher_can_open_strategic_reports(self):
+        for viewer in (self.regional_user, self.national_user, self.super_user):
+            self.client.force_login(viewer)
+            for path in ('/reports/case-linelist/', '/reports/analytics/'):
+                with self.subTest(viewer=viewer.email, path=path):
+                    self.assertEqual(self.client.get(path).status_code, status.HTTP_200_OK)
+
+        self.client.force_login(self.regional_user)
+        self.assertContains(self.client.get('/reports/'), '/reports/case-linelist/')
+
+        self.client.force_login(self.district_user)
+        for path in ('/reports/case-linelist/', '/reports/analytics/'):
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotContains(self.client.get('/reports/'), '/reports/case-linelist/')
+
+    def test_linelist_and_csv_stay_in_region_and_include_visits(self):
+        self.client.force_login(self.regional_user)
+        response = self.client.get('/reports/case-linelist/')
+        self.assertContains(response, 'Scoped Child')
+        self.assertContains(response, 'Visit 1')
+        self.assertNotContains(response, 'Outside Child')
+
+        tampered = self.client.get('/reports/case-linelist/', {'facility': self.other_facility.id})
+        self.assertContains(tampered, 'Scoped Child')
+        self.assertNotContains(tampered, 'Outside Child')
+
+        csv_response = self.client.get('/reports/case-linelist/', {'export': 'csv'})
+        csv_text = csv_response.content.decode('utf-8-sig')
+        self.assertEqual(csv_response.status_code, status.HTTP_200_OK)
+        self.assertIn('Scoped Child', csv_text)
+        self.assertIn('Follow-up', csv_text)
+        self.assertNotIn('Outside Child', csv_text)
+
+    def test_analytics_preserves_twelve_months_and_mam_subtypes(self):
+        self.client.force_login(self.regional_user)
+        response = self.client.get('/reports/analytics/', {'year': 2026})
+        analytics = response.context['analytics_data']
+
+        self.assertEqual(len(analytics['labels']), 12)
+        self.assertEqual(analytics['admissions']['sam'][0], 1)
+        self.assertEqual(analytics['admissions']['other_mam'][3], 1)
+        self.assertEqual(analytics['admissions']['high_risk_mam'][1], 0)
+        self.assertEqual(analytics['visits']['sam_visits'][0], 1)
 
 
 class DashboardUserScopingTests(BaseTestCase):

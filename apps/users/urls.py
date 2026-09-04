@@ -54,6 +54,8 @@ urlpatterns = [
     path('reports/weekly-sam/', views.weekly_sam_report, name='weekly_sam_report'),
     path('reports/weekly-mam/', views.weekly_mam_report, name='weekly_mam_report'),
     path('reports/monthly-facility/', views.monthly_facility_report, name='monthly_facility_report'),
+    path('reports/case-linelist/', views.case_linelist_report, name='case_linelist_report'),
+    path('reports/analytics/', views.analytics_dashboard_report, name='analytics_dashboard_report'),
     
     # API endpoints for cascading filters
     path('api/regions/', views.api_get_regions, name='api_get_regions'),

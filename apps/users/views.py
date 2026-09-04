@@ -3,9 +3,14 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate, login, logout
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Count, Q, F, Max, Sum
-from django.http import HttpResponseForbidden, JsonResponse
-from datetime import datetime, timedelta
+from django.core.paginator import Paginator
+from django.db.models import Count, Q, F, Max, Sum, Prefetch
+from django.db.models.functions import ExtractMonth
+from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
+from django.utils.dateparse import parse_date
+from django.views.decorators.cache import never_cache
+from datetime import date, datetime, timedelta
+import csv
 import calendar
 from .models import User, Role, UserRole, SystemFeature, RoleFeaturePermission, AccessControlLog, AuditLog
 from apps.facilities.models import Facility
@@ -792,9 +797,385 @@ def reports(request):
         'years': years,
         'month_name': calendar.month_name[month],
         'filter_active': filter_active,
+        'can_view_strategic_reports': user.can_view_strategic_reports(),
         **location_context,
     }
     return render(request, 'users/reports.html', context)
+
+
+def _strategic_report_scope(request):
+    """Return a tamper-safe facility scope and shared filter context."""
+    accessible = request.user.get_accessible_facilities().select_related(
+        'district', 'district__region', 'sub_district'
+    )
+
+    selected_region = request.GET.get('region', '').strip()
+    selected_district = request.GET.get('district', '').strip()
+    selected_sub_district = request.GET.get('sub_district', '').strip()
+    selected_facility = request.GET.get('facility', '').strip()
+
+    # Ignore IDs outside the user's assigned scope. The queryset is intersected
+    # again below so inconsistent parent/child IDs can never broaden access.
+    if selected_region and not accessible.filter(district__region_id=selected_region).exists():
+        selected_region = ''
+    if selected_district and not accessible.filter(district_id=selected_district).exists():
+        selected_district = ''
+    if selected_sub_district and not accessible.filter(sub_district_id=selected_sub_district).exists():
+        selected_sub_district = ''
+    if selected_facility and not accessible.filter(id=selected_facility).exists():
+        selected_facility = ''
+
+    scoped = accessible
+    if selected_region:
+        scoped = scoped.filter(district__region_id=selected_region)
+    if selected_district:
+        scoped = scoped.filter(district_id=selected_district)
+    if selected_sub_district:
+        scoped = scoped.filter(sub_district_id=selected_sub_district)
+    if selected_facility:
+        scoped = scoped.filter(id=selected_facility)
+
+    location_context = get_user_location_context(request.user)
+    enrich_location_context(location_context, selected_region, selected_district)
+
+    facility_options = accessible
+    if selected_region:
+        facility_options = facility_options.filter(district__region_id=selected_region)
+    if selected_district:
+        facility_options = facility_options.filter(district_id=selected_district)
+    if selected_sub_district:
+        facility_options = facility_options.filter(sub_district_id=selected_sub_district)
+
+    return scoped.distinct(), {
+        'selected_region': selected_region,
+        'selected_district': selected_district,
+        'selected_sub_district': selected_sub_district,
+        'selected_facility': selected_facility,
+        'facilities': facility_options.order_by('name'),
+        **location_context,
+    }
+
+
+def _programme_label(case):
+    if case.malnutrition_type == 'SAM':
+        return 'SAM'
+    return 'High-Risk MAM' if case.mam_type == 'High-risk MAM' else 'Other MAM'
+
+
+def _csv_safe(value):
+    """Prevent spreadsheet formula execution when the CSV is opened."""
+    text = '' if value is None else str(value)
+    return f"'{text}" if text.startswith(('=', '+', '-', '@')) else text
+
+
+def _write_case_linelist_csv(cases):
+    response = HttpResponse(content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = (
+        f'attachment; filename="cmam-case-linelist-{date.today().isoformat()}.csv"'
+    )
+    response['Cache-Control'] = 'private, no-store'
+    response.write('\ufeff')
+    writer = csv.writer(response)
+    writer.writerow([
+        'Region', 'District', 'Sub-District', 'Facility', 'Facility Code',
+        'Registration Number', 'Child Name', 'Sex', 'Date of Birth', 'Age (Months)',
+        'Caregiver Name', 'Caregiver Phone', 'Programme', 'Admission Date',
+        'Registration Date', 'Admission Type', 'Admission Criteria', 'Admission Weight (kg)',
+        'Admission Height (cm)', 'Admission MUAC (cm)', 'Admission Oedema',
+        'Registration RUTF Sachets', 'Visit Number', 'Visit Date', 'Visit Type',
+        'Visit Weight (kg)', 'Visit Height (cm)', 'Visit MUAC (cm)', 'Visit Oedema',
+        'Visit Outcome', 'Visit RUTF Sachets', 'CSB+ Given', 'Oil Given',
+        'Case Status', 'Discharge Outcome', 'Discharge Date', 'Outcome Notes',
+    ])
+
+    visits = OpcVisit.objects.filter(registration__in=cases).order_by(
+        'registration_id', 'visit_date', 'visit_number'
+    )
+    visits_by_case = {}
+    for visit in visits.iterator():
+        visits_by_case.setdefault(visit.registration_id, []).append(visit)
+
+    for case in cases.iterator():
+        case_visits = visits_by_case.get(case.id) or [None]
+        for visit in case_visits:
+            writer.writerow(map(_csv_safe, [
+                case.facility.district.region.name,
+                case.facility.district.name,
+                case.facility.sub_district.name if case.facility.sub_district else '',
+                case.facility.name,
+                case.facility.code,
+                case.registration_number or '',
+                case.child_name,
+                case.child_gender,
+                case.date_of_birth,
+                case.age_months,
+                case.caregiver_name,
+                case.caregiver_phone or '',
+                _programme_label(case),
+                case.admission_date,
+                case.registration_date,
+                case.admission_type,
+                case.admission_criteria or '',
+                case.weight_kg if case.weight_kg is not None else '',
+                case.height_cm if case.height_cm is not None else '',
+                case.muac_cm if case.muac_cm is not None else '',
+                case.oedema or '',
+                case.rutf_sachets_given if case.rutf_sachets_given is not None else '',
+                visit.visit_number if visit else '',
+                visit.visit_date if visit else '',
+                visit.visit_type if visit else '',
+                visit.weight_kg if visit and visit.weight_kg is not None else '',
+                visit.height_cm if visit and visit.height_cm is not None else '',
+                visit.muac_cm if visit and visit.muac_cm is not None else '',
+                visit.oedema if visit and visit.oedema else '',
+                visit.visit_outcome if visit and visit.visit_outcome else '',
+                visit.rutf_sachets_given if visit and visit.rutf_sachets_given is not None else '',
+                visit.csb_plus_given if visit and visit.csb_plus_given is not None else '',
+                visit.oil_given if visit and visit.oil_given is not None else '',
+                case.status,
+                case.outcome or '',
+                case.discharge_date or '',
+                case.outcome_notes or '',
+            ]))
+    return response
+
+
+@login_required
+@never_cache
+def case_linelist_report(request):
+    """Longitudinal child line list with every linked OPC visit."""
+    if not request.user.can_view_strategic_reports():
+        return HttpResponseForbidden('This report is available to regional, national, and super administrator users only.')
+
+    facilities, filter_context = _strategic_report_scope(request)
+    selected_date_from = request.GET.get('date_from', '').strip()
+    selected_date_to = request.GET.get('date_to', '').strip()
+    date_from = parse_date(selected_date_from) if selected_date_from else None
+    date_to = parse_date(selected_date_to) if selected_date_to else None
+    if date_from is None:
+        selected_date_from = ''
+    if date_to is None:
+        selected_date_to = ''
+    if date_from and date_to and date_from > date_to:
+        date_from, date_to = date_to, date_from
+        selected_date_from, selected_date_to = date_from.isoformat(), date_to.isoformat()
+
+    cases = OpcRegistration.objects.filter(facility__in=facilities).select_related(
+        'facility', 'facility__district', 'facility__district__region', 'facility__sub_district'
+    )
+    if date_from:
+        cases = cases.filter(registration_date__gte=date_from)
+    if date_to:
+        cases = cases.filter(registration_date__lte=date_to)
+    cases = cases.order_by('-registration_date', 'child_name')
+
+    if request.GET.get('export') == 'csv':
+        return _write_case_linelist_csv(cases)
+
+    totals = cases.aggregate(
+        total=Count('id'),
+        active=Count('id', filter=Q(status='Active')),
+        discharged=Count('id', filter=Q(status='Discharged')),
+    )
+    totals['visits'] = OpcVisit.objects.filter(registration__in=cases).count()
+
+    case_page = Paginator(
+        cases.prefetch_related(Prefetch(
+            'visits',
+            queryset=OpcVisit.objects.order_by('visit_date', 'visit_number'),
+            to_attr='ordered_visits',
+        )),
+        50,
+    ).get_page(request.GET.get('page'))
+    for case in case_page.object_list:
+        case.programme_label = _programme_label(case)
+        case.latest_visit = case.ordered_visits[-1] if case.ordered_visits else None
+        case.treatment_days = max(
+            0, ((case.discharge_date or date.today()) - case.admission_date).days
+        )
+
+    query = request.GET.copy()
+    query.pop('page', None)
+    query.pop('export', None)
+    context = {
+        **filter_context,
+        'case_page': case_page,
+        'totals': totals,
+        'selected_date_from': selected_date_from,
+        'selected_date_to': selected_date_to,
+        'filter_active': any([
+            filter_context['selected_region'], filter_context['selected_district'],
+            filter_context['selected_sub_district'], filter_context['selected_facility'],
+            selected_date_from, selected_date_to,
+        ]),
+        'base_query': query.urlencode(),
+    }
+    response = render(request, 'reports/case_linelist.html', context)
+    response['Cache-Control'] = 'private, no-store'
+    return response
+
+
+@login_required
+@never_cache
+def analytics_dashboard_report(request):
+    """Jan-to-Dec indicator trends for the user's permitted facility scope."""
+    if not request.user.can_view_strategic_reports():
+        return HttpResponseForbidden('This report is available to regional, national, and super administrator users only.')
+
+    facilities, filter_context = _strategic_report_scope(request)
+    try:
+        selected_year = int(request.GET.get('year', datetime.now().year))
+    except (TypeError, ValueError):
+        selected_year = datetime.now().year
+    if selected_year < 2000 or selected_year > 2100:
+        selected_year = datetime.now().year
+
+    try:
+        selected_month = int(request.GET.get('month', ''))
+        if selected_month not in range(1, 13):
+            selected_month = None
+    except (TypeError, ValueError):
+        selected_month = None
+
+    cases = OpcRegistration.objects.filter(facility__in=facilities)
+    year_cases = cases.filter(registration_date__year=selected_year)
+    year_exits = cases.filter(discharge_date__year=selected_year)
+    year_visits = OpcVisit.objects.filter(
+        registration__facility__in=facilities,
+        visit_date__year=selected_year,
+    )
+
+    month_rows = [{
+        'month': index,
+        'label': calendar.month_abbr[index],
+        'sam': 0,
+        'high_risk_mam': 0,
+        'other_mam': 0,
+        'cured': 0,
+        'defaulted': 0,
+        'deaths': 0,
+        'transfers': 0,
+        'non_recovered': 0,
+        'sam_visits': 0,
+        'high_risk_mam_visits': 0,
+        'other_mam_visits': 0,
+        'rutf_issued': 0,
+        'active_caseload': 0,
+    } for index in range(1, 13)]
+
+    admissions = year_cases.annotate(month=ExtractMonth('registration_date')).values('month').annotate(
+        sam=Count('id', filter=Q(malnutrition_type='SAM')),
+        high_risk_mam=Count('id', filter=Q(malnutrition_type='MAM', mam_type='High-risk MAM')),
+        other_mam=Count('id', filter=Q(malnutrition_type='MAM') & ~Q(mam_type='High-risk MAM')),
+        rutf_issued=Sum('rutf_sachets_given'),
+    )
+    for row in admissions:
+        month_row = month_rows[row['month'] - 1]
+        for key in ('sam', 'high_risk_mam', 'other_mam'):
+            month_row[key] = row[key] or 0
+        month_row['rutf_issued'] = row['rutf_issued'] or 0
+
+    outcomes = year_exits.annotate(month=ExtractMonth('discharge_date')).values('month').annotate(
+        cured=Count('id', filter=Q(outcome='Cured')),
+        defaulted=Count('id', filter=Q(status='Defaulted') | Q(outcome='Defaulted')),
+        deaths=Count('id', filter=Q(status='Death') | Q(outcome='Death')),
+        transfers=Count('id', filter=Q(status='Transfer') | Q(outcome__icontains='Transfer') | Q(outcome__icontains='Referral')),
+        non_recovered=Count('id', filter=Q(outcome__icontains='Non-R')),
+    )
+    for row in outcomes:
+        month_row = month_rows[row['month'] - 1]
+        for key in ('cured', 'defaulted', 'deaths', 'transfers', 'non_recovered'):
+            month_row[key] = row[key] or 0
+
+    visits = year_visits.annotate(month=ExtractMonth('visit_date')).values('month').annotate(
+        sam_visits=Count('id', filter=Q(registration__malnutrition_type='SAM')),
+        high_risk_mam_visits=Count('id', filter=Q(
+            registration__malnutrition_type='MAM', registration__mam_type='High-risk MAM'
+        )),
+        other_mam_visits=Count('id', filter=Q(registration__malnutrition_type='MAM') & ~Q(
+            registration__mam_type='High-risk MAM'
+        )),
+        rutf_issued=Sum('rutf_sachets_given'),
+    )
+    for row in visits:
+        month_row = month_rows[row['month'] - 1]
+        for key in ('sam_visits', 'high_risk_mam_visits', 'other_mam_visits'):
+            month_row[key] = row[key] or 0
+        month_row['rutf_issued'] += row['rutf_issued'] or 0
+
+    for index, row in enumerate(month_rows, start=1):
+        month_end = date(selected_year, index, calendar.monthrange(selected_year, index)[1])
+        row['active_caseload'] = cases.filter(
+            registration_date__lte=month_end,
+        ).filter(
+            Q(discharge_date__gt=month_end) |
+            Q(discharge_date__isnull=True, status='Active')
+        ).count()
+
+    if selected_month:
+        focus_cases = year_cases.filter(registration_date__month=selected_month)
+        focus_exits = year_exits.filter(discharge_date__month=selected_month)
+        focus_visits = year_visits.filter(visit_date__month=selected_month)
+        focus_label = f'{calendar.month_name[selected_month]} {selected_year}'
+        active_caseload = month_rows[selected_month - 1]['active_caseload']
+    else:
+        focus_cases = year_cases
+        focus_exits = year_exits
+        focus_visits = year_visits
+        focus_label = str(selected_year)
+        active_caseload = month_rows[-1]['active_caseload']
+
+    total_exits = focus_exits.count()
+    cured = focus_exits.filter(outcome='Cured').count()
+    defaulted = focus_exits.filter(Q(status='Defaulted') | Q(outcome='Defaulted')).count()
+    deaths = focus_exits.filter(Q(status='Death') | Q(outcome='Death')).count()
+    percentage = lambda value: round((value / total_exits * 100), 1) if total_exits else 0
+
+    analytics_data = {
+        'labels': [row['label'] for row in month_rows],
+        'admissions': {
+            key: [row[key] for row in month_rows]
+            for key in ('sam', 'high_risk_mam', 'other_mam')
+        },
+        'outcomes': {
+            key: [row[key] for row in month_rows]
+            for key in ('cured', 'defaulted', 'deaths', 'transfers', 'non_recovered')
+        },
+        'visits': {
+            key: [row[key] for row in month_rows]
+            for key in ('sam_visits', 'high_risk_mam_visits', 'other_mam_visits')
+        },
+        'rutf_issued': [row['rutf_issued'] for row in month_rows],
+        'active_caseload': [row['active_caseload'] for row in month_rows],
+    }
+    context = {
+        **filter_context,
+        'selected_year': selected_year,
+        'selected_month': selected_month or '',
+        'years': list(range(2020, max(2031, datetime.now().year + 2))),
+        'months': [(index, calendar.month_name[index]) for index in range(1, 13)],
+        'month_rows': month_rows,
+        'analytics_data': analytics_data,
+        'focus_label': focus_label,
+        'facility_count': facilities.count(),
+        'kpis': {
+            'admissions': focus_cases.count(),
+            'visits': focus_visits.count(),
+            'exits': total_exits,
+            'active': active_caseload,
+            'cure_rate': percentage(cured),
+            'default_rate': percentage(defaulted),
+            'death_rate': percentage(deaths),
+        },
+        'filter_active': any([
+            filter_context['selected_region'], filter_context['selected_district'],
+            filter_context['selected_sub_district'], filter_context['selected_facility'],
+            selected_month, selected_year != datetime.now().year,
+        ]),
+    }
+    response = render(request, 'reports/analytics_dashboard.html', context)
+    response['Cache-Control'] = 'private, no-store'
+    return response
 
 
 def _calculate_rutf_stock_data(facility_ids, week_ranges):

@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+
+{% block title %}Programme Analytics - CMAM Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <section class="relative overflow-hidden rounded-3xl bg-slate-950 px-6 py-7 sm:px-8 shadow-xl">
+        <div class="absolute -right-20 -top-24 h-64 w-64 rounded-full bg-violet-500/20 blur-3xl"></div>
+        <div class="absolute left-1/3 -bottom-24 h-48 w-48 rounded-full bg-sky-500/10 blur-3xl"></div>
+        <div class="relative flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5">
+            <div>
+                <a href="{% url 'users:reports' %}" class="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-300 hover:text-white mb-3">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                    Reports hub
+                </a>
+                <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">Programme analytics</h1>
+                <p class="mt-2 max-w-2xl text-sm text-slate-300">A complete January-to-December view of admissions, service activity, outcomes, caseload and RUTF distribution.</p>
+            </div>
+            <div class="flex gap-3">
+                <div class="rounded-xl border border-white/10 bg-white/10 px-4 py-3 backdrop-blur-sm"><p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Focus</p><p class="mt-1 text-sm font-bold text-white">{{ focus_label }}</p></div>
+                <div class="rounded-xl border border-white/10 bg-white/10 px-4 py-3 backdrop-blur-sm"><p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Coverage</p><p class="mt-1 text-sm font-bold text-white">{{ facility_count }} facilities</p></div>
+            </div>
+        </div>
+    </section>
+
+    {% include 'reports/includes/strategic_filters.html' %}
+
+    <section class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+        <div class="rounded-2xl border border-indigo-100 bg-white p-4 shadow-sm"><p class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Admissions</p><p class="mt-2 text-2xl font-bold text-indigo-600">{{ kpis.admissions }}</p></div>
+        <div class="rounded-2xl border border-violet-100 bg-white p-4 shadow-sm"><p class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Visits</p><p class="mt-2 text-2xl font-bold text-violet-600">{{ kpis.visits }}</p></div>
+        <div class="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm"><p class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Exits</p><p class="mt-2 text-2xl font-bold text-blue-600">{{ kpis.exits }}</p></div>
+        <div class="rounded-2xl border border-cyan-100 bg-white p-4 shadow-sm"><p class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Active caseload</p><p class="mt-2 text-2xl font-bold text-cyan-600">{{ kpis.active }}</p></div>
+        <div class="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm"><p class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Cure rate</p><p class="mt-2 text-2xl font-bold text-emerald-600">{{ kpis.cure_rate }}%</p></div>
+        <div class="rounded-2xl border border-amber-100 bg-white p-4 shadow-sm"><p class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Default rate</p><p class="mt-2 text-2xl font-bold text-amber-600">{{ kpis.default_rate }}%</p></div>
+        <div class="rounded-2xl border border-rose-100 bg-white p-4 shadow-sm"><p class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Death rate</p><p class="mt-2 text-2xl font-bold text-rose-600">{{ kpis.death_rate }}%</p></div>
+    </section>
+
+    <section class="grid grid-cols-1 xl:grid-cols-2 gap-5">
+        <article class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm xl:col-span-2">
+            <div class="flex items-start justify-between gap-3 mb-5">
+                <div><h2 class="font-bold text-gray-900">Admissions by classification</h2><p class="text-xs text-gray-500 mt-1">New registrations in {{ selected_year }}</p></div>
+                <span class="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-indigo-700">Children</span>
+            </div>
+            <div class="h-72"><canvas id="admissionsChart"></canvas></div>
+        </article>
+
+        <article class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            <div class="flex items-start justify-between gap-3 mb-5">
+                <div><h2 class="font-bold text-gray-900">Treatment outcomes</h2><p class="text-xs text-gray-500 mt-1">Outcomes recorded by discharge month</p></div>
+                <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">Children</span>
+            </div>
+            <div class="h-64"><canvas id="outcomesChart"></canvas></div>
+        </article>
+
+        <article class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            <div class="flex items-start justify-between gap-3 mb-5">
+                <div><h2 class="font-bold text-gray-900">Follow-up visits</h2><p class="text-xs text-gray-500 mt-1">Clinical contacts by programme</p></div>
+                <span class="rounded-full bg-violet-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-violet-700">Visits</span>
+            </div>
+            <div class="h-64"><canvas id="visitsChart"></canvas></div>
+        </article>
+
+        <article class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            <div class="flex items-start justify-between gap-3 mb-5">
+                <div><h2 class="font-bold text-gray-900">Active caseload</h2><p class="text-xs text-gray-500 mt-1">Children active at each month end</p></div>
+                <span class="rounded-full bg-cyan-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-cyan-700">Children</span>
+            </div>
+            <div class="h-64"><canvas id="caseloadChart"></canvas></div>
+        </article>
+
+        <article class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            <div class="flex items-start justify-between gap-3 mb-5">
+                <div><h2 class="font-bold text-gray-900">RUTF issued</h2><p class="text-xs text-gray-500 mt-1">Registration and visit distributions combined</p></div>
+                <span class="rounded-full bg-orange-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-orange-700">Sachets</span>
+            </div>
+            <div class="h-64"><canvas id="rutfChart"></canvas></div>
+        </article>
+    </section>
+
+    <section class="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-100">
+            <h2 class="font-bold text-gray-900">Monthly indicator matrix</h2>
+            <p class="text-xs text-gray-500 mt-1">Exact values behind every trend; zero-activity months remain visible.</p>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-[1350px] w-full text-right text-xs">
+                <thead class="bg-slate-50 uppercase tracking-wider text-[10px] text-gray-500">
+                    <tr><th class="px-4 py-3 text-left">Month</th><th class="px-3 py-3">SAM</th><th class="px-3 py-3">High-Risk MAM</th><th class="px-3 py-3">Other MAM</th><th class="px-3 py-3">Cured</th><th class="px-3 py-3">Defaulted</th><th class="px-3 py-3">Deaths</th><th class="px-3 py-3">Transfers</th><th class="px-3 py-3">Non-Recovered</th><th class="px-3 py-3">SAM Visits</th><th class="px-3 py-3">High-Risk Visits</th><th class="px-3 py-3">Other MAM Visits</th><th class="px-3 py-3">Active</th><th class="px-4 py-3">RUTF</th></tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 text-gray-700">
+                    {% for row in month_rows %}
+                    <tr class="hover:bg-slate-50/70"><th class="px-4 py-3 text-left font-bold text-gray-900">{{ row.label }}</th><td class="px-3 py-3">{{ row.sam }}</td><td class="px-3 py-3">{{ row.high_risk_mam }}</td><td class="px-3 py-3">{{ row.other_mam }}</td><td class="px-3 py-3 text-emerald-700 font-semibold">{{ row.cured }}</td><td class="px-3 py-3">{{ row.defaulted }}</td><td class="px-3 py-3">{{ row.deaths }}</td><td class="px-3 py-3">{{ row.transfers }}</td><td class="px-3 py-3">{{ row.non_recovered }}</td><td class="px-3 py-3">{{ row.sam_visits }}</td><td class="px-3 py-3">{{ row.high_risk_mam_visits }}</td><td class="px-3 py-3">{{ row.other_mam_visits }}</td><td class="px-3 py-3 font-semibold text-cyan-700">{{ row.active_caseload }}</td><td class="px-4 py-3 font-semibold text-orange-700">{{ row.rutf_issued }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+{{ analytics_data|json_script:'analytics-report-data' }}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const report = JSON.parse(document.getElementById('analytics-report-data').textContent);
+    Chart.defaults.font.family = "Inter, ui-sans-serif, system-ui";
+    Chart.defaults.color = '#64748b';
+    const baseOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 18 } } },
+        scales: {
+            x: { grid: { display: false }, border: { display: false } },
+            y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: 'rgba(148,163,184,.15)' }, border: { display: false } }
+        }
+    };
+    function series(label, data, color) {
+        return { label, data, borderColor: color, backgroundColor: color, pointRadius: 2.5, pointHoverRadius: 5, borderWidth: 2.5, tension: .32 };
+    }
+    new Chart(document.getElementById('admissionsChart'), { type: 'line', data: { labels: report.labels, datasets: [series('SAM', report.admissions.sam, '#e11d48'), series('High-Risk MAM', report.admissions.high_risk_mam, '#d97706'), series('Other MAM', report.admissions.other_mam, '#0284c7')] }, options: baseOptions });
+    new Chart(document.getElementById('outcomesChart'), { type: 'line', data: { labels: report.labels, datasets: [series('Cured', report.outcomes.cured, '#059669'), series('Defaulted', report.outcomes.defaulted, '#d97706'), series('Deaths', report.outcomes.deaths, '#dc2626'), series('Transfers', report.outcomes.transfers, '#4f46e5'), series('Non-Recovered', report.outcomes.non_recovered, '#7c3aed')] }, options: baseOptions });
+    new Chart(document.getElementById('visitsChart'), { type: 'line', data: { labels: report.labels, datasets: [series('SAM', report.visits.sam_visits, '#e11d48'), series('High-Risk MAM', report.visits.high_risk_mam_visits, '#d97706'), series('Other MAM', report.visits.other_mam_visits, '#0284c7')] }, options: baseOptions });
+    new Chart(document.getElementById('caseloadChart'), { type: 'line', data: { labels: report.labels, datasets: [{ ...series('Active caseload', report.active_caseload, '#0891b2'), fill: true, backgroundColor: 'rgba(8,145,178,.10)' }] }, options: baseOptions });
+    new Chart(document.getElementById('rutfChart'), { type: 'bar', data: { labels: report.labels, datasets: [{ label: 'RUTF sachets', data: report.rutf_issued, backgroundColor: '#f97316', borderRadius: 7, maxBarThickness: 30 }] }, options: baseOptions });
+});
+</script>
+{% endblock %}

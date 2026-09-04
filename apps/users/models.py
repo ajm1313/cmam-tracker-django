@@ -313,6 +313,11 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedModel):
         if self.is_facility_level_only() or self.is_sub_district_level_only():
             return False
         return True
+
+    def can_view_strategic_reports(self):
+        """Longitudinal and analytics reports are restricted to regional level and above."""
+        level = self.get_management_level()
+        return level is not None and level <= 2
     
     def get_accessible_users(self):
         """Get users accessible based on role hierarchy"""
