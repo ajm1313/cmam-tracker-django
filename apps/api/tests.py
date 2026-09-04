@@ -286,6 +286,27 @@ class StrategicReportsTests(APITestCase):
         )
         self.assertEqual(api_response.content, response.content)
 
+    def test_linelist_filters_and_exports_use_only_admission_date(self):
+        self.own_sam.registration_date = date(2026, 7, 1)
+        self.own_sam.save(update_fields=['registration_date'])
+        self.client.force_login(self.regional_user)
+        self.client.force_authenticate(self.regional_user)
+        for path in ('/reports/case-linelist/', '/api/v1/reports/strategic/linelist/'):
+            for layout in ('panel', 'long'):
+                response = self.client.get(path, {
+                    'date_from': '2026-01-01', 'date_to': '2026-01-31',
+                    'export': 'csv', 'layout': layout,
+                })
+                rows = list(csv.DictReader(StringIO(response.content.decode('utf-8-sig'))))
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0]['Child Name'], 'Scoped Child')
+                self.assertEqual(rows[0]['Admission Date'], '2026-01-08')
+                self.assertNotIn('Registration Date', rows[0])
+        response = self.client.get('/api/v1/reports/strategic/linelist/', {
+            'date_from': '2026-01-01', 'date_to': '2026-01-31',
+        })
+        self.assertNotIn('registration_date', response.data['data']['results'][0])
+
 
 class PushNotificationTests(BaseTestCase):
     def setUp(self):
@@ -702,6 +723,23 @@ class OfflineRegistrationIdempotencyTests(BaseTestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(OpcRegistration.objects.count(), 0)
 
+    def test_changed_admission_date_cannot_duplicate_an_open_episode(self):
+        first = self.client.post('/api/v1/cases/create/', self.case_payload(), format='json')
+        second = self.client.post('/api/v1/cases/create/', self.case_payload(
+            admission_date='2024-02-12', child_name=' OFFLINE CHILD ',
+        ), format='json')
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(first.data['data']['id'], second.data['data']['id'])
+        case = OpcRegistration.objects.get()
+        case.status, case.discharge_date = 'Discharged', date(2024, 2, 1)
+        case.save()
+        readmission = self.client.post('/api/v1/cases/create/', self.case_payload(
+            admission_date='2024-02-12', admission_type='Readmission',
+        ), format='json')
+        self.assertEqual(readmission.status_code, 201)
+
+
     def test_ipc_replay_creates_only_one_ipc_case(self):
         payload = {
             'client_uid': str(uuid4()),
@@ -722,6 +760,83 @@ class OfflineRegistrationIdempotencyTests(BaseTestCase):
         self.assertTrue(second.data['duplicate'])
         self.assertEqual(IpcCase.objects.count(), 1)
         self.assertEqual(OpcRegistration.objects.count(), 0)
+
+
+class RegistrationMergeTests(BaseTestCase):
+    def setUp(self):
+        super().setUp()
+        self.first = OpcRegistration.objects.create(
+            facility=self.facility, child_name='Merge Child', child_gender='Female',
+            date_of_birth=date(2022, 1, 1), age_months=24, caregiver_name='Parent',
+            malnutrition_type='SAM', admission_date=date(2024, 1, 1),
+            registration_date=date(2024, 1, 1), weight_kg=7, height_cm=70,
+            muac_cm=11, created_by=self.user,
+        )
+        self.second = OpcRegistration.objects.create(
+            facility=self.facility, child_name=' MERGE CHILD ', child_gender='Female',
+            date_of_birth=date(2022, 1, 1), age_months=24, caregiver_name='Parent',
+            malnutrition_type='SAM', admission_date=date(2024, 2, 1),
+            registration_date=date(2024, 2, 1), weight_kg=7.2, height_cm=70,
+            muac_cm=11, created_by=self.user, client_uid=uuid4(),
+        )
+        self.original_id, self.original_uid = self.second.id, self.second.client_uid
+        self.visits = [OpcVisit.objects.create(
+            registration=case, visit_number=1, visit_date=day,
+            visit_type='Follow-up', weight_kg=7.5, muac_cm=11.2,
+            conducted_by=self.user, created_by=self.user, client_uid=uuid4(),
+        ) for case, day in ((self.first, date(2024, 1, 8)), (self.second, date(2024, 2, 8)))]
+
+    def test_merge_keeps_visits_snapshots_and_offline_routes_without_recreating_case(self):
+        from apps.cases.management.commands.cleanup_duplicates import merge_group, duplicate_groups
+        from apps.cases.models import RegistrationMerge, CaseTask
+        from apps.ai.models import RiskPrediction
+        task = CaseTask.objects.create(
+            registration=self.second, visit=self.visits[1], facility=self.facility,
+            task_type='home_visit', title='Follow up', description='Existing task', created_by=self.user,
+        )
+        prediction = RiskPrediction.objects.create(
+            registration=self.second, facility=self.facility, risk_score=.1,
+            risk_level='low', contributing_factors=[], recommendations=[],
+        )
+        merge_group([self.first.id, self.second.id])
+        self.assertEqual(OpcRegistration.objects.count(), 1)
+        self.assertEqual(duplicate_groups(), [])
+        self.assertEqual(list(self.first.visits.order_by('visit_number').values_list('id', flat=True)),
+                         [v.id for v in self.visits])
+        task.refresh_from_db()
+        prediction.refresh_from_db()
+        self.assertEqual(task.registration_id, self.first.id)
+        self.assertEqual(prediction.registration_id, self.first.id)
+        recovery = RegistrationMerge.objects.get(original_id=self.original_id)
+        self.assertEqual(len(recovery.snapshot['registrations']), 2)
+        self.assertEqual(len(recovery.snapshot['visits']), 2)
+        self.assertEqual(OpcRegistration.resolve(client_uid=self.original_uid).id, self.first.id)
+        replay = self.client.post('/api/v1/cases/create/', {'client_uid': str(self.original_uid)}, format='json')
+        self.assertEqual(replay.status_code, 200)
+        self.assertEqual(replay.data['data']['id'], self.first.id)
+        for path in (f'/api/v1/cases/{self.original_id}/visits/',
+                     f'/api/v1/cases/client/{self.original_uid}/visits/record/'):
+            if path.endswith('/record/'):
+                response = self.client.post(path, {
+                    'client_uid': str(self.visits[1].client_uid), 'visit_date': '2024-02-08',
+                }, format='json')
+            else:
+                response = self.client.get(path)
+            self.assertEqual(response.status_code, 200)
+        deleted = self.client.delete(f'/api/v1/cases/{self.original_id}/delete/')
+        self.assertEqual(deleted.status_code, 409)
+        self.assertTrue(OpcRegistration.objects.filter(pk=self.first.id).exists())
+
+    def test_overlapping_visit_dates_abort_without_losing_records(self):
+        from django.core.management.base import CommandError
+        from apps.cases.management.commands.cleanup_duplicates import merge_group
+        self.visits[1].visit_date = self.visits[0].visit_date
+        self.visits[1].save()
+        with self.assertRaises(CommandError):
+            merge_group([self.first.id, self.second.id])
+        self.assertEqual(OpcRegistration.objects.count(), 2)
+        self.assertEqual(OpcVisit.objects.count(), 2)
+
 
 
 class WebOfflineReplayTests(BaseTestCase):

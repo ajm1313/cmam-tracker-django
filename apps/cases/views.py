@@ -369,7 +369,14 @@ def case_create(request):
                 messages.error(request, 'Invalid case type.')
                 return redirect('cases:case_create')
 
-            existing_client_case = OpcRegistration.objects.filter(client_uid=client_uid, facility=facility).first() if client_uid else None
+            existing_client_case = None
+            if client_uid:
+                try:
+                    existing_client_case = OpcRegistration.resolve(client_uid=client_uid)
+                except OpcRegistration.DoesNotExist:
+                    pass
+            if existing_client_case and existing_client_case.facility_id != facility.id:
+                return HttpResponseForbidden('This registration belongs to a different facility.')
             if existing_client_case:
                 offline_response = _offline_json(request, True, 'Case was already synchronized.', 200, data={'id': existing_client_case.id, 'client_uid': str(existing_client_case.client_uid)}, duplicate=True)
                 if offline_response:
@@ -988,7 +995,7 @@ def due_visits(request):
     return render(request, 'cases/due_visits.html', context)
 
 
-def _update_automation_tracking(case, visit):
+def _update_automation_tracking(case, visit, update_status=True):
     """Update automation tracking fields on the case after a visit is recorded.
 
     Computes consecutive counts for absences, clinically-well, no-oedema,
@@ -1061,7 +1068,7 @@ def _update_automation_tracking(case, visit):
         case.mam_weeks_in_treatment = max(0, (end - case.admission_date).days // 7)
 
     # Auto-escalate to Defaulted after 3 consecutive absences
-    if missed >= 3 and case.status == 'Active':
+    if update_status and missed >= 3 and case.status == 'Active':
         case.status = 'Defaulted'
         case.outcome = 'Defaulted'
         case.discharge_date = timezone.now().date()

@@ -108,6 +108,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'apps.core.middleware.MergedRegistrationMiddleware',
     'apps.core.middleware.AuditLogMiddleware',  # Audit logging
     'apps.core.middleware.SuperAdminEditDeleteMiddleware',  # Restrict edits/deletes to superusers
     'django.contrib.messages.middleware.MessageMiddleware',

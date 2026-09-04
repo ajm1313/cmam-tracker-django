@@ -3,6 +3,8 @@ from apps.core.models import TimeStampedModel
 from django.conf import settings
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
+from django.utils.dateparse import parse_date
+from django.core.exceptions import ValidationError
 import hashlib
 import unicodedata
 
@@ -275,6 +277,18 @@ class OpcRegistration(TimeStampedModel):
             kwargs['update_fields'] = set(update_fields) | {'deduplication_key'}
         return super().save(*args, **kwargs)
 
+    def clean(self):
+        super().clean()
+        if (self._state.adding and self.facility_id and self.child_name
+                and self.date_of_birth and self.admission_date):
+            existing = type(self).find_duplicate(
+                self.facility_id, self.child_name, self.date_of_birth,
+                self.admission_date, self.caregiver_name, self.child_gender,
+            )
+            if existing:
+                raise ValidationError({'child_name':
+                    f'This child already has this admission episode: {existing.registration_number}.'})
+
     @classmethod
     def find_duplicate(cls, facility_id, child_name, date_of_birth, admission_date,
                        caregiver_name='', child_gender=None):
@@ -285,20 +299,49 @@ class OpcRegistration(TimeStampedModel):
         if exact:
             return exact
 
+        merged = RegistrationMerge.objects.filter(original_key=registration_deduplication_key(
+            facility_id, child_name, date_of_birth, admission_date,
+        )).select_related('registration').first()
+        if merged and merged.registration_id:
+            return merged.registration
+
         caregiver = _normalise_identity(caregiver_name)
-        if not caregiver:
-            return None
         candidates = cls.objects.filter(
             facility_id=facility_id,
             date_of_birth=date_of_birth,
-            admission_date=admission_date,
-        )
+        ).order_by('-admission_date', 'id')
         if child_gender:
             candidates = candidates.filter(child_gender=child_gender)
         name = _normalise_identity(child_name)
-        return next((candidate for candidate in candidates
-                     if _normalise_identity(candidate.caregiver_name) == caregiver
-                     and SequenceMatcher(None, _normalise_identity(candidate.child_name), name).ratio() >= .85), None)
+        admitted = parse_date(str(admission_date))
+        for candidate in candidates:
+            candidate_name = _normalise_identity(candidate.child_name)
+            same_name = candidate_name == name
+            same_episode = candidate.admission_date == admitted
+            overlaps = admitted and (
+                candidate.status == 'Active'
+                or (candidate.discharge_date and candidate.discharge_date >= admitted)
+            )
+            if same_name and (same_episode or overlaps):
+                return candidate
+            if (same_episode and caregiver
+                    and _normalise_identity(candidate.caregiver_name) == caregiver
+                    and SequenceMatcher(None, candidate_name, name).ratio() >= .85):
+                return candidate
+        return None
+
+    @classmethod
+    def resolve(cls, pk=None, client_uid=None):
+        """Resolve pre-merge IDs used by bookmarks and queued offline visits."""
+        lookup = {'client_uid': client_uid} if client_uid else {'pk': pk}
+        case = cls.objects.filter(**lookup).first()
+        if case:
+            return case
+        lookup = {'original_client_uid': client_uid} if client_uid else {'original_id': pk}
+        merge = RegistrationMerge.objects.filter(**lookup).select_related('registration').first()
+        if merge and merge.registration_id:
+            return merge.registration
+        raise cls.DoesNotExist
 
     @classmethod
     def _compute_next_sequence(cls, facility, malnutrition_type):
@@ -438,6 +481,18 @@ class OpcRegistration(TimeStampedModel):
     def is_visit_due(self):
         next_visit = self.get_next_visit_date()
         return datetime.now().date() >= next_visit
+
+
+class RegistrationMerge(TimeStampedModel):
+    """Recovery snapshot and permanent redirect for a removed duplicate registration."""
+
+    original_id = models.PositiveBigIntegerField(unique=True)
+    original_client_uid = models.UUIDField(null=True, blank=True, unique=True)
+    original_key = models.CharField(max_length=64, unique=True)
+    registration = models.ForeignKey(
+        OpcRegistration, on_delete=models.SET_NULL, null=True, related_name='merged_registrations',
+    )
+    snapshot = models.JSONField()
 
 
 class OpcVisit(TimeStampedModel):

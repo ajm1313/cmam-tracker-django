@@ -800,7 +800,10 @@ def case_create_api(request):
     if raw_client_uid and not client_uid:
         return Response({'success': False, 'message': 'client_uid must be a valid UUID.'}, status=status.HTTP_400_BAD_REQUEST)
     if client_uid:
-        existing_client_case = OpcRegistration.objects.filter(client_uid=client_uid).first()
+        try:
+            existing_client_case = OpcRegistration.resolve(client_uid=client_uid)
+        except OpcRegistration.DoesNotExist:
+            existing_client_case = None
         if existing_client_case:
             denied = _check_case_access_api(request, existing_client_case)
             if denied:
@@ -3965,7 +3968,6 @@ def _linelist_case_data(case):
         'caregiver_phone': case.caregiver_phone,
         'programme': _programme_label_api(case),
         'admission_date': case.admission_date,
-        'registration_date': case.registration_date,
         'admission_type': case.admission_type,
         'admission_criteria': case.admission_criteria,
         'weight_kg': case.weight_kg,
@@ -4012,10 +4014,10 @@ def strategic_linelist_api(request):
     if date_from and date_to and date_from > date_to:
         date_from, date_to = date_to, date_from
     if date_from:
-        cases = cases.filter(registration_date__gte=date_from)
+        cases = cases.filter(admission_date__gte=date_from)
     if date_to:
-        cases = cases.filter(registration_date__lte=date_to)
-    cases = cases.order_by('-registration_date', 'child_name')
+        cases = cases.filter(admission_date__lte=date_to)
+    cases = cases.order_by('-admission_date', 'child_name', 'id')
 
     if request.query_params.get('export') == 'csv':
         # The web and API exports intentionally share one audited CSV definition.

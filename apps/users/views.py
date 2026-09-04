@@ -871,7 +871,7 @@ _LINELIST_CASE_HEADERS = [
     'Region', 'District', 'Sub-District', 'Facility', 'Facility Code',
     'Registration Number', 'Child Name', 'Sex', 'Date of Birth', 'Age (Months)',
     'Caregiver Name', 'Caregiver Phone', 'Programme', 'Admission Date',
-    'Registration Date', 'Admission Type', 'Admission Criteria', 'Admission Weight (kg)',
+    'Admission Type', 'Admission Criteria', 'Admission Weight (kg)',
     'Admission Height (cm)', 'Admission MUAC (cm)', 'Admission Oedema',
     'Registration RUTF Sachets',
 ]
@@ -901,7 +901,6 @@ def _linelist_case_values(case):
         case.caregiver_phone or '',
         _programme_label(case),
         case.admission_date,
-        case.registration_date,
         case.admission_type,
         case.admission_criteria or '',
         case.weight_kg if case.weight_kg is not None else '',
@@ -1018,10 +1017,10 @@ def case_linelist_report(request):
         'facility', 'facility__district', 'facility__district__region', 'facility__sub_district'
     )
     if date_from:
-        cases = cases.filter(registration_date__gte=date_from)
+        cases = cases.filter(admission_date__gte=date_from)
     if date_to:
-        cases = cases.filter(registration_date__lte=date_to)
-    cases = cases.order_by('-registration_date', 'child_name')
+        cases = cases.filter(admission_date__lte=date_to)
+    cases = cases.order_by('-admission_date', 'child_name', 'id')
 
     if request.GET.get('export') == 'csv':
         return _write_case_linelist_csv(cases, request.GET.get('layout', 'long'))

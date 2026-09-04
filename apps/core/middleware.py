@@ -23,6 +23,38 @@ class HealthCheckMiddleware:
         return self.get_response(request)
 
 
+class MergedRegistrationMiddleware(MiddlewareMixin):
+    """Keep saved links and offline visit submissions working after case merges."""
+
+    def process_view(self, request, view_func, view_args, view_kwargs):
+        if not request.path.startswith((
+            '/api/v1/cases/', '/manage/cases/', '/manage/visits/', '/manage/discharge/',
+        )):
+            return None
+        from apps.cases.models import RegistrationMerge
+        if 'client_uid' in view_kwargs:
+            lookup = {'original_client_uid': view_kwargs['client_uid']}
+            parameter = 'client_uid'
+        else:
+            parameter = next((key for key in ('registration_id', 'pk') if key in view_kwargs), None)
+            if parameter is None:
+                return None
+            lookup = {'original_id': view_kwargs[parameter]}
+        merge = RegistrationMerge.objects.filter(**lookup).first()
+        if merge is None or merge.registration_id is None:
+            return None
+        if request.method not in ('GET', 'HEAD') and not request.path.endswith('/record/'):
+            return JsonResponse({
+                'success': False,
+                'message': 'This duplicate was merged. Refresh the case list before editing this record.',
+            }, status=409)
+        if parameter == 'client_uid':
+            view_kwargs.pop(parameter)
+            parameter = 'registration_id'
+        view_kwargs[parameter] = merge.registration_id
+        return None
+
+
 class SuperAdminEditDeleteMiddleware:
     """
     Restrict edit, delete, update, bulk and reverse-discharge operations
