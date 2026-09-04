@@ -92,6 +92,8 @@ urlpatterns = [
     path('v1/reports/summary/', views.reports_summary_api, name='reports_summary'),
     path('v1/reports/weekly/', views.weekly_report_api, name='weekly_report'),
     path('v1/reports/monthly/', views.monthly_report_api, name='monthly_report'),
+    path('v1/reports/strategic/linelist/', views.strategic_linelist_api, name='strategic_linelist'),
+    path('v1/reports/strategic/analytics/', views.strategic_analytics_api, name='strategic_analytics'),
 
     # Roles & Access Control
     path('v1/roles/', views.roles_api, name='roles'),

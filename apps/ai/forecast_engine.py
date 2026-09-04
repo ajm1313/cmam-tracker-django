@@ -296,12 +296,16 @@ def _notify_reorder_if_needed(inventory_item, facility, recommended_quantity):
             facility,
             'Reorder Recommended',
             msg,
-            {'type': 'reorder_recommended', 'itemId': inventory_item.pk, 'facilityId': facility.pk}
+            {'type': 'reorder_recommended', 'itemId': inventory_item.pk, 'facilityId': facility.pk},
+            preference='notify_stock',
+            channel_id='inventory-alerts',
         )
         notify_admins(
             'Reorder Recommended',
             msg,
-            {'type': 'reorder_recommended', 'itemId': inventory_item.pk, 'facilityId': facility.pk}
+            {'type': 'reorder_recommended', 'itemId': inventory_item.pk, 'facilityId': facility.pk},
+            preference='notify_stock',
+            channel_id='inventory-alerts',
         )
     except Exception as e:
         logger.warning(f"Failed to send reorder notification: {e}")

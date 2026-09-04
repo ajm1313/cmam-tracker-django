@@ -5,7 +5,6 @@ from django.contrib import messages
 from django.db import transaction
 from django.core.paginator import Paginator
 from django.db.models import Count, Q, F, Max, Sum, Prefetch
-from django.db.models.functions import ExtractMonth
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.utils.dateparse import parse_date
 from django.views.decorators.cache import never_cache
@@ -1037,136 +1036,19 @@ def analytics_dashboard_report(request):
     except (TypeError, ValueError):
         selected_month = None
 
-    cases = OpcRegistration.objects.filter(facility__in=facilities)
-    year_cases = cases.filter(registration_date__year=selected_year)
-    year_exits = cases.filter(discharge_date__year=selected_year)
-    year_visits = OpcVisit.objects.filter(
-        registration__facility__in=facilities,
-        visit_date__year=selected_year,
-    )
-
-    month_rows = [{
-        'month': index,
-        'label': calendar.month_abbr[index],
-        'sam': 0,
-        'high_risk_mam': 0,
-        'other_mam': 0,
-        'cured': 0,
-        'defaulted': 0,
-        'deaths': 0,
-        'transfers': 0,
-        'non_recovered': 0,
-        'sam_visits': 0,
-        'high_risk_mam_visits': 0,
-        'other_mam_visits': 0,
-        'rutf_issued': 0,
-        'active_caseload': 0,
-    } for index in range(1, 13)]
-
-    admissions = year_cases.annotate(month=ExtractMonth('registration_date')).values('month').annotate(
-        sam=Count('id', filter=Q(malnutrition_type='SAM')),
-        high_risk_mam=Count('id', filter=Q(malnutrition_type='MAM', mam_type='High-risk MAM')),
-        other_mam=Count('id', filter=Q(malnutrition_type='MAM') & ~Q(mam_type='High-risk MAM')),
-        rutf_issued=Sum('rutf_sachets_given'),
-    )
-    for row in admissions:
-        month_row = month_rows[row['month'] - 1]
-        for key in ('sam', 'high_risk_mam', 'other_mam'):
-            month_row[key] = row[key] or 0
-        month_row['rutf_issued'] = row['rutf_issued'] or 0
-
-    outcomes = year_exits.annotate(month=ExtractMonth('discharge_date')).values('month').annotate(
-        cured=Count('id', filter=Q(outcome='Cured')),
-        defaulted=Count('id', filter=Q(status='Defaulted') | Q(outcome='Defaulted')),
-        deaths=Count('id', filter=Q(status='Death') | Q(outcome='Death')),
-        transfers=Count('id', filter=Q(status='Transfer') | Q(outcome__icontains='Transfer') | Q(outcome__icontains='Referral')),
-        non_recovered=Count('id', filter=Q(outcome__icontains='Non-R')),
-    )
-    for row in outcomes:
-        month_row = month_rows[row['month'] - 1]
-        for key in ('cured', 'defaulted', 'deaths', 'transfers', 'non_recovered'):
-            month_row[key] = row[key] or 0
-
-    visits = year_visits.annotate(month=ExtractMonth('visit_date')).values('month').annotate(
-        sam_visits=Count('id', filter=Q(registration__malnutrition_type='SAM')),
-        high_risk_mam_visits=Count('id', filter=Q(
-            registration__malnutrition_type='MAM', registration__mam_type='High-risk MAM'
-        )),
-        other_mam_visits=Count('id', filter=Q(registration__malnutrition_type='MAM') & ~Q(
-            registration__mam_type='High-risk MAM'
-        )),
-        rutf_issued=Sum('rutf_sachets_given'),
-    )
-    for row in visits:
-        month_row = month_rows[row['month'] - 1]
-        for key in ('sam_visits', 'high_risk_mam_visits', 'other_mam_visits'):
-            month_row[key] = row[key] or 0
-        month_row['rutf_issued'] += row['rutf_issued'] or 0
-
-    for index, row in enumerate(month_rows, start=1):
-        month_end = date(selected_year, index, calendar.monthrange(selected_year, index)[1])
-        row['active_caseload'] = cases.filter(
-            registration_date__lte=month_end,
-        ).filter(
-            Q(discharge_date__gt=month_end) |
-            Q(discharge_date__isnull=True, status='Active')
-        ).count()
-
-    if selected_month:
-        focus_cases = year_cases.filter(registration_date__month=selected_month)
-        focus_exits = year_exits.filter(discharge_date__month=selected_month)
-        focus_visits = year_visits.filter(visit_date__month=selected_month)
-        focus_label = f'{calendar.month_name[selected_month]} {selected_year}'
-        active_caseload = month_rows[selected_month - 1]['active_caseload']
-    else:
-        focus_cases = year_cases
-        focus_exits = year_exits
-        focus_visits = year_visits
-        focus_label = str(selected_year)
-        active_caseload = month_rows[-1]['active_caseload']
-
-    total_exits = focus_exits.count()
-    cured = focus_exits.filter(outcome='Cured').count()
-    defaulted = focus_exits.filter(Q(status='Defaulted') | Q(outcome='Defaulted')).count()
-    deaths = focus_exits.filter(Q(status='Death') | Q(outcome='Death')).count()
-    percentage = lambda value: round((value / total_exits * 100), 1) if total_exits else 0
-
-    analytics_data = {
-        'labels': [row['label'] for row in month_rows],
-        'admissions': {
-            key: [row[key] for row in month_rows]
-            for key in ('sam', 'high_risk_mam', 'other_mam')
-        },
-        'outcomes': {
-            key: [row[key] for row in month_rows]
-            for key in ('cured', 'defaulted', 'deaths', 'transfers', 'non_recovered')
-        },
-        'visits': {
-            key: [row[key] for row in month_rows]
-            for key in ('sam_visits', 'high_risk_mam_visits', 'other_mam_visits')
-        },
-        'rutf_issued': [row['rutf_issued'] for row in month_rows],
-        'active_caseload': [row['active_caseload'] for row in month_rows],
-    }
+    from apps.cases.reporting import build_strategic_analytics
+    report = build_strategic_analytics(facilities, selected_year, selected_month)
     context = {
         **filter_context,
         'selected_year': selected_year,
         'selected_month': selected_month or '',
         'years': list(range(2020, max(2031, datetime.now().year + 2))),
         'months': [(index, calendar.month_name[index]) for index in range(1, 13)],
-        'month_rows': month_rows,
-        'analytics_data': analytics_data,
-        'focus_label': focus_label,
+        'month_rows': report['month_rows'],
+        'analytics_data': report['analytics'],
+        'focus_label': report['focus_label'],
         'facility_count': facilities.count(),
-        'kpis': {
-            'admissions': focus_cases.count(),
-            'visits': focus_visits.count(),
-            'exits': total_exits,
-            'active': active_caseload,
-            'cure_rate': percentage(cured),
-            'default_rate': percentage(defaulted),
-            'death_rate': percentage(deaths),
-        },
+        'kpis': report['kpis'],
         'filter_active': any([
             filter_context['selected_region'], filter_context['selected_district'],
             filter_context['selected_sub_district'], filter_context['selected_facility'],

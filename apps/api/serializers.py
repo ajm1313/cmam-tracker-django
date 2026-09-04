@@ -20,6 +20,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'email', 'name', 'phone', 'is_active', 'is_staff',
                   'is_superuser', 'is_facility_level_only', 'can_import_export',
+                  'notify_visits', 'notify_discharge', 'notify_stock',
                   'profile_picture', 'role', 'location', 'created_at']
 
     def get_is_facility_level_only(self, obj):

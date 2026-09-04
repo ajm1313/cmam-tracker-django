@@ -6,6 +6,10 @@ Push notifications on case/visit creation
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from .models import OpcRegistration, OpcVisit
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -25,10 +29,13 @@ def push_on_new_case(sender, instance, created, **kwargs):
         )
         data = {'caseId': instance.pk, 'type': 'new_case'}
         if instance.facility:
-            notify_facility_staff(instance.facility, 'New Case Registered', body, data)
-        notify_admins('New Case Registered', body, data)
+            notify_facility_staff(
+                instance.facility, 'New Case Registered', body, data,
+                channel_id='case-updates',
+            )
+        notify_admins('New Case Registered', body, data, channel_id='case-updates')
     except Exception:
-        pass
+        logger.exception('Failed to dispatch new-case push notification')
 
 
 @receiver(post_save, sender=OpcVisit)
@@ -44,13 +51,22 @@ def push_on_visit_milestones(sender, instance, created, **kwargs):
             body = f"{reg.child_name} (#{reg.registration_number}) is ready for discharge."
             data = {'caseId': reg.pk, 'type': 'discharge_eligible'}
             if reg.facility:
-                notify_facility_staff(reg.facility, 'Discharge Ready', body, data)
+                notify_facility_staff(
+                    reg.facility, 'Discharge Ready', body, data,
+                    preference='notify_discharge', channel_id='case-updates',
+                )
 
         if getattr(reg, 'transitioned_to_sam', False):
             body = f"{reg.child_name} (#{reg.registration_number}) transitioned from MAM to SAM."
             data = {'caseId': reg.pk, 'type': 'sam_transition'}
-            notify_admins('MAM→SAM Transition', body, data)
+            notify_admins(
+                'MAM→SAM Transition', body, data,
+                preference='notify_visits', channel_id='case-updates',
+            )
             if reg.facility:
-                notify_facility_staff(reg.facility, 'MAM→SAM Transition', body, data)
+                notify_facility_staff(
+                    reg.facility, 'MAM→SAM Transition', body, data,
+                    preference='notify_visits', channel_id='case-updates',
+                )
     except Exception:
-        pass
+        logger.exception('Failed to dispatch visit milestone push notification')

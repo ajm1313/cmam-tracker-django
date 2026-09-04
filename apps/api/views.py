@@ -11,8 +11,10 @@ from django.template.loader import render_to_string
 from django.utils.http import urlsafe_base64_encode
 from django.utils.encoding import force_bytes
 from django.core.mail import send_mail
+from django.core.paginator import Paginator
 from django.conf import settings
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.db import transaction
 from datetime import datetime, timedelta, date
 from uuid import UUID
@@ -32,7 +34,7 @@ from apps.cases.views import _update_automation_tracking
 from apps.cases.automation_service import SamOpcAutomationService
 from apps.cases.mam_automation_service import MamOpcAutomationService
 from apps.locations.models import Region, District, SubDistrict
-from django.db.models import Q, Count, Max, Sum, F, Case, When, IntegerField
+from django.db.models import Q, Count, Max, Sum, F, Case, When, IntegerField, Prefetch
 from .serializers import (
     UserSerializer, FacilitySerializer, InventoryItemSerializer,
     StockLevelSerializer, StockMovementSerializer, ConsumptionSerializer,
@@ -362,6 +364,10 @@ def login(request):
                 'is_staff': user.is_staff,
                 'is_superuser': user.is_superuser,
                 'is_facility_level_only': user.is_facility_level_only(),
+                'can_import_export': user.can_import_export(),
+                'notify_visits': user.notify_visits,
+                'notify_discharge': user.notify_discharge,
+                'notify_stock': user.notify_stock,
                 'role': user_role_data,
                 'location': location_data,
                 'created_at': user.created_at.isoformat() if user.created_at else None,
@@ -524,12 +530,22 @@ def record_consumption(request):
                 from apps.api.push_service import notify_facility_staff, notify_admins
                 msg = f"CRITICAL: {item.name} stock at {sl.current_stock} {item.unit_of_measure} at {facility.name}."
                 push_data = {'type': 'stock_critical', 'facilityId': facility.pk}
-                notify_facility_staff(facility, 'Critical Stock Level', msg, push_data)
-                notify_admins('Critical Stock Level', msg, push_data)
+                notify_facility_staff(
+                    facility, 'Critical Stock Level', msg, push_data,
+                    preference='notify_stock', channel_id='inventory-alerts',
+                )
+                notify_admins(
+                    'Critical Stock Level', msg, push_data,
+                    preference='notify_stock', channel_id='inventory-alerts',
+                )
             elif sl.current_stock <= item.reorder_level:
                 from apps.api.push_service import notify_admins
                 msg = f"Low stock: {item.name} at {sl.current_stock} {item.unit_of_measure} ({facility.name})."
-                notify_admins('Low Stock Alert', msg, {'type': 'stock_low', 'facilityId': facility.pk})
+                notify_admins(
+                    'Low Stock Alert', msg,
+                    {'type': 'stock_low', 'facilityId': facility.pk},
+                    preference='notify_stock', channel_id='inventory-alerts',
+                )
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Low stock notification failed: {e}")
@@ -1361,7 +1377,7 @@ def password_reset_request(request):
 @api_view(['PUT', 'PATCH'])
 @permission_classes([IsAuthenticated])
 def profile_update(request):
-    """Update the authenticated user's profile (name, phone)."""
+    """Update the authenticated user's profile and notification preferences."""
     user = request.user
     name = request.data.get('name')
     phone = request.data.get('phone')
@@ -1375,17 +1391,28 @@ def profile_update(request):
     if phone is not None:
         user.phone = str(phone).strip() or None
 
+    for field in ('notify_visits', 'notify_discharge', 'notify_stock'):
+        if field in request.data:
+            setattr(user, field, _to_bool(request.data.get(field)))
+
     user.save()
     return Response({'success': True, 'message': 'Profile updated', 'data': UserSerializer(user).data})
 
 
-@api_view(['POST'])
+@api_view(['POST', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def register_push_token(request):
     """Register or update the Expo push token for the authenticated user."""
+    if request.method == 'DELETE':
+        supplied_token = str(request.data.get('push_token', '')).strip()
+        if not supplied_token or supplied_token == request.user.push_token:
+            request.user.push_token = None
+            request.user.save(update_fields=['push_token'])
+        return Response({'success': True, 'message': 'Push token removed'})
+
     token = request.data.get('push_token', '').strip()
-    if not token:
-        return Response({'success': False, 'message': 'push_token is required'}, status=status.HTTP_400_BAD_REQUEST)
+    if not token.startswith(('ExpoPushToken[', 'ExponentPushToken[')) or not token.endswith(']'):
+        return Response({'success': False, 'message': 'A valid Expo push token is required'}, status=status.HTTP_400_BAD_REQUEST)
     request.user.push_token = token
     request.user.save(update_fields=['push_token'])
     return Response({'success': True, 'message': 'Push token registered'})
@@ -3885,6 +3912,195 @@ def access_control_update_api(request):
             import logging
             logging.getLogger(__name__).warning(f"Permission update failed for user {u.get('user_id')}: {e}")
     return Response({'success': True, 'message': 'Permissions updated'})
+
+
+def _strategic_facility_scope_api(user, params):
+    """Intersect report filters with the authenticated user's facility scope."""
+    accessible = user.get_accessible_facilities().select_related(
+        'district', 'district__region', 'sub_district'
+    )
+    filters = (
+        ('region', 'district__region_id'),
+        ('district', 'district_id'),
+        ('sub_district', 'sub_district_id'),
+        ('facility', 'id'),
+    )
+    scoped = accessible
+    for parameter, lookup in filters:
+        value = str(params.get(parameter, '')).strip()
+        if value and accessible.filter(**{lookup: value}).exists():
+            scoped = scoped.filter(**{lookup: value})
+    return scoped.distinct()
+
+
+def _programme_label_api(case):
+    if case.malnutrition_type == 'SAM':
+        return 'SAM'
+    return 'High-Risk MAM' if case.mam_type == 'High-risk MAM' else 'Other MAM'
+
+
+def _linelist_case_data(case):
+    visits = [{
+        'id': visit.id,
+        'visit_number': visit.visit_number,
+        'visit_date': visit.visit_date,
+        'visit_type': visit.visit_type,
+        'weight_kg': visit.weight_kg,
+        'height_cm': visit.height_cm,
+        'muac_cm': visit.muac_cm,
+        'oedema': visit.oedema,
+        'visit_outcome': visit.visit_outcome,
+        'rutf_sachets_given': visit.rutf_sachets_given,
+        'csb_plus_given': visit.csb_plus_given,
+        'oil_given': visit.oil_given,
+    } for visit in case.ordered_visits]
+    return {
+        'id': case.id,
+        'registration_number': case.registration_number,
+        'child_name': case.child_name,
+        'child_gender': case.child_gender,
+        'date_of_birth': case.date_of_birth,
+        'age_months': case.age_months,
+        'caregiver_name': case.caregiver_name,
+        'caregiver_phone': case.caregiver_phone,
+        'programme': _programme_label_api(case),
+        'admission_date': case.admission_date,
+        'registration_date': case.registration_date,
+        'admission_type': case.admission_type,
+        'admission_criteria': case.admission_criteria,
+        'weight_kg': case.weight_kg,
+        'height_cm': case.height_cm,
+        'muac_cm': case.muac_cm,
+        'oedema': case.oedema,
+        'rutf_sachets_given': case.rutf_sachets_given,
+        'status': case.status,
+        'outcome': case.outcome,
+        'discharge_date': case.discharge_date,
+        'outcome_notes': case.outcome_notes,
+        'treatment_days': max(0, ((case.discharge_date or date.today()) - case.admission_date).days),
+        'visit_count': len(visits),
+        'visits': visits,
+        'facility': {
+            'id': case.facility_id,
+            'name': case.facility.name,
+            'code': case.facility.code,
+            'sub_district': case.facility.sub_district.name if case.facility.sub_district else None,
+            'district': case.facility.district.name,
+            'region': case.facility.district.region.name,
+        },
+    }
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def strategic_linelist_api(request):
+    """Mobile longitudinal line list, limited to regional level and above."""
+    if not request.user.can_view_strategic_reports():
+        return Response(
+            {'success': False, 'message': 'This report is available to regional, national, and super administrator users only.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    facilities = _strategic_facility_scope_api(request.user, request.query_params)
+    cases = OpcRegistration.objects.filter(facility__in=facilities).select_related(
+        'facility', 'facility__district', 'facility__district__region', 'facility__sub_district'
+    )
+    raw_date_from = str(request.query_params.get('date_from', '')).strip()
+    raw_date_to = str(request.query_params.get('date_to', '')).strip()
+    date_from = parse_date(raw_date_from) if raw_date_from else None
+    date_to = parse_date(raw_date_to) if raw_date_to else None
+    if date_from and date_to and date_from > date_to:
+        date_from, date_to = date_to, date_from
+    if date_from:
+        cases = cases.filter(registration_date__gte=date_from)
+    if date_to:
+        cases = cases.filter(registration_date__lte=date_to)
+    cases = cases.order_by('-registration_date', 'child_name')
+
+    if request.query_params.get('export') == 'csv':
+        # The web and API exports intentionally share one audited CSV definition.
+        from apps.users.views import _write_case_linelist_csv
+        return _write_case_linelist_csv(cases)
+
+    totals = cases.aggregate(
+        total=Count('id'),
+        active=Count('id', filter=Q(status='Active')),
+        discharged=Count('id', filter=Q(status='Discharged')),
+    )
+    totals['visits'] = OpcVisit.objects.filter(registration__in=cases).count()
+
+    try:
+        page_size = max(1, min(int(request.query_params.get('page_size', 25)), 100))
+    except (TypeError, ValueError):
+        page_size = 25
+    page = Paginator(
+        cases.prefetch_related(Prefetch(
+            'visits',
+            queryset=OpcVisit.objects.order_by('visit_date', 'visit_number'),
+            to_attr='ordered_visits',
+        )),
+        page_size,
+    ).get_page(request.query_params.get('page'))
+
+    response = Response({
+        'success': True,
+        'data': {
+            'totals': totals,
+            'results': [_linelist_case_data(case) for case in page.object_list],
+            'pagination': {
+                'page': page.number,
+                'page_size': page_size,
+                'total': page.paginator.count,
+                'total_pages': page.paginator.num_pages,
+                'has_next': page.has_next(),
+            },
+        },
+    })
+    response['Cache-Control'] = 'private, no-store'
+    return response
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def strategic_analytics_api(request):
+    """Mobile Jan-Dec indicator trends, limited to regional level and above."""
+    if not request.user.can_view_strategic_reports():
+        return Response(
+            {'success': False, 'message': 'This report is available to regional, national, and super administrator users only.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    current_year = timezone.now().year
+    try:
+        year = int(request.query_params.get('year', current_year))
+    except (TypeError, ValueError):
+        year = current_year
+    if year < 2000 or year > 2100:
+        year = current_year
+    try:
+        month = int(request.query_params.get('month', ''))
+        if month not in range(1, 13):
+            month = None
+    except (TypeError, ValueError):
+        month = None
+
+    facilities = _strategic_facility_scope_api(request.user, request.query_params)
+    from apps.cases.reporting import build_strategic_analytics
+    report = build_strategic_analytics(facilities, year, month)
+    response = Response({
+        'success': True,
+        'data': {
+            'year': year,
+            'month': month,
+            'focus_label': report['focus_label'],
+            'facility_count': facilities.count(),
+            'kpis': report['kpis'],
+            'monthly': report['month_rows'],
+            'analytics': report['analytics'],
+        },
+    })
+    response['Cache-Control'] = 'private, no-store'
+    return response
 
 
 @api_view(['GET'])

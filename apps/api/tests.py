@@ -210,6 +210,107 @@ class StrategicReportsTests(APITestCase):
         self.assertEqual(analytics['admissions']['high_risk_mam'][1], 0)
         self.assertEqual(analytics['visits']['sam_visits'][0], 1)
 
+    def test_mobile_strategic_reports_are_scoped_and_role_restricted(self):
+        self.client.force_authenticate(self.regional_user)
+        linelist = self.client.get('/api/v1/reports/strategic/linelist/')
+        self.assertEqual(linelist.status_code, status.HTTP_200_OK)
+        self.assertEqual(linelist.data['data']['totals']['total'], 2)
+        self.assertEqual(linelist.data['data']['totals']['visits'], 1)
+        names = [item['child_name'] for item in linelist.data['data']['results']]
+        self.assertIn('Scoped Child', names)
+        self.assertNotIn('Outside Child', names)
+
+        tampered = self.client.get(
+            '/api/v1/reports/strategic/linelist/',
+            {'facility': self.other_facility.id},
+        )
+        self.assertEqual(tampered.data['data']['totals']['total'], 2)
+
+        analytics = self.client.get(
+            '/api/v1/reports/strategic/analytics/', {'year': 2026},
+        )
+        self.assertEqual(analytics.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(analytics.data['data']['monthly']), 12)
+        self.assertEqual(analytics.data['data']['monthly'][0]['sam'], 1)
+        self.assertEqual(analytics.data['data']['monthly'][3]['other_mam'], 1)
+
+        self.client.force_authenticate(self.district_user)
+        for path in (
+            '/api/v1/reports/strategic/linelist/',
+            '/api/v1/reports/strategic/analytics/',
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_mobile_linelist_csv_uses_the_same_scoped_export(self):
+        self.client.force_authenticate(self.regional_user)
+        response = self.client.get(
+            '/api/v1/reports/strategic/linelist/', {'export': 'csv'},
+        )
+        csv_text = response.content.decode('utf-8-sig')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('Scoped Child', csv_text)
+        self.assertIn('Follow-up', csv_text)
+        self.assertNotIn('Outside Child', csv_text)
+
+
+class PushNotificationTests(BaseTestCase):
+    def setUp(self):
+        super().setUp()
+        self.user.is_superuser = False
+        self.user.is_staff = False
+        self.user.push_token = 'ExpoPushToken[test-device]'
+        self.user.save()
+        role = Role.objects.create(name='push-facility', display_name='Facility', level=5)
+        UserRole.objects.create(
+            user=self.user, role=role, region=self.region,
+            district=self.district, facility=self.facility,
+        )
+
+    def test_facility_notification_uses_active_role_assignment_and_preferences(self):
+        from unittest.mock import patch
+        from apps.api.push_service import notify_facility_staff
+
+        with patch('apps.api.push_service.send_push') as send:
+            notify_facility_staff(
+                self.facility, 'Visit due', 'Test',
+                preference='notify_visits', channel_id='visit-reminders',
+            )
+            send.assert_called_once_with(
+                ['ExpoPushToken[test-device]'], 'Visit due', 'Test', None,
+                'visit-reminders',
+            )
+
+        self.user.notify_visits = False
+        self.user.save(update_fields=['notify_visits'])
+        with patch('apps.api.push_service.send_push') as send:
+            notify_facility_staff(
+                self.facility, 'Visit due', 'Test', preference='notify_visits',
+            )
+            send.assert_called_once_with([], 'Visit due', 'Test', None, 'case-updates')
+
+    def test_mobile_can_update_preferences_and_remove_its_push_token(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.patch(
+            '/api/v1/profile/update/',
+            {'notify_visits': False, 'notify_discharge': True, 'notify_stock': True},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.notify_visits)
+        self.assertTrue(self.user.notify_stock)
+        self.assertIn('notify_stock', response.data['data'])
+
+        response = self.client.delete(
+            '/api/v1/push-token/',
+            {'push_token': 'ExpoPushToken[test-device]'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.push_token)
+
 
 class DashboardUserScopingTests(BaseTestCase):
     def test_region_district_and_sub_district_counts_stay_in_scope(self):

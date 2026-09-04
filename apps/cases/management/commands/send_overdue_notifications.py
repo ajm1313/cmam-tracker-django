@@ -68,8 +68,14 @@ class Command(BaseCommand):
 
             if not dry_run:
                 if case.facility:
-                    notify_facility_staff(case.facility, 'Overdue Visit', msg, push_data)
-                notify_admins('Overdue Visit', msg, push_data)
+                    notify_facility_staff(
+                        case.facility, 'Overdue Visit', msg, push_data,
+                        preference='notify_visits', channel_id='visit-reminders',
+                    )
+                notify_admins(
+                    'Overdue Visit', msg, push_data,
+                    preference='notify_visits', channel_id='visit-reminders',
+                )
 
         if not dry_run:
             self.stdout.write(self.style.SUCCESS(
